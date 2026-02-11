@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netso - Diseño de Redes FTTH</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- LOGIN PAGE -->
+    <!-- LOGIN PAGE -->
+    <div id="login-page" class="login-split-view">
+
+        <!-- LEFT SIDE: INTRO & BRANDING -->
+        <div class="intro-side">
+            <div class="network-bg"></div>
+            <div class="intro-content">
+                <div class="intro-logo">
+                    <img src="Netso Imagotipo Negro-Verde (2).png" alt="Netso" style="height: 50px; width: auto;">
+                </div>
+                <h1 class="intro-title">Infraestructura <br>Del Futuro.</h1>
+                <p class="intro-text">
+                    Plataforma integral para el diseño, auditoría y gestión de redes de fibra óptica FTTH.
+                    Optimiza tu despliegue con inteligencia y precisión.
+                </p>
+                <div class="intro-features">
+                    <div class="feature-item">
+                        <span class="f-icon">⚡</span>
+                        <span>Diseño Automatizado</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="f-icon">📊</span>
+                        <span>Auditoría de Stock</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="f-icon">🗺️</span>
+                        <span>Mapeo Inteligente</span>
+                    </div>
+                </div>
+            </div>
+            <div class="intro-footer">
+                © 2026 Netso Technology
+            </div>
+        </div>
+
+        <!-- RIGHT SIDE: LOGIN FORM -->
+        <div class="login-side">
+            <div class="login-card-clean">
+                <div class="mobile-logo" style="display: none; text-align: center; margin-bottom: 20px;">
+                    <img src="Netso Imagotipo Negro-Verde (2).png" alt="Netso" style="height: 40px; width: auto;">
+                </div>
+
+                <div class="login-header">
+                    <h2>Bienvenido de nuevo</h2>
+                    <p>Ingresa a tu panel de control</p>
+                </div>
+
+                <div class="role-switch-container">
+                    <button id="btn-role-isp" class="role-btn active" onclick="switchRole('isp')">Aliado ISP</button>
+                    <button id="btn-role-netso" class="role-btn" onclick="switchRole('netso')">Personal Netso</button>
+                </div>
+
+                <div id="form-isp" class="login-form">
+                    <!-- LOGIN ISP -->
+                    <div id="isp-mode-login">
+                        <div class="input-group">
+                            <label class="field-label">Correo Electrónico</label>
+                            <input type="email" id="login-isp-email" placeholder="tu@empresa.com" class="input-field">
+                        </div>
+                        <div class="input-group">
+                            <label class="field-label">Contraseña</label>
+                            <input type="password" id="login-isp-pass" placeholder="••••••••" class="input-field">
+                        </div>
+                        <button class="btn-primary" onclick="handleLogin('isp')">Ingresar como Aliado →</button>
+                        <p style="text-align: center; margin-top: 20px; font-size: 14px; color: #64748b;">
+                            ¿No tienes cuenta? <a href="#" onclick="toggleIspMode('register')"
+                                style="color: var(--netso-green); font-weight: bold; text-decoration: none;">Regístrate
+                                gratis</a>
+                        </p>
+                    </div>
+
+                    <!-- REGISTER ISP -->
+                    <div id="isp-mode-register" style="display: none;">
+                        <div class="input-group">
+                            <label class="field-label">Nombre Completo</label>
+                            <input type="text" id="reg-isp-name" placeholder="Ej: Juan Pérez" class="input-field">
+                        </div>
+                        <div class="input-group">
+                            <label class="field-label">Nombre del ISP / Empresa</label>
+                            <input type="text" id="reg-isp-company" placeholder="Ej: FibraFast" class="input-field">
+                        </div>
+                        <div class="input-group">
+                            <label class="field-label">Correo Electrónico</label>
+                            <input type="email" id="reg-isp-email" placeholder="tu@empresa.com" class="input-field">
+                        </div>
+                        <div class="input-group">
+                            <label class="field-label">Teléfono de Contacto</label>
+                            <input type="tel" id="reg-isp-phone" placeholder="Ej: +58 412 1234567" class="input-field">
+                        </div>
+                        <div class="input-group">
+                            <label class="field-label">Contraseña</label>
+                            <input type="password" id="reg-isp-pass" placeholder="Crea una contraseña"
+                                class="input-field">
+                        </div>
+                        <button class="btn-primary" onclick="handleIspRegister()">Crear Cuenta Aliado →</button>
+                        <p style="text-align: center; margin-top: 20px; font-size: 14px; color: #64748b;">
+                            ¿Ya tienes cuenta? <a href="#" onclick="toggleIspMode('login')"
+                                style="color: var(--netso-green); font-weight: bold; text-decoration: none;">Inicia
+                                Sesión</a>
+                        </p>
+                    </div>
+                </div>
+
+                <div id="form-netso" class="login-form" style="display: none;">
+                    <div class="input-group">
+                        <label class="field-label">Correo Electrónico</label>
+                        <input type="email" id="login-netso-user" placeholder="tu@netso.com" class="input-field">
+                    </div>
+                    <div class="input-group">
+                        <label class="field-label">Contraseña</label>
+                        <input type="password" id="login-netso-pass" placeholder="••••••••" class="input-field">
+                    </div>
+                    <button class="btn-primary" onclick="handleLogin()">Ingresar →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container" id="main-app" style="display: none;">
+        <div class="header">
+            <div class="logo">
+                <img src="Netso Imagotipo Negro-Verde (2).png" alt="Netso" style="height: 35px; width: auto;">
+            </div>
+            <div class="progress-bar">
+                <div class="progress-step active" id="dot1">1</div>
+                <div class="progress-line"></div>
+                <div class="progress-step" id="dot2">2</div>
+                <div class="progress-line"></div>
+                <div class="progress-step" id="dot3">3</div>
+                <div class="progress-line"></div>
+                <div class="progress-step" id="dot4">4</div>
+                <div class="progress-line"></div>
+                <div class="progress-step" id="dot5">5</div>
+            </div>
+            <div class="step-label" id="step-label">Introducción</div>
+
+            <!-- User Profile Dropdown -->
+            <div style="position: absolute; right: 20px; top: 18px;">
+                <div class="user-profile-widget" onclick="toggleProfileMenu()" title="Menú de Usuario">
+                    <div class="profile-avatar" id="header-avatar">US</div>
+                </div>
+
+                <div class="profile-dropdown" id="profile-dropdown">
+                    <div class="dropdown-header">
+                        <strong id="dropdown-user-name"
+                            style="display:block; font-size:14px; color:#1e293b;">Usuario</strong>
+                        <span style="font-size:11px; color:#64748b;">Aliado ISP</span>
+                    </div>
+                    <div class="dropdown-divider"></div>
+                    <a href="#" class="dropdown-item" onclick="toggleIspHistory()">
+                        <span style="font-size:16px; margin-right:8px;">📂</span> Mis Proyectos
+                    </a>
+                    <a href="#" class="dropdown-item" onclick="toggleSettings()">
+                        <span style="font-size:16px; margin-right:8px;">⚙️</span> Configuración
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <a href="#" class="dropdown-item text-red" onclick="logout()">
+                        <span style="font-size:16px; margin-right:8px;">🚪</span> Cerrar Sesión
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- VISTA HISTORIAL ISP -->
+        <div id="isp-history-view"
+            style="display: none; padding: 20px; max-width: 1000px; margin: 0 auto; margin-top: 100px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h1 style="color: #1e293b; font-size: 24px;">📂 Mis Proyectos Guardados</h1>
+                <button onclick="toggleIspHistory()" class="btn-primary">➕ Nuevo Diseño</button>
+            </div>
+
+            <!-- Search Bar -->
+            <div style="margin-bottom: 15px;">
+                <input type="text" id="project-history-search" onkeyup="filterHistory()"
+                    placeholder="🔍 Buscar proyecto por nombre..."
+                    style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px;">
+            </div>
+
+            <div class="table-container">
+                <table class="netso-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">PROYECTO</th>
+                            <th style="width: 15%;">FECHA</th>
+                            <th style="width: 25%;">COTIZACIÓN O ANÁLISIS IA</th>
+                            <th style="width: 30%;">DESCARGABLES</th>
+                        </tr>
+                    </thead>
+                    <tbody id="isp-history-body">
+                        <!-- JS lo llenará -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="page1" class="page content">
+            <div class="welcome-section">
+                <h1 class="main-title">Bienvenido, ISP</h1>
+                <p class="welcome-text">Inicia el diseño de tu red de alto rendimiento con tecnología
+                    <strong>Netso</strong>.
+                </p>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">📝 Identificación del Proyecto</h2>
+                <input type="text" id="projectName" placeholder="Ej: Proyecto Fibra Zona Norte 2026"
+                    class="input-field">
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">🚀 ¿Cómo deseas iniciar?</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+                    <!-- Option A: Assistant -->
+                    <div onclick="selectProjectType('assistant')" id="card-assistant"
+                        style="border: 2px solid #3b82f6; background: #eff6ff; border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s; position: relative;">
+                        <div style="font-size: 32px; margin-bottom: 10px;">🧠</div>
+                        <h3 style="margin: 0 0 5px 0; color: #1e293b; font-size: 16px;">Asistente Inteligente</h3>
+                        <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.4;">
+                            No sé qué materiales necesito exactamente. Ayúdame a calcular según mi zona y usuarios.
+                        </p>
+                    </div>
+
+                    <!-- Option B: Direct Quote -->
+                    <div onclick="selectProjectType('direct')" id="card-direct"
+                        style="border: 1px solid #e2e8f0; background: white; border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">
+                        <div style="font-size: 32px; margin-bottom: 10px;">📝</div>
+                        <h3 style="margin: 0 0 5px 0; color: #1e293b; font-size: 16px;">Cotizador Directo</h3>
+                        <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.4;">
+                            Ya tengo mi lista. Quiero ingresar cables y equipos directamente para obtener un precio.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <button id="btn-start-project" class="btn-primary" onclick="startSelectedFlow()" style="margin-top: 20px;">
+                Continuar →
+            </button>
+        </div>
+
+        <div id="page-direct-quote" class="page content" style="display:none;">
+            <div class="section">
+                <h2 class="section-title">📝 Cotizador Directo</h2>
+                <div
+                    style="background: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 25px;">
+                    <div style="display: grid; grid-template-columns: 2fr 1fr auto; gap: 15px; align-items: end;">
+                        <div>
+                            <label class="field-label">Producto / Material</label>
+                            <input type="text" id="direct-quote-search"
+                                placeholder="🔍 Escribe para buscar (ej: ADSS, OLT...)" onkeyup="searchDirectProduct()"
+                                style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+                            <div id="direct-search-results"
+                                style="display:none; position:absolute; background:white; border:1px solid #cbd5e1; max-height:200px; overflow-y:auto; border-radius:8px; z-index:100; box-shadow:0 10px 20px rgba(0,0,0,0.1); width: 300px;">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="field-label">Cantidad</label>
+                            <input type="number" id="direct-quote-qty" placeholder="0" min="1" value="1"
+                                style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+                        </div>
+                        <button onclick="addToQuote()" class="btn-primary" style="margin: 0; padding: 10px 20px;">
+                            + Agregar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="netso-table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th style="text-align: center;">Cant.</th>
+                                <th style="text-align: right;">Unitario</th>
+                                <th style="text-align: right;">Total</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="quote-table-body">
+                            <tr>
+                                <td colspan="5" style="text-align: center; color: #94a3b8; padding: 30px;">
+                                    Tu lista está vacía. Agrega productos arriba.
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr style="background: #f1f5f9; font-weight: 700;">
+                                <td colspan="3" style="text-align: right; padding: 15px;">TOTAL ESTIMADO:</td>
+                                <td style="text-align: right; color: #0f172a; font-size: 16px;"
+                                    id="quote-total-display">$ 0,00</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- SECCIÓN SUGERENCIAS IA (COTIZADOR DIRECTO) -->
+                <div class="section" style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 30px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                        <span style="font-size: 24px;">🤖</span>
+                        <h2 class="section-title" style="margin: 0;">Sugerencias IA</h2>
+                    </div>
+
+                    <p style="color: #64748b; font-size: 14px; margin-bottom: 20px;">
+                        Sube fotos del terreno o infraestructura y la IA te sugerirá materiales adicionales para tu
+                        cotización.
+                    </p>
+
+                    <div class="upload-area" id="directUploadArea"
+                        onclick="document.getElementById('directImageInput').click()">
+                        <input type="file" id="directImageInput" accept="image/*" style="display: none;"
+                            onchange="handleDirectImageUpload(event)">
+                        <div id="directUploadContent">
+                            <span style="font-size: 40px; color: var(--netso-green); margin-bottom: 10px;">📷</span>
+                            <div style="font-size: 14px; font-weight: 700; color: var(--netso-dark);">
+                                Agregar fotos para análisis
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Galería de imágenes pendientes (Directo) -->
+                    <div id="direct-pending-images-container"
+                        style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
+                    </div>
+
+                    <button class="btn-primary" id="directAnalyzeBtn" onclick="analyzeDirectImage()"
+                        style="display: none; margin-top: 15px; width: 100%; background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);">
+                        ✨ Analizar y Sugerir Materiales
+                    </button>
+
+                    <!-- Resultados del análisis -->
+                    <div id="directAnalysisResult" style="display: none; margin-top: 20px;" class="analysis-card">
+                        <div
+                            style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+                            <span style="font-size: 20px;">💡</span>
+                            <div style="font-weight: 700; color: var(--netso-dark);">Sugerencias del Asistente</div>
+                        </div>
+                        <div id="directAnalysisText" style="font-size: 13px; line-height: 1.6; color: #334155;"></div>
+                    </div>
+
+                    <div id="directLoadingAnalysis" style="display: none;" class="loading-card">
+                        <div class="loading-spinner"></div>
+                        <div style="font-size: 13px; font-weight: 600; color: var(--netso-dark); margin-top: 10px;">
+                            Analizando imágenes...
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-top: 30px; justify-content: flex-end;">
+                    <button class="btn-secondary" onclick="backToProjectSelect()">← Volver</button>
+                    <button class="btn-secondary" onclick="saveDirectQuote()"
+                        style="background: #3b82f6; border-color: #2563eb; color: white;">💾 Guardar</button>
+                    <button class="btn-primary" onclick="generateDirectExcel()"
+                        style="background: #10b981; border-color: #059669;">� Generar Excel (.xls)</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="page2" class="page content" style="display:none;">
+            <div class="section notice-card" style="background: #eff6ff; border-color: #3b82f6; margin-bottom: 25px;">
+                <h2 class="section-title" style="color: #1e293b;">📢 Inventario y Auditoría de Stock</h2>
+                <p style="font-size: 14px; color: #475569; line-height: 1.6; margin-bottom: 0;">
+                    Por favor, registra a continuación todo el <strong>Inventario Actual</strong> que ya posees.
+                    Esto nos permitirá ajustar el presupuesto a tu realidad.
+                </p>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">🧵 Inventario de Fibra Óptica</h2>
+                <div id="fibra-container"></div>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button class="btn-add" onclick="addFibraCard()" style="flex: 2;">+ Agregar Cable</button>
+                    <button class="btn-add" onclick="noPoseoFibra()"
+                        style="flex: 1; border-color: #cbd5e1; color: #64748b; background: white;">Sin Stock</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">⚡ Equipos Activos</h2>
+                <div class="input-group">
+                    <label class="field-label">OLT / Chasis Principal</label>
+                    <select class="input-field" id="olt-status">
+                        <option value="buy">🛒 Requiere Comprar OLT</option>
+                        <option value="olt-2">OLT 1 a 2 Puertos</option>
+                        <option value="olt-8">OLT 4 a 8 Puertos</option>
+                        <option value="olt-32">OLT 16 a 32 Puertos</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label class="field-label">Tarjetas de Servicio (Service Boards)</label>
+                    <select class="input-field" id="board-status">
+                        <option value="none">No Posee / No Requiere</option>
+                        <option value="h901">Board 16 Puertos GPON C++</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label class="field-label">Módulos SFP Ópticos</label>
+                    <select class="input-field" id="sfp-status">
+                        <option value="none">No Posee / Requiere SFP</option>
+                        <option value="B+">Clase B+ (+1.5 a +5 dBm)</option>
+                        <option value="4.5">Clase C+ (+3 a +7 dBm)</option>
+                        <option value="7.0">Clase C++ (+6 a +10 dBm)</option>
+                        <option value="7.0_upc">Clase C++ (Conector UPC Azul)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">📦 Equipos de Distribución</h2>
+                <div id="dist-container"></div>
+                <button class="btn-add" onclick="addDistCard()">+ Agregar Equipo de Distribución</button>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">✂️ Equipos de Empalme</h2>
+                <div id="empalme-container"></div>
+                <button class="btn-add" onclick="addEmpalmeCard()">+ Agregar Equipo de Empalme</button>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">🔗 Conectorización</h2>
+                <div id="conect-container"></div>
+                <button class="btn-add" onclick="addConectCard()">+ Agregar Conector/Splitter</button>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">🏠 Equipos de Abonado (CPE)</h2>
+                <div id="ont-container"></div>
+                <button class="btn-add" onclick="addOntCard()">+ Agregar Equipo ONT</button>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">🔩 Herrajes y Sujeción</h2>
+                <div id="herrajes-container"></div>
+                <button class="btn-add" onclick="addHerrajeCard()">+ Agregar Herraje</button>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">🛠️ Herramientas de Instalación</h2>
+                <div id="herramientas-container"></div>
+                <button class="btn-add" onclick="addHerramientaCard()">+ Agregar Herramienta</button>
+            </div>
+
+            <div class="section"
+                style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 20px; border-radius: 24px; border: 2px solid #86efac;">
+                <h2 class="section-title">🎯 Meta de Conexión</h2>
+                <input type="number" id="censo" placeholder="Número de clientes proyectados" class="input-field">
+                <div class="radius-control">
+                    <label style="font-size: 12px; color: #64748b; font-weight: 700;">
+                        📍 Radio de Cobertura: <span id="radiusValueDisplay"
+                            style="color: #10b981; font-weight: 900;">500 m</span>
+                    </label>
+                    <input type="range" id="coverageRadius" min="100" max="5000" step="50" value="500"
+                        oninput="updateRadiusDisplay(this.value)">
+                </div>
+            </div>
+
+            <div class="navigation-buttons">
+                <button class="btn-secondary" onclick="nextPage(1)">← Atrás</button>
+                <button class="btn-primary" onclick="nextPage(3)">Siguiente: Análisis de Campo →</button>
+            </div>
+        </div>
+
+        <!-- NUEVA PÁGINA 3: ANÁLISIS DE IMAGEN -->
+        <div id="page3" class="page content" style="display:none;">
+            <h2 class="main-title" style="text-align: center; margin-bottom: 16px;">📸 Análisis de Campo</h2>
+            <p style="text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px;">
+                Sube una foto del terreno y nuestro ingeniero AI te dará recomendaciones profesionales
+            </p>
+
+            <div class="section"
+                style="background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%); padding: 20px; border-radius: 20px; border: 2px solid #fde047;">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <span style="font-size: 24px;">⚠️</span>
+                    <div>
+                        <div style="font-size: 13px; font-weight: 700; color: #713f12; margin-bottom: 4px;">
+                            Foto del Terreno o Infraestructura
+                        </div>
+                        <div style="font-size: 12px; color: #a16207;">
+                            Incluye postes, cables existentes, cajas, distancias, etc.
+                        </div>
+                    </div>
+                </div>
+                <button class="btn-add" onclick="testAPIKey()"
+                    style="margin-top: 12px; background: white; border-color: #fde047; color: #a16207;">
+                    🔑 Probar Conexión con API
+                </button>
+            </div>
+
+            <div class="section">
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('imageInput').click()">
+                    <input type="file" id="imageInput" accept="image/*" style="display: none;"
+                        onchange="handleImageUpload(event)">
+                    <div id="uploadContent">
+                        <span style="font-size: 48px; color: var(--netso-green); margin-bottom: 12px;">📷</span>
+                        <div style="font-size: 15px; font-weight: 700; color: var(--netso-dark); margin-bottom: 6px;">
+                            Toca para agregar imágenes
+                        </div>
+                        <div style="font-size: 12px; color: #94a3b8;">
+                            Puedes subir múltiples fotos (JPG, PNG, WEBP)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Galería de imágenes pendientes -->
+                <div id="pending-images-container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
+                </div>
+                <!-- Imágenes analizadas se mueven aquí -->
+                <div id="analyzed-images-container" style="display: none; margin-top: 20px;">
+                    <h3 style="font-size: 14px; color: #64748b; margin-bottom: 10px;">Resultados de Análisis:</h3>
+                </div>
+            </div>
+
+            <button class="btn-primary" id="analyzeBtn" onclick="analyzeImage()"
+                style="display: none; margin-bottom: 16px;">
+                🤖 Analizar con Ingeniero AI
+            </button>
+
+            <div id="analysisResult" style="display: none;" class="analysis-card">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                    <span style="font-size: 28px;">👷</span>
+                    <div>
+                        <div style="font-size: 14px; font-weight: 800; color: var(--netso-dark);">
+                            Análisis del Ingeniero
+                        </div>
+                        <div style="font-size: 11px; color: #64748b; font-weight: 600;">
+                            Recomendaciones técnicas para tu proyecto
+                        </div>
+                    </div>
+                </div>
+                <div id="analysisText"
+                    style="font-size: 14px; line-height: 1.7; color: #334155; white-space: pre-wrap;"></div>
+            </div>
+
+            <div id="loadingAnalysis" style="display: none;" class="loading-card">
+                <div class="loading-spinner"></div>
+                <div style="font-size: 14px; font-weight: 600; color: var(--netso-dark); margin-top: 16px;">
+                    Analizando imagen...
+                </div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
+                    Esto puede tomar unos segundos
+                </div>
+            </div>
+
+            <div class="navigation-buttons" style="margin-top: 24px;">
+                <button class="btn-secondary" onclick="nextPage(2)">← Atrás</button>
+                <div style="flex: 1; display: flex; justify-content: flex-end; gap: 10px;">
+                    <button class="btn-secondary" onclick="skipAnalysis()" title="Saltar análisis IA">Omitir IA</button>
+                    <button class="btn-primary" onclick="procesarCalculos()">Calcular Diseño →</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PÁGINA 4: RESULTADOS -->
+        <div id="page4" class="page content" style="display:none;">
+            <h2 class="main-title" style="text-align: center; margin-bottom: 24px;">📊 Resultados</h2>
+
+            <div id="lat-val" style="display:none;">0</div>
+            <div id="lng-val" style="display:none;">0</div>
+
+            <div class="result-card-main">
+                <div class="potencia-val" id="res-potencia">--</div>
+                <div class="potencia-label">Potencia Estimada Recibida</div>
+                <span id="res-status" class="badge">--</span>
+            </div>
+
+            <div class="engineering-grid">
+                <div class="eng-box">
+                    <span>Pérdida en Fibra</span>
+                    <strong id="res-loss-cable">--</strong>
+                </div>
+                <div class="eng-box">
+                    <span>Clientes Meta</span>
+                    <strong id="res-hp">--</strong>
+                </div>
+                <div class="eng-box">
+                    <span>NAPs Requeridos</span>
+                    <strong id="res-naps-total">--</strong>
+                </div>
+                <div class="eng-box">
+                    <span>Margen Seguridad</span>
+                    <strong>3.5 dB</strong>
+                </div>
+            </div>
+
+            <!-- CONTENEDOR DE SUGERENCIAS IA -->
+            <div id="project-ai-suggestions-container" style="display:none; margin-bottom: 25px;"></div>
+
+            <div id="lista-faltantes" class="shopping-container">
+                <p style="font-size: 13px; color: #64748b; text-align: center; margin: 0;">
+                    Analizando inventario para generar lista de compra...
+                </p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 32px;">
+                <button class="btn-primary" onclick="downloadComparisonReport()"
+                    style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);">
+                    📄 Descargar Reporte de Compras
+                </button>
+
+                <button class="btn-secondary" onclick="location.reload()">
+                    🔄 Nuevo Proyecto
+                </button>
+
+                <!-- NUEVO BOTÓN PARA PÁGINA 5 -->
+                <button class="btn-primary" onclick="nextPage(5)"
+                    style="margin-top: 20px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); border: none; font-size: 16px; padding: 16px;">
+                    Ver Arquitectura de Red Sugerida
+                </button>
+            </div>
+        </div>
+
+        <!-- PÁGINA 5: ARQUITECTURA SUGERIDA (VACÍA POR AHORA) -->
+        <div id="page5" class="page content" style="display:none;">
+            <h2 class="main-title" style="text-align: center; margin-bottom: 24px;">🛰️ Arquitectura de Red Sugerida
+            </h2>
+
+            <div
+                style="background: white; padding: 40px; border-radius: 20px; border: 2px dashed #e2e8f0; text-align: center;">
+                <p style="color: #64748b; font-size: 16px;">
+                    Aquí se mostrará el diseño optimizado de la red FTTH...
+                </p>
+                <div style="margin-top: 30px; font-size: 48px;">🗺️</div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 24px;">
+                <button class="btn-primary" onclick="downloadPdfFromWizard()"
+                    style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border: 1px solid #ef4444;">
+                    📑 Descargar Propuesta PDF
+                </button>
+
+                <button class="btn-primary" onclick="generarKMZ()"
+                    style="background: linear-gradient(135deg, #4285F4 0%, #1a73e8 100%); box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);">
+                    🌐 Descargar Archivo KMZ
+                </button>
+            </div>
+
+            <div class="navigation-buttons" style="margin-top: 32px;">
+                <button class="btn-secondary" onclick="nextPage(4)">← Volver a Resultados</button>
+            </div>
+        </div>
+
+        <!-- NETSO DASHBOARD (SOLO ADMIN/PERSONAL) -->
+        <div id="netso-dashboard" class="page content" style="display:none;">
+            <div class="dashboard-header">
+                <div class="dashboard-bg"></div>
+                <!-- Header Content -->
+                <div style="position: relative; z-index: 2;">
+                    <h2 class="main-title">📡 Panel de Supervisión</h2>
+                    <p>Gestión Integral Netso</p>
+                </div>
+                <div style="position: relative;">
+                    <div class="user-profile-widget" onclick="toggleNetsoProfileMenu()" title="Menú de Usuario">
+                        <div class="profile-avatar" id="netso-header-avatar" style="background-color: #0f172a;">US
+                        </div>
+                    </div>
+
+                    <div class="profile-dropdown" id="netso-profile-dropdown" style="top: 50px; right: 0;">
+                        <div class="dropdown-header">
+                            <strong id="netso-dropdown-user-name"
+                                style="display:block; font-size:14px; color:#1e293b;">Usuario</strong>
+                            <span id="netso-dropdown-user-role" style="font-size:11px; color:#64748b;">Personal
+                                Netso</span>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <a href="#" class="dropdown-item" onclick="toggleSettings()">
+                            <span style="font-size:16px; margin-right:8px;">⚙️</span> Configuración
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <a href="#" class="dropdown-item text-red" onclick="logout()">
+                            <span style="font-size:16px; margin-right:8px;">🚪</span> Cerrar Sesión
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Dashboard Tabs -->
+            <div class="dash-tabs">
+                <button onclick="switchDashTab('projects')" id="tab-projects" class="dash-tab active">
+                    <span>📡</span> Proyectos
+                </button>
+                <button onclick="switchDashTab('products')" id="tab-products" class="dash-tab">
+                    <span>🛒</span> Consultar Catálogo Odoo
+                </button>
+            </div>
+
+            <div class="dashboard-content-wrapper">
+                <!-- VIEW: PRODUCTS (FULL CATALOG) -->
+                <div id="dash-view-products" style="display: none;">
+                    <div
+                        style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 class="supervision-subtitle">
+                            🛒 Catálogo de Productos
+                            <span id="odoo-product-count"
+                                style="font-size: 0.9rem; color: #64748b; font-weight: 500; margin-left: 8px;"></span>
+                        </h3>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="odoo-search-input" placeholder="🔍 Buscar producto..."
+                                onkeyup="filterOdooProducts()"
+                                style="padding: 10px 16px; border: 1px solid #cbd5e1; border-radius: 10px; width: 280px; font-weight: 500;">
+
+                            <button onclick="fetchOdooProducts()"
+                                style="background: var(--netso-green); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: 700; transition: all 0.3s;">
+                                🔄 Actualizar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-container shadow-sm">
+                        <table class="netso-table">
+                            <thead>
+                                <tr>
+                                    <th>Referencia</th>
+                                    <th>Nombre del Producto</th>
+                                    <th>Categoría</th>
+                                    <th>Disponible</th>
+                                </tr>
+                            </thead>
+                            <tbody id="odoo-products-body">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; padding: 30px; color: #94a3b8;">
+                                        Presiona "Actualizar" para cargar el catálogo.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- VIEW: PROJECTS -->
+                <div id="dash-view-projects">
+                    <div class="table-container">
+                        <table class="netso-table">
+                            <thead>
+                                <tr>
+                                    <th>ISP</th>
+                                    <th>Proyecto (REF)</th>
+                                    <th>Fecha y Hora</th>
+                                    <th>Descargables</th>
+                                    <th>Contacto</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="projects-table-body">
+                                <!-- Se llena dinámicamente con JS -->
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 20px; color: #94a3b8;">
+                                        No hay proyectos registrados aún.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- VIEW: STOCK INQUIRY -->
+                <div id="dash-view-stock-inquiry" style="display: none;">
+                    <div
+                        style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
+                        <div class="supervision-subtitle">
+                            📦 Disponibilidad Odoo
+                            <div id="inquiry-project-name" style="font-size: 0.9rem; color: #64748b; font-weight: 500;">
+                            </div>
+                        </div>
+                        <button onclick="switchDashTab('projects')" class="btn-secondary"
+                            style="width: auto; padding: 10px 20px; border-radius: 10px; font-weight: 700;">
+                            ← Volver
+                        </button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="netso-table">
+                            <thead>
+                                <tr>
+                                    <th>Referencia Odoo</th>
+                                    <th>Producto</th>
+                                    <th style="text-align: center;">Requerido</th>
+                                    <th>Disponibilidad</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stock-inquiry-body">
+                                <tr>
+                                    <td colspan="4" style="text-align: center; padding: 40px; color: #94a3b8;">
+                                        ⌛ Consultando disponibilidad en tiempo real...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+
+
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div
+            style="background: white; padding: 24px; border-radius: 20px; width: 90%; max-width: 350px; box-shadow: 0 20px 50px rgba(0,0,0,0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0; font-size: 18px; color: #1e293b;">⚙️ Configuración</h3>
+                <span onclick="toggleSettings()" style="cursor: pointer; font-size: 24px; color: #64748b;">×</span>
+            </div>
+
+            <div class="input-group">
+                <label class="field-label">Google AI Studio API Key</label>
+                <input type="password" id="apiKeyInput" placeholder="Pega tu API Key aquí" class="input-field">
+                <p style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
+                    Tu clave se guarda en tu navegador de forma segura.
+                </p>
+            </div>
+
+            <button class="btn-primary" onclick="saveSettings()">Guardar Configuración</button>
+            <p style="margin-top: 12px; text-align: center;">
+                <a href="https://aistudio.google.com/app/apikey" target="_blank"
+                    style="font-size: 12px; color: #10b981; text-decoration: none;">Obtener API Key &rarr;</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- FIREBASE SDK (COMPAT MODE) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics-compat.js"></script>
+
+    <!-- PDF Generation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <script src="data.js?v=1.1"></script>
+    <script src="products_data.js?v=1.1"></script>
+    <script src="script.js?v=1.1"></script>
+</body>
+
+</html>
