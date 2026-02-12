@@ -3068,7 +3068,11 @@ function renderCotizacionTable() {
                 <input type="text" id="manual-item-name" placeholder="Buscar producto en Odoo..." list="odoo-products-list"
                     style="flex: 2; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px;">
                 <datalist id="odoo-products-list">
-                    ${allOdooProducts.map(p => `<option value="${p.name}">`).join('')}
+                    ${allOdooProducts.slice(0, 500).map(p => {
+        const fullName = p.display_name || p.name;
+        const safeValue = fullName.replace(/"/g, '&quot;');
+        return `<option value="${safeValue}">`;
+    }).join('')}
                 </datalist>
                 
                 <input type="number" id="manual-item-qty" placeholder="Cant." 
