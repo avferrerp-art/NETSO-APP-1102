@@ -5661,110 +5661,18 @@ function dismissSuggestion(elementId) {
             card.remove();
         }, 300);
     }
-}
 
-
-// ==========================================
-// RESTORED NAVIGATION LOGIC
-// ==========================================
-// Removed duplicate declaration of selectedProjectType to avoid SyntaxError
-// let selectedProjectType = null; 
-
-function selectProjectType(type) {
-    selectedProjectType = type;
-    document.querySelectorAll('.project-card').forEach(c => c.classList.remove('selected'));
-    const card = document.getElementById(`card-${type}`);
-    if (card) card.classList.add('selected');
-
-    // Enable button
-    const btn = document.getElementById('btn-start-project');
-    if (btn) {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
-    }
-    console.log("Proyecto seleccionado:", type);
-}
-
-function startSelectedFlow() {
-    console.log("Iniciando flujo:", selectedProjectType);
-    // Safe check if selectedProjectType is defined
-    if (typeof selectedProjectType !== 'undefined' && !selectedProjectType) {
-        alert("⚠️ Por favor selecciona una opción para continuar (Asistente AI o Manual).");
-        return;
-    } else if (typeof selectedProjectType === 'undefined') {
-        console.error("selectedProjectType is undefined!");
-        return;
-    }
-
-    // Hide dashboard / selection
-    const dash = document.getElementById('netso-dashboard');
-    if (dash) dash.style.display = 'none';
-
-    // Show Page 1
-    const p1 = document.getElementById('page1');
-    if (p1) p1.style.display = 'block';
-
-    // Update step indicator
-    if (typeof updateStepIndicator === 'function') {
-        updateStepIndicator(1);
-    } else {
-        // Fallback implementation if global function missing
-        const steps = document.querySelectorAll('.step-item');
-        steps.forEach((s, idx) => {
-            if (idx + 1 === 1) s.classList.add('active');
-            else s.classList.remove('active');
-        });
-    }
-
-    window.scrollTo(0, 0);
-}
-
-// Ensure updateStepIndicator is available globally if not already
-if (typeof window.updateStepIndicator === 'undefined') {
-    window.updateStepIndicator = function (step) {
-        const steps = document.querySelectorAll('.step-item');
-        steps.forEach((s, idx) => {
-            if (idx + 1 === step) s.classList.add('active');
-            else if (idx + 1 < step) s.classList.add('completed'); // Optional style
-            else s.classList.remove('active');
-        });
-    };
-}
 
 
 // ==========================================
 // OLT OPTIMIZER (Restored)
 // ==========================================
-// ==========================================
-// OLT OPTIMIZER (Advanced Multi-Objective Algorithm)
-// ==========================================
-
-/**
- * Advanced OLT Optimizer for FTTH Networks
- * Implements multi-objective optimization with:
- * - Weighted centroid calculation (density + plan value)
- * - Candidate generation (5-6 locations)
- * - Multi-factor scoring (distance 40%, cost 30%, accessibility 20%, scalability 10%)
- * - GPON technical validation (20km range, 27dB optical budget)
- */
 class OLT_Optimizer {
-    constructor(clients, options = {}) {
+    constructor(clients) {
         this.clients = clients || [];
-        this.options = {
-            maxGponRange: options.maxGponRange || 20, // km
-            maxOpticalBudget: options.maxOpticalBudget || 27, // dB
-            maxDropDistance: options.maxDropDistance || 0.5, // km (500m)
-            candidateOffset: options.candidateOffset || 0.5, // km
-            backhaul: options.backhaul || null, // {lat, lng} if available
-            ...options
-        };
     }
 
-    // ==========================================
-    // STEP 1: Simple Centroid Calculation
-    // ==========================================
-    calculateSimpleCentroid() {
+    calculateInitialCentroid() {
         if (this.clients.length === 0) return null;
 
         let sumLat = 0, sumLng = 0;
@@ -5779,57 +5687,24 @@ class OLT_Optimizer {
         };
     }
 
-    // ==========================================
-    // UTILITY: Haversine Distance (Precise)
-    // ==========================================
-    static haversineDistance(lat1, lng1, lat2, lng2) {
-        const R = 6371; // Earth radius in km
+    static getDistanceKm(lat1, lon1, lat2, lon2) {
+        const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
-    }
-
-    // Alias for backward compatibility
-    static getDistanceKm(lat1, lng1, lat2, lng2) {
-        return OLT_Optimizer.haversineDistance(lat1, lng1, lat2, lng2);
-    }
-
-    // ==========================================
-    // STEP 2: Client Weighting
-    // ==========================================
-    calculateClientWeights() {
-        return this.clients.map(client => {
-            // Plan factor: basic=1.0, medium=1.5, premium=2.0
-            let planFactor = 1.0;
-            if (client.plan === 'medium') planFactor = 1.5;
-            else if (client.plan === 'premium') planFactor = 2.0;
-
-            // Density factor: count nearby clients within 200m
-            const nearby = this.countNearbyClients(client, 0.2);
-            let densityFactor = 1.0;
-            if (nearby >= 5) densityFactor = 1.5;
-            else if (nearby >= 2) densityFactor = 1.2;
-
-            return {
-                clientId: client.id,
-                weight: planFactor * densityFactor,
-                planFactor,
-                densityFactor,
-                nearbyCount: nearby
-            };
-        });
     }
 
     countNearbyClients(client, radiusKm = 0.2) {
         let count = 0;
         this.clients.forEach(c => {
-            if (c.id !== client.id) {
-                const dist = OLT_Optimizer.haversineDistance(client.lat, client.lng, c.lat, c.lng);
-                if (dist <= radiusKm) count++;
+            if (c !== client) {
+                if (OLT_Optimizer.getDistanceKm(client.lat, client.lng, c.lat, c.lng) <= radiusKm) {
+                    count++;
+                }
             }
         });
         return count;
@@ -5838,17 +5713,23 @@ class OLT_Optimizer {
     calculateWeightedCentroid() {
         if (this.clients.length === 0) return null;
 
-        const weights = this.calculateClientWeights();
         let sumLat = 0, sumLng = 0, sumWeight = 0;
 
-        this.clients.forEach((client, idx) => {
-            const weight = weights[idx].weight;
-            sumLat += client.lat * weight;
-            sumLng += client.lng * weight;
+        this.clients.forEach(c => {
+            const planFactor = c.planWeight || 1.0;
+            const nearby = this.countNearbyClients(c, 0.2);
+            let densityFactor = 1.0;
+            if (nearby >= 5) densityFactor = 1.5;
+            else if (nearby >= 2) densityFactor = 1.2;
+
+            const weight = planFactor * densityFactor;
+
+            sumLat += c.lat * weight;
+            sumLng += c.lng * weight;
             sumWeight += weight;
         });
 
-        if (sumWeight === 0) return this.calculateSimpleCentroid();
+        if (sumWeight === 0) return this.calculateInitialCentroid();
 
         return {
             lat: sumLat / sumWeight,
@@ -5856,333 +5737,92 @@ class OLT_Optimizer {
         };
     }
 
-    // ==========================================
-    // STEP 3: Generate Candidate Locations
-    // ==========================================
-    generateCandidateLocations() {
-        const center = this.calculateWeightedCentroid();
+    generateCandidates(center) {
         if (!center) return [];
-
-        const offsetKm = this.options.candidateOffset;
-        // 1 degree lat ≈ 111 km
-        const latOffset = offsetKm / 111;
-        // Adjust lng offset by latitude
-        const lngOffset = offsetKm / (111 * Math.cos(center.lat * Math.PI / 180));
-
-        const candidates = [
+        const offset = 0.0045;
+        return [
             { name: 'Centroide Ponderado', lat: center.lat, lng: center.lng, type: 'centroid' },
-            { name: 'Norte (+500m)', lat: center.lat + latOffset, lng: center.lng, type: 'offset_n' },
-            { name: 'Sur (-500m)', lat: center.lat - latOffset, lng: center.lng, type: 'offset_s' },
-            { name: 'Este (+500m)', lat: center.lat, lng: center.lng + lngOffset, type: 'offset_e' },
-            { name: 'Oeste (-500m)', lat: center.lat, lng: center.lng - lngOffset, type: 'offset_w' }
+            { name: 'Norte (+500m)', lat: center.lat + offset, lng: center.lng, type: 'offset' },
+            { name: 'Sur (-500m)', lat: center.lat - offset, lng: center.lng, type: 'offset' },
+            { name: 'Este (+500m)', lat: center.lat, lng: center.lng + offset, type: 'offset' },
+            { name: 'Oeste (-500m)', lat: center.lat, lng: center.lng - offset, type: 'offset' }
         ];
-
-        // Add backhaul candidate if available
-        if (this.options.backhaul) {
-            candidates.push({
-                name: 'Cerca de Backhaul',
-                lat: this.options.backhaul.lat,
-                lng: this.options.backhaul.lng,
-                type: 'backhaul'
-            });
-        }
-
-        return candidates;
     }
 
-    // ==========================================
-    // STEP 4: Multi-Factor Scoring System
-    // ==========================================
     scoreCandidate(candidate) {
-        const distanceScore = this.calculateDistanceScore(candidate);
-        const costScore = this.calculateCostScore(candidate);
-        const accessibilityScore = this.calculateAccessibilityScore(candidate);
-        const scalabilityScore = this.calculateScalabilityScore(candidate);
+        let totalDist = 0;
+        let maxDist = 0;
+        this.clients.forEach(c => {
+            const d = OLT_Optimizer.getDistanceKm(candidate.lat, candidate.lng, c.lat, c.lng);
+            totalDist += d;
+            if (d > maxDist) maxDist = d;
+        });
+        const avgDist = this.clients.length > 0 ? totalDist / this.clients.length : 0;
 
-        const totalScore = (
-            0.40 * distanceScore +
-            0.30 * costScore +
-            0.20 * accessibilityScore +
-            0.10 * scalabilityScore
-        );
+        let scoreDist = 0;
+        if (maxDist > 20) {
+            scoreDist = 0;
+        } else {
+            if (avgDist < 2) scoreDist = 100;
+            else if (avgDist < 5) scoreDist = 80;
+            else if (avgDist < 10) scoreDist = 60;
+            else if (avgDist < 15) scoreDist = 40;
+            else if (avgDist < 20) scoreDist = 20;
+            else scoreDist = 0;
+        }
+
+        const initialC = this.calculateInitialCentroid();
+        const distFromCenter = OLT_Optimizer.getDistanceKm(candidate.lat, candidate.lng, initialC.lat, initialC.lng);
+        let scoreCost = 100 - (distFromCenter * 20);
+        if (scoreCost < 0) scoreCost = 0;
+
+        const pseudoRandom = (candidate.lat + candidate.lng) % 1;
+        let scoreAccess = 70;
+        if (pseudoRandom > 0.8) scoreAccess = 90;
+        if (pseudoRandom < 0.2) scoreAccess = 50;
+
+        let scoreScale = (candidate.type === 'centroid') ? 90 : 60;
+
+        const totalScore = (0.4 * scoreDist) + (0.3 * scoreCost) + (0.2 * scoreAccess) + (0.1 * scoreScale);
 
         return {
             ...candidate,
-            score_total: Math.round(totalScore * 100) / 100,
-            score_distancia: Math.round(distanceScore * 100) / 100,
-            score_costo: Math.round(costScore * 100) / 100,
-            score_accesibilidad: Math.round(accessibilityScore * 100) / 100,
-            score_escalabilidad: Math.round(scalabilityScore * 100) / 100,
-            distancia_promedio_clientes_km: this.calculateAverageDistance(candidate),
-            distancia_maxima_cliente_km: this.calculateMaxDistance(candidate)
-        };
-    }
-
-    calculateDistanceScore(candidate) {
-        const avgDist = this.calculateAverageDistance(candidate);
-        const maxDist = this.calculateMaxDistance(candidate);
-
-        // Base score from average distance
-        let score = 100;
-        if (avgDist < 2) score = 100;
-        else if (avgDist < 5) score = 80;
-        else if (avgDist < 10) score = 60;
-        else if (avgDist < 15) score = 40;
-        else if (avgDist < 20) score = 20;
-        else score = 0;
-
-        // Penalize if max distance exceeds GPON limit
-        if (maxDist > this.options.maxGponRange) {
-            score = Math.max(0, score - 50);
-        }
-
-        return score;
-    }
-
-    calculateAverageDistance(candidate) {
-        if (this.clients.length === 0) return 0;
-
-        const totalDist = this.clients.reduce((sum, client) => {
-            return sum + OLT_Optimizer.haversineDistance(
-                candidate.lat, candidate.lng,
-                client.lat, client.lng
-            );
-        }, 0);
-
-        return totalDist / this.clients.length;
-    }
-
-    calculateMaxDistance(candidate) {
-        if (this.clients.length === 0) return 0;
-
-        return Math.max(...this.clients.map(client =>
-            OLT_Optimizer.haversineDistance(
-                candidate.lat, candidate.lng,
-                client.lat, client.lng
-            )
-        ));
-    }
-
-    calculateCostScore(candidate) {
-        let score = 70; // Base score
-
-        // Factor 1: Distance to backhaul (if available)
-        if (this.options.backhaul) {
-            const backhaulDist = OLT_Optimizer.haversineDistance(
-                candidate.lat, candidate.lng,
-                this.options.backhaul.lat, this.options.backhaul.lng
-            );
-
-            if (backhaulDist < 1) score += 20;
-            else if (backhaulDist < 3) score += 10;
-            else if (backhaulDist > 5) score -= 20;
-        }
-
-        // Factor 2: Zone type (urban cheaper than rural)
-        const urbanClientRatio = this.clients.filter(c => c.zone_type === 'urban').length / this.clients.length;
-        if (urbanClientRatio > 0.7) score += 10;
-        else if (urbanClientRatio < 0.3) score -= 10;
-
-        return Math.min(100, Math.max(0, score));
-    }
-
-    calculateAccessibilityScore(candidate) {
-        let score = 70; // Base score
-
-        // Estimate zone type from client distribution
-        const nearbyClients = this.clients.filter(c => {
-            const dist = OLT_Optimizer.haversineDistance(
-                candidate.lat, candidate.lng,
-                c.lat, c.lng
-            );
-            return dist < 1; // Within 1km
-        });
-
-        const urbanCount = nearbyClients.filter(c => c.zone_type === 'urban').length;
-        const suburbanCount = nearbyClients.filter(c => c.zone_type === 'suburban').length;
-
-        if (urbanCount > suburbanCount) score = 90;
-        else if (suburbanCount > 0) score = 70;
-        else score = 50;
-
-        // Bonus if it's a backhaul location (likely has good access)
-        if (candidate.type === 'backhaul') score += 10;
-
-        return Math.min(100, score);
-    }
-
-    calculateScalabilityScore(candidate) {
-        const centroid = this.calculateSimpleCentroid();
-        if (!centroid) return 50;
-
-        // Score based on how central the location is
-        const distFromCenter = OLT_Optimizer.haversineDistance(
-            candidate.lat, candidate.lng,
-            centroid.lat, centroid.lng
-        );
-
-        let score = 90;
-        if (distFromCenter > 2) score = 60;
-        else if (distFromCenter > 1) score = 75;
-
-        // Bonus if surrounded by clients (can expand in all directions)
-        const clientsNorth = this.clients.filter(c => c.lat > candidate.lat).length;
-        const clientsSouth = this.clients.filter(c => c.lat < candidate.lat).length;
-        const clientsEast = this.clients.filter(c => c.lng > candidate.lng).length;
-        const clientsWest = this.clients.filter(c => c.lng < candidate.lng).length;
-
-        const directions = [clientsNorth, clientsSouth, clientsEast, clientsWest].filter(count => count > 0).length;
-        if (directions === 4) score += 10;
-
-        return Math.min(100, score);
-    }
-
-    // ==========================================
-    // STEP 5: Select Optimal Location
-    // ==========================================
-    selectOptimalLocation() {
-        const candidates = this.generateCandidateLocations();
-        if (candidates.length === 0) return null;
-
-        const scoredCandidates = candidates.map(c => this.scoreCandidate(c));
-        scoredCandidates.sort((a, b) => b.score_total - a.score_total);
-
-        const optimal = scoredCandidates[0];
-        optimal.razon_seleccion = this.generateSelectionReason(optimal);
-
-        return {
-            ubicacion_optima: optimal,
-            ubicaciones_alternativas: scoredCandidates.slice(1, 4),
-            all_candidates: scoredCandidates
-        };
-    }
-
-    generateSelectionReason(candidate) {
-        const reasons = [];
-
-        if (candidate.score_distancia >= 80) {
-            reasons.push(`Excelente ubicación central (distancia promedio: ${candidate.distancia_promedio_clientes_km.toFixed(2)} km)`);
-        }
-
-        if (candidate.score_costo >= 70) {
-            reasons.push('Costos de infraestructura favorables');
-        }
-
-        if (candidate.type === 'backhaul') {
-            reasons.push('Proximidad a fibra de backhaul existente');
-        }
-
-        if (candidate.score_escalabilidad >= 80) {
-            reasons.push('Alto potencial de escalabilidad');
-        }
-
-        return reasons.join('. ') || 'Mejor balance entre todos los factores evaluados';
-    }
-
-    // ==========================================
-    // STEP 6: Validation
-    // ==========================================
-    validateLocation(location) {
-        const warnings = [];
-        let allInRange = true;
-        let farthestClient = null;
-        let maxDist = 0;
-
-        this.clients.forEach(client => {
-            const dist = OLT_Optimizer.haversineDistance(
-                location.lat, location.lng,
-                client.lat, client.lng
-            );
-
-            if (dist > maxDist) {
-                maxDist = dist;
-                farthestClient = client;
+            scoreTotal: parseFloat(totalScore.toFixed(2)),
+            details: {
+                avgDistKm: parseFloat(avgDist.toFixed(2)),
+                maxDistKm: parseFloat(maxDist.toFixed(2)),
+                scoreDist, scoreCost, scoreAccess, scoreScale
             }
-
-            if (dist > this.options.maxGponRange) {
-                allInRange = false;
-                warnings.push(`Cliente ${client.id} fuera de rango GPON (${dist.toFixed(2)} km > ${this.options.maxGponRange} km)`);
-            }
-        });
-
-        // Optical budget validation (simplified)
-        const estimatedLoss = maxDist * 0.35; // ~0.35 dB/km typical
-        if (estimatedLoss > this.options.maxOpticalBudget) {
-            warnings.push(`Presupuesto óptico excedido (${estimatedLoss.toFixed(1)} dB > ${this.options.maxOpticalBudget} dB)`);
-        }
-
-        return {
-            todos_clientes_en_rango: allInRange,
-            cliente_mas_lejano_id: farthestClient ? farthestClient.id : null,
-            distancia_maxima_km: maxDist,
-            advertencias: warnings
         };
     }
 
-    // ==========================================
-    // MAIN ENTRY POINT
-    // ==========================================
-    findOptimalOLTAdvanced() {
-        // Handle edge cases
-        if (this.clients.length === 0) {
-            return {
-                error: 'No hay clientes para optimizar',
-                ubicacion_optima: null,
-                ubicaciones_alternativas: [],
-                validaciones: { todos_clientes_en_rango: false, advertencias: ['Sin clientes'] }
-            };
-        }
-
-        if (this.clients.length < 3) {
-            // For very few clients, just use simple centroid
-            const centroid = this.calculateSimpleCentroid();
-            const scored = this.scoreCandidate({ ...centroid, name: 'Centroide Simple', type: 'centroid' });
-            scored.razon_seleccion = 'Pocos clientes: ubicación central simple';
-
-            return {
-                ubicacion_optima: scored,
-                ubicaciones_alternativas: [],
-                validaciones: this.validateLocation(scored)
-            };
-        }
-
-        // Normal flow
-        const result = this.selectOptimalLocation();
-        const validations = this.validateLocation(result.ubicacion_optima);
-
-        return {
-            ubicacion_optima: result.ubicacion_optima,
-            ubicaciones_alternativas: result.ubicaciones_alternativas,
-            validaciones: validations
-        };
-    }
-
-    // Backward compatibility
     findOptimalOLT() {
-        const result = this.findOptimalOLTAdvanced();
+        const weightedCenter = this.calculateWeightedCentroid();
+        if (!weightedCenter) return null;
+
+        const candidates = this.generateCandidates(weightedCenter);
+        const scoredCandidates = candidates.map(c => this.scoreCandidate(c));
+
+        scoredCandidates.sort((a, b) => b.scoreTotal - a.scoreTotal);
+
         return {
-            optimal: {
-                lat: result.ubicacion_optima?.lat || 0,
-                lng: result.ubicacion_optima?.lng || 0,
-                scoreTotal: result.ubicacion_optima?.score_total || 0
-            },
-            alternatives: result.ubicaciones_alternativas || [],
-            validations: result.validaciones
+            optimal: scoredCandidates[0],
+            alternatives: scoredCandidates.slice(1, 4),
+            allScored: scoredCandidates
         };
     }
 }
-
 
 // ==========================================
 // NAP CLUSTERING (K-means)
 // ==========================================
 async function calculateNAPs(clients) {
     if (!clients || clients.length === 0) return [];
-
+    
     // Config: 16 ports per NAP
     const PORT_CAPACITY = 16;
     const numNAPs = Math.ceil(clients.length / PORT_CAPACITY);
-
+    
     // Simple K-means
     // 1. Init Random Centroids
     let centroids = [];
@@ -6215,12 +5855,12 @@ async function calculateNAPs(clients) {
         centroids = centroids.map((cent, idx) => {
             const cluster = clusters[idx];
             if (cluster.length === 0) return cent; // Keep potentially empty
-
+            
             let sumLat = 0, sumLng = 0;
             cluster.forEach(c => { sumLat += c.lat; sumLng += c.lng; });
             const newLat = sumLat / cluster.length;
             const newLng = sumLng / cluster.length;
-
+            
             if (Math.abs(newLat - cent.lat) > 0.0001 || Math.abs(newLng - cent.lng) > 0.0001) {
                 changed = true;
             }
@@ -6242,182 +5882,54 @@ async function calculateNAPs(clients) {
 }
 
 // ==========================================
-// GOOGLE MAPS LOADER
-// ==========================================
-function loadGoogleMapsScript(callback) {
-    if (window.google && window.google.maps) {
-        if (callback) callback();
-        return;
-    }
-
-    if (window.isGoogleMapsLoading) {
-        if (callback) {
-            const check = setInterval(() => {
-                if (window.google && window.google.maps) {
-                    clearInterval(check);
-                    callback();
-                }
-            }, 100);
-        }
-        return;
-    }
-
-    if (!googleApiKey) {
-        alert("⚠️ Falta la API Key de Google Maps. Configúrala en el menú de usuario.");
-        toggleSettings();
-        return;
-    }
-
-    window.isGoogleMapsLoading = true;
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places,geometry`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-        window.isGoogleMapsLoading = false;
-        if (callback) callback();
-    };
-    script.onerror = () => {
-        window.isGoogleMapsLoading = false;
-        alert("❌ Error al cargar Google Maps. Verifica tu conexión o API Key.");
-    };
-    document.head.appendChild(script);
-}
-
-// ==========================================
 // ARCHITECTURE VISUALIZATION (Main Handler)
 // ==========================================
 window.showArchitecture = showArchitecture;
 
 async function showArchitecture(oltOverride = null) {
-    loadGoogleMapsScript(async () => {
-        console.log("🗺️ Calculando Arquitectura...");
-        const btn = event?.target;
-        if (btn) btn.innerHTML = "⏳ Procesando...";
-
-        try {
-            // 1. Get Real Client Data from Wizard
-            const censoInput = document.getElementById('censo');
-            const radiusInput = document.getElementById('coverageRadius');
-
-            const clientCount = censoInput ? parseInt(censoInput.value) || 20 : 20;
-            const coverageRadiusMeters = radiusInput ? parseInt(radiusInput.value) || 500 : 500;
-            const coverageRadiusKm = coverageRadiusMeters / 1000;
-
-
-            // 2. Get User's Current Location (Geolocation API)
-            let mapCenter = { lat: -10.9843, lng: -74.7460 }; // Default: Huánuco, Perú
-
-            // Try to get user's current location
-            try {
-                if (navigator.geolocation) {
-                    // Request user's location (this will prompt for permission)
-                    const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, {
-                            enableHighAccuracy: true,
-                            timeout: 5000,
-                            maximumAge: 0
-                        });
-                    });
-
-                    mapCenter = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-
-                    console.log("📍 Ubicación detectada:", mapCenter);
-                    localStorage.setItem('projectLocation', JSON.stringify(mapCenter));
-                } else {
-                    console.warn("Geolocation no disponible, usando ubicación por defecto");
-                }
-            } catch (geoError) {
-                console.warn("No se pudo obtener ubicación:", geoError.message);
-                // Check if there's a stored location
-                const storedLocation = localStorage.getItem('projectLocation');
-                if (storedLocation) {
-                    try {
-                        mapCenter = JSON.parse(storedLocation);
-                        console.log("📍 Usando ubicación guardada:", mapCenter);
-                    } catch (e) {
-                        console.warn("No se pudo parsear ubicación guardada, usando default");
-                    }
-                }
-            }
-
-
-
-            // 3. Generate Client Distribution
-            let clients = [];
-            for (let i = 0; i < clientCount; i++) {
-                // Distribute clients within coverage radius
-                const angle = Math.random() * 2 * Math.PI;
-                const distance = Math.random() * coverageRadiusKm;
-
-                // Convert polar to cartesian (approximate for small distances)
-                const latOffset = (distance * Math.cos(angle)) / 111; // 1 degree lat ≈ 111 km
-                const lngOffset = (distance * Math.sin(angle)) / (111 * Math.cos(mapCenter.lat * Math.PI / 180));
-
-                clients.push({
-                    id: `CLI_${i + 1}`,
-                    lat: mapCenter.lat + latOffset,
-                    lng: mapCenter.lng + lngOffset
-                });
-            }
-
-
-            // 4. Advanced OLT Optimization
-            const optimizer = new OLT_Optimizer(clients);
-            const result = optimizer.findOptimalOLTAdvanced();
-
-            if (result.error) {
-                alert(result.error);
-                if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida";
-                return;
-            }
-
-            const oltOptimal = result.ubicacion_optima;
-            const validations = result.validaciones;
-
-            // 5. Clustering NAPs
-            const naps = await calculateNAPs(clients);
-
-            // 6. Render Map
-            const mapDiv = document.getElementById('map-container');
-            if (mapDiv) {
-                mapDiv.style.display = 'block';
-                // Now guaranteed to have window.google by loader
+    console.log("🗺️ Calculando Arquitectura...");
+    const btn = event?.target;
+    if (btn) btn.innerHTML = "⏳ Procesando...";
+    
+    try {
+        // 1. Get Clients (mock or global)
+        // Check if we have clients loaded
+        let clients = []; 
+        
+        // MOCK CLIENTS (for restoration unblock)
+        const mapCenter = { lat: 40.7128, lng: -74.0060 };
+        for (let i = 0; i < 20; i++) {
+            clients.push({
+                id: `CLI_${i}`,
+                lat: mapCenter.lat + (Math.random() - 0.5) * 0.01,
+                lng: mapCenter.lng + (Math.random() - 0.5) * 0.01
+            });
+        }
+        
+        // 2. Optimization
+        const optimizer = new OLT_Optimizer(clients);
+        const oltResult = optimizer.findOptimalOLT();
+        
+        // 3. Clustering
+        const naps = await calculateNAPs(clients);
+        
+        // 4. Render Map
+        const mapDiv = document.getElementById('map-container');
+        if (mapDiv) {
+            mapDiv.style.display = 'block';
+            if (window.google) {
                 const map = new google.maps.Map(mapDiv, {
-                    zoom: 14,
-                    center: { lat: oltOptimal.lat, lng: oltOptimal.lng }
+                    zoom: 15,
+                    center: oltResult.optimal
                 });
-
-                // OLT Marker (Red)
+                
                 new google.maps.Marker({
-                    position: { lat: oltOptimal.lat, lng: oltOptimal.lng },
+                    position: oltResult.optimal,
                     map: map,
                     label: "OLT",
-                    title: `OLT Óptima - Score: ${oltOptimal.score_total}/100`,
-                    icon: {
-                        url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
-                    }
+                    title: "OLT Óptima"
                 });
-
-                // Alternative OLT Locations (Yellow)
-                if (result.ubicaciones_alternativas && result.ubicaciones_alternativas.length > 0) {
-                    result.ubicaciones_alternativas.forEach((alt, idx) => {
-                        new google.maps.Marker({
-                            position: { lat: alt.lat, lng: alt.lng },
-                            map: map,
-                            label: `${idx + 2}`,
-                            title: `${alt.name} - Score: ${alt.score_total}/100`,
-                            icon: {
-                                url: 'http://maps.google.com/mapfiles/ms/icons/yellow-dot.png'
-                            }
-                        });
-                    });
-                }
-
-                // NAP Markers (Blue)
+                
                 naps.forEach(nap => {
                     new google.maps.Marker({
                         position: { lat: nap.lat, lng: nap.lng },
@@ -6427,69 +5939,31 @@ async function showArchitecture(oltOverride = null) {
                     });
                 });
             }
-
-            // 7. Update UI Text with Detailed Results
-            const detailsDiv = document.getElementById('architecture-details');
-            if (detailsDiv) {
-                detailsDiv.style.display = 'block';
-
-                let html = `
-                    <strong>🎯 Ubicación Óptima de OLT:</strong><br>
-                    📍 Coordenadas: ${oltOptimal.lat.toFixed(5)}, ${oltOptimal.lng.toFixed(5)}<br>
-                    ⭐ Score Total: ${oltOptimal.score_total}/100<br>
-                    <br>
-                    <strong>📊 Desglose de Scoring:</strong><br>
-                    • Distancia (40%): ${oltOptimal.score_distancia}/100<br>
-                    • Costo (30%): ${oltOptimal.score_costo}/100<br>
-                    • Accesibilidad (20%): ${oltOptimal.score_accesibilidad}/100<br>
-                    • Escalabilidad (10%): ${oltOptimal.score_escalabilidad}/100<br>
-                    <br>
-                    <strong>📏 Métricas de Red:</strong><br>
-                    • Clientes: ${clientCount}<br>
-                    • NAPs Calculadas: ${naps.length}<br>
-                    • Distancia Promedio: ${oltOptimal.distancia_promedio_clientes_km.toFixed(2)} km<br>
-                    • Cliente Más Lejano: ${oltOptimal.distancia_maxima_cliente_km.toFixed(2)} km<br>
-                    <br>
-                    <strong>💡 Razón de Selección:</strong><br>
-                    ${oltOptimal.razon_seleccion}
-                `;
-
-                // Add validation warnings if any
-                if (validations.advertencias && validations.advertencias.length > 0) {
-                    html += `<br><br><strong style="color: #f59e0b;">⚠️ Advertencias:</strong><br>`;
-                    validations.advertencias.forEach(warning => {
-                        html += `• ${warning}<br>`;
-                    });
-                }
-
-                // Add alternative locations info
-                if (result.ubicaciones_alternativas && result.ubicaciones_alternativas.length > 0) {
-                    html += `<br><strong>🔄 Ubicaciones Alternativas:</strong><br>`;
-                    result.ubicaciones_alternativas.slice(0, 2).forEach((alt, idx) => {
-                        html += `${idx + 2}. ${alt.name} - Score: ${alt.score_total}/100<br>`;
-                    });
-                }
-
-                detailsDiv.innerHTML = html;
-            }
-
-            if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida (Actualizar)";
-            console.log("✅ Arquitectura Calculada:", {
-                olt: oltOptimal,
-                naps,
-                clients: clientCount,
-                validations
-            });
-
-
-        } catch (e) {
-            console.error("Error en showArchitecture:", e);
-            if (btn) btn.innerHTML = "❌ Error";
-            alert("Error calculando arquitectura: " + e.message);
         }
-    }); // End loadGoogleMapsScript
+        
+        // 5. Update UI Text
+        const detailsDiv = document.getElementById('architecture-details');
+        if (detailsDiv) {
+            detailsDiv.style.display = 'block';
+            detailsDiv.innerHTML = `
+                <strong>Resultados:</strong><br>
+                OLT Ubicada en: ${oltResult.optimal.lat.toFixed(5)}, ${oltResult.optimal.lng.toFixed(5)}<br>
+                NAPs Calculadas: ${naps.length}<br>
+                Score de Ubicación: ${oltResult.optimal.scoreTotal}/100
+            `;
+        }
+
+        if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida (Actualizar)";
+        console.log("✅ Arquitectura Calculada:", { olt: oltResult, naps });
+
+    } catch (e) {
+        console.error("Error en showArchitecture:", e);
+        if (btn) btn.innerHTML = "❌ Error";
+        alert("Error calculando arquitectura: " + e.message);
+    }
 }
 
-// Global Assignments
+
+// EXPOSE KEY FUNCTIONS
 window.selectProjectType = selectProjectType;
 window.startSelectedFlow = startSelectedFlow;
