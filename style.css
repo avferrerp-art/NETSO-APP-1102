@@ -1252,6 +1252,49 @@ body {
 
     .history-btn-new {
         width: 100%;
-        padding: 14px !important;
+        padding: 14px 20px !important;
+        font-size: 14px !important;
+        white-space: nowrap;
+        overflow: visible;
     }
+
+    .history-actions-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .download-btn-excel,
+    .download-btn-pdf {
+        width: 100%;
+        justify-content: center;
+        margin-left: 0 !important;
+    }
+}
+
+.history-actions-cell {
+    display: flex;
+    gap: 8px;
+}
+
+.download-btn-excel {
+    padding: 6px 12px;
+    font-size: 13px;
+    background-color: #10b981 !important;
+    border: 1px solid #059669 !important;
+    color: white !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.download-btn-pdf {
+    padding: 6px 12px;
+    font-size: 13px;
+    background-color: #ef4444 !important;
+    border: 1px solid #ef4444 !important;
+    color: white !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }

@@ -681,11 +681,20 @@ function toggleIspHistory() {
         // Mostrar historial
         historyView.style.display = 'block';
         wizardPages.forEach(p => p.style.display = 'none');
-        document.getElementById('step-label').innerText = 'Historial';
+        document.getElementById('step-label').innerText = 'Historial de Proyectos';
+
+        // OCULTAR BARRA DE PROGRESO EN HISTORIAL
+        const progressBar = document.querySelector('.progress-bar');
+        if (progressBar) progressBar.style.display = 'none';
+
         renderIspHistoryTable();
     } else {
         // Mostrar wizard (volver a donde estaba o inicio)
         historyView.style.display = 'none';
+
+        // MOSTRAR BARRA DE PROGRESO AL VOLVER AL WIZARD
+        const progressBar = document.querySelector('.progress-bar');
+        if (progressBar) progressBar.style.display = 'flex';
 
         // Restaurar página activa (simple approach: page1 or last saved step logic could vary)
         document.getElementById('page1').style.display = 'block';
@@ -781,22 +790,21 @@ function renderProjectRows(projects) {
         let downloadBtn = '';
         if (p.type === 'direct' && p.quoteItems) {
             downloadBtn = `
-                <button onclick="downloadDirectQuoteFromHistory('${p.id}')" class="btn-secondary" title="Descargar Cotización" 
-                    style="padding: 6px 12px; font-size: 13px; background-color: #10b981; border: 1px solid #059669; color: white; display:inline-flex; align-items:center; gap:5px;">
+                <button onclick="downloadDirectQuoteFromHistory('${p.id}')" class="btn-secondary download-btn-excel" title="Descargar Cotización">
                     📊 Excel
                 </button>
             `;
         } else if (p.reportData && p.reportData.length > 0) {
             // Updated Buttons for Engineering Reports
             downloadBtn = `
-                <button onclick="downloadSavedReport('${p.id}')" class="btn-secondary" title="Descargar Excel" 
-                    style="padding: 6px 12px; font-size: 13px; display:inline-flex; align-items:center; gap:5px; background:white; color:#0f172a; border:1px solid #cbd5e1;">
-                    📊 Excel
-                </button>
-                <button onclick="downloadPdfReport('${p.id}')" class="btn-secondary" title="Descargar PDF" 
-                    style="padding: 6px 12px; font-size: 13px; margin-left: 8px; background-color: #ef4444; border: 1px solid #ef4444; color: white; display:inline-flex; align-items:center; gap:5px;">
-                    📄 PDF
-                </button>
+                <div class="history-actions-cell">
+                    <button onclick="downloadSavedReport('${p.id}')" class="btn-secondary download-btn-excel" title="Descargar Excel">
+                        📊 Excel
+                    </button>
+                    <button onclick="downloadPdfReport('${p.id}')" class="btn-secondary download-btn-pdf" title="Descargar PDF">
+                        📄 PDF
+                    </button>
+                </div>
             `;
         } else {
             downloadBtn = `<span style="font-size: 12px; color: #94a3b8; font-style:italic;">En borrador</span>`;
