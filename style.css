@@ -1207,4 +1207,51 @@ body {
 
 .netso-table td {
     padding: 18px 24px;
+    white-space: nowrap;
+}
+
+/* ===========================================
+   ISP HISTORY VIEW RESPONSIVE
+   =========================================== */
+.history-view-container {
+    display: none;
+    padding: 20px;
+    max-width: 1000px;
+    margin: 40px auto 0;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    gap: 16px;
+}
+
+.history-title {
+    color: #1e293b;
+    font-size: 24px;
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .history-view-container {
+        margin-top: 20px;
+        padding: 15px;
+    }
+
+    .history-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .history-title {
+        font-size: 20px;
+    }
+
+    .history-btn-new {
+        width: 100%;
+        padding: 14px !important;
+    }
 }
