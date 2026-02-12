@@ -2930,12 +2930,12 @@ function renderCotizacionTable() {
             <table class="netso-table">
                 <thead>
                     <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
-                        <th style="text-align: left; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Producto</th>
-                        <th style="text-align: left; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Ref. Netso (Odoo)</th>
-                        <th style="text-align: center; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Unidades Recomendadas</th>
+                        <th class="col-product" style="text-align: left; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Producto</th>
+                        <th class="col-ref" style="text-align: left; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Ref. Netso (Odoo)</th>
+                        <th class="col-qty" style="text-align: center; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Unidades Recomendadas</th>
                         <!-- <th style="text-align: center; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Stock Netso</th> -->
-                        <th style="text-align: right; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Precio Un.</th>
-                        <th style="text-align: right; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total</th>
+                        <th class="col-price" style="text-align: right; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Precio Un.</th>
+                        <th class="col-total" style="text-align: right; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total</th>
                         <th style="width: 40px;"></th>
                     </tr>
                 </thead>

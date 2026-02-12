@@ -1189,25 +1189,79 @@ body {
 }
 
 .table-container {
-    border: none !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
-    border-radius: 24px !important;
+    width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.netso-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Inter', sans-serif;
     background: white;
 }
 
 .netso-table th {
-    background: #f1f5f9;
-    color: #475569;
-    font-weight: 800;
-    padding: 20px 24px;
+    background: #f8fafc;
+    color: #64748b;
+    font-weight: 700;
+    padding: 12px 16px;
     border-bottom: 2px solid #e2e8f0;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
 }
 
 .netso-table td {
-    padding: 18px 24px;
-    white-space: nowrap;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 13px;
+    color: #334155;
+    white-space: normal;
+    /* Allow wrapping on desktop */
+    word-break: break-word;
+}
+
+/* Specific Column Widths for Desktop balance */
+.col-product {
+    width: 25%;
+}
+
+.col-ref {
+    width: 35%;
+}
+
+.col-qty {
+    width: 15%;
+}
+
+.col-price {
+    width: 12%;
+}
+
+.col-total {
+    width: 13%;
+}
+
+/* Mobile-only nowrap to enable scrolling without breaking desktop */
+@media (max-width: 768px) {
+    .netso-table td {
+        white-space: nowrap;
+    }
+
+    /* Reset widths on mobile to let standard table logic or min-width work */
+    .col-product,
+    .col-ref,
+    .col-qty,
+    .col-price,
+    .col-total {
+        width: auto !important;
+    }
 }
 
 /* ===========================================
