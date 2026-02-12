@@ -60,6 +60,10 @@ const catalogoNetsoData = {
             "Cajas_NAP": [
                 "Caja Nap OTB 16 puertos con Splitter 1x8 APC",
                 "Caja Nap OTB 16 puertos con Splitter 1x16 APC",
+                "Caja Nap 16 puertos (2x Splitter 1x8 APC)",
+                "Caja Nap 48 puertos (2x Splitter 1x32 APC)",
+                "Caja Nap 8 puertos (2x Splitter 1x4 APC)",
+                "Caja Nap 4 puertos (Splitter 1x4 APC)",
                 "Caja Nap vacía 16 puertos (sin splitters)"
             ],
             "Enclousure_Pedestal": [
