@@ -2926,8 +2926,8 @@ function renderCotizacionTable() {
             </button>
         </div>
         
-        <div style="background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-            <table style="width: 100%; border-collapse: collapse; font-family: 'Inter', sans-serif;">
+        <div class="table-container" style="margin-bottom: 20px;">
+            <table class="netso-table">
                 <thead>
                     <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
                         <th style="text-align: left; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Producto</th>
