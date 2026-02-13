@@ -6326,72 +6326,490 @@ class OLT_Optimizer {
 }
 
 
+// ============================================
+// CLASE OPTIMIZADOR DE NAPs (ADVANCED CLUSTERING 2.0)
+// ============================================
+class NAP_Optimizer {
+    constructor(clients, oltLocation, options = {}) {
+        if (!clients || clients.length === 0) throw new Error("NAP_Optimizer: Se requiere un array de clientes no vacío.");
+        if (!oltLocation || typeof oltLocation.lat !== 'number') throw new Error("NAP_Optimizer: Ubicación de OLT inválida.");
+
+        this.clients = clients;
+        this.oltLocation = oltLocation;
+
+        // Configuración por defecto adaptada a Netso
+        this.options = {
+            maxDistanceOLTtoNAP: options.maxDistanceOLTtoNAP || 20.0, // km (GPON limit)
+            maxDistanceNAPtoClient: options.maxDistanceNAPtoClient || 0.5, // km (Drop limit)
+            optimizationMode: options.optimizationMode || 'costo', // 'costo' o 'calidad'
+            allowMixedCapacities: options.allowMixedCapacities !== undefined ? options.allowMixedCapacities : true,
+            napCapacitySmall: 16,
+            napCapacityLarge: 48,
+            costSmall: 180, // USD
+            costLarge: 420  // USD
+        };
+
+        this.boundingBox = this._calculateBoundingBox();
+    }
+
+    _calculateBoundingBox() {
+        if (this.clients.length === 0) return { minLat: 0, maxLat: 0, minLng: 0, maxLng: 0 };
+        const lats = this.clients.map(c => c.lat);
+        const lngs = this.clients.map(c => c.lng);
+        return {
+            minLat: Math.min(...lats),
+            maxLat: Math.max(...lats),
+            minLng: Math.min(...lngs),
+            maxLng: Math.max(...lngs)
+        };
+    }
+
+    async calculateOptimalNAPs() {
+        console.time("NAP_Optimization");
+        console.log(`Starting NAP Optimization for ${this.clients.length} clients...`);
+
+        try {
+            // Paso 1: Configuración
+            const config = this._determineOptimalConfiguration();
+
+            // Paso 2: K-Means++
+            let centroids = this._initializeCentroidsKMeansPlusPlus(config.total_naps_estimadas);
+            console.log(`Initialized ${centroids.length} centroids with K-Means++`);
+
+            // Paso 3: Constrained K-Means
+            let { naps, unassigned } = this._runConstrainedKMeans(centroids, config);
+
+            // Paso 4: Unassigned handling
+            if (unassigned.length > 0) {
+                console.warn(`${unassigned.length} unassigned clients. Creating micro-clusters...`);
+                const extraNaps = this._handleUnassignedClients(unassigned);
+                naps = [...naps, ...extraNaps];
+            }
+
+            // Paso 5: Optimization
+            const optimizedNaps = this._optimizeByMerging(naps);
+
+            // Paso 6: Metrics
+            const finalNaps = this._calculateRouteMetrics(optimizedNaps);
+
+            // Paso 7: Coverage
+            const coverageAnalysis = this._analyzeCoverage(finalNaps);
+
+            // Paso 8: Validation
+            const validaciones = this._validateConfiguration(finalNaps);
+
+            console.timeEnd("NAP_Optimization");
+
+            return {
+                naps: finalNaps,
+                configuracion: config,
+                analisis_cobertura: coverageAnalysis,
+                validaciones: validaciones,
+                metricas: {
+                    total_naps: finalNaps.length,
+                    clientes_cubiertos: finalNaps.reduce((acc, nap) => acc + nap.cantidad_clientes, 0),
+                    costo_estimado: finalNaps.reduce((sum, n) => sum + n.precio_unitario, 0)
+                },
+                optimizaciones_aplicadas: ["K-Means++", "Constraints", "Merge"]
+            };
+
+        } catch (error) {
+            console.error("NAP Optimization Failed:", error);
+            throw error;
+        }
+    }
+
+    _determineOptimalConfiguration() {
+        // Simple density check for now
+        const widthKm = OLT_Optimizer.haversineDistance(
+            this.boundingBox.minLat, this.boundingBox.minLng,
+            this.boundingBox.minLat, this.boundingBox.maxLng
+        );
+        const heightKm = OLT_Optimizer.haversineDistance(
+            this.boundingBox.minLat, this.boundingBox.minLng,
+            this.boundingBox.maxLat, this.boundingBox.minLng
+        );
+        // Avoid zero area
+        const areaKm2 = Math.max(0.01, widthKm * heightKm);
+        const density = this.clients.length / areaKm2;
+
+        console.log(`Density: ${density.toFixed(2)} clients/km2`);
+
+        let useHighDensity = (density > 200 || this.options.optimizationMode === 'calidad');
+
+        // Estimate NAPs needed
+        const cap = useHighDensity ? 48 : 16;
+        const total = Math.ceil(this.clients.length / cap);
+
+        return {
+            strategy: useHighDensity ? 'High Density' : 'Standard',
+            default_capacity: cap,
+            total_naps_estimadas: total
+        };
+    }
+
+    _initializeCentroidsKMeansPlusPlus(k) {
+        if (k <= 0) return [];
+        const centroids = [];
+
+        // 1. First centroid: client closest to OLT
+        let first = this.clients[0];
+        let minDist = Infinity;
+        for (const c of this.clients) {
+            const d = OLT_Optimizer.haversineDistance(c.lat, c.lng, this.oltLocation.lat, this.oltLocation.lng);
+            if (d < minDist) { minDist = d; first = c; }
+        }
+        centroids.push({ lat: first.lat, lng: first.lng });
+
+        // 2. Next centroids
+        for (let i = 1; i < k; i++) {
+            let maxDistSq = -1;
+            let nextCentroid = null;
+
+            for (const c of this.clients) {
+                let distToClosest = Infinity;
+                for (const cent of centroids) {
+                    const d = OLT_Optimizer.haversineDistance(c.lat, c.lng, cent.lat, cent.lng);
+                    if (d < distToClosest) distToClosest = d;
+                }
+
+                if (distToClosest > maxDistSq) {
+                    maxDistSq = distToClosest;
+                    nextCentroid = c;
+                }
+            }
+
+            if (nextCentroid) centroids.push({ lat: nextCentroid.lat, lng: nextCentroid.lng });
+        }
+        return centroids;
+    }
+
+    _runConstrainedKMeans(centroids, config) {
+        // Initial clusters
+        let clusters = centroids.map((c, i) => ({
+            id: `TEMP-${i}`,
+            lat: c.lat,
+            lng: c.lng,
+            capacity: config.default_capacity,
+            clients: []
+        }));
+
+        let unassigned = [];
+        const MAX_ITER = 20;
+
+        for (let iter = 0; iter < MAX_ITER; iter++) {
+            // Clear assignments
+            clusters.forEach(c => c.clients = []);
+            unassigned = [];
+
+            // Randomize client order to avoid bias
+            const shuffled = [...this.clients].sort(() => Math.random() - 0.5);
+
+            for (const client of shuffled) {
+                let bestCluster = null;
+                let minDist = Infinity;
+
+                for (const cluster of clusters) {
+                    // Capacity constraint
+                    if (cluster.clients.length >= cluster.capacity) continue;
+
+                    // OLT-NAP Distance constraint
+                    const distToOLT = OLT_Optimizer.haversineDistance(this.oltLocation.lat, this.oltLocation.lng, cluster.lat, cluster.lng);
+                    if (distToOLT > this.options.maxDistanceOLTtoNAP) continue;
+
+                    // NAP-Client Distance constraint
+                    const dist = OLT_Optimizer.haversineDistance(client.lat, client.lng, cluster.lat, cluster.lng);
+                    if (dist > this.options.maxDistanceNAPtoClient) continue;
+
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestCluster = cluster;
+                    }
+                }
+
+                if (bestCluster) {
+                    bestCluster.clients.push(client);
+                } else {
+                    unassigned.push(client);
+                }
+            }
+
+            // Recalculate centroids
+            let maxShift = 0;
+            for (const cluster of clusters) {
+                if (cluster.clients.length === 0) continue;
+
+                let sumLat = 0, sumLng = 0;
+                for (const c of cluster.clients) { sumLat += c.lat; sumLng += c.lng; }
+
+                const newLat = sumLat / cluster.clients.length;
+                const newLng = sumLng / cluster.clients.length;
+
+                const shift = OLT_Optimizer.haversineDistance(cluster.lat, cluster.lng, newLat, newLng);
+                if (shift > maxShift) maxShift = shift;
+
+                cluster.lat = newLat;
+                cluster.lng = newLng;
+            }
+
+            if (maxShift < 0.01) break; // Converged (<10m)
+        }
+
+        return { naps: clusters.filter(c => c.clients.length > 0), unassigned };
+    }
+
+    _handleUnassignedClients(clients) {
+        // Simple recursive fallback: treat them as a new problem
+        // For now, just create new clusters for them
+        // This is a simplified version of "mini-clustering"
+        const newClusters = [];
+        const cap = 16;
+
+        while (clients.length > 0) {
+            const chunk = clients.splice(0, cap);
+            // Centroid is average
+            let sumLat = 0, sumLng = 0;
+            chunk.forEach(c => { sumLat += c.lat; sumLng += c.lng; });
+            newClusters.push({
+                lat: sumLat / chunk.length,
+                lng: sumLng / chunk.length,
+                capacity: cap,
+                clients: chunk,
+                is_fallback: true
+            });
+        }
+        return newClusters;
+    }
+
+    _optimizeByMerging(naps) {
+        if (!this.options.allowMixedCapacities) return naps;
+
+        console.log("Starting NAP Merge Optimization...");
+        let optimized = [...naps];
+        let merged = true;
+        let iterations = 0;
+
+        while (merged && iterations < 10) {
+            merged = false;
+            iterations++;
+
+            for (let i = 0; i < optimized.length; i++) {
+                if (merged) break; // Restart loop after a merge
+
+                for (let j = i + 1; j < optimized.length; j++) {
+                    const napA = optimized[i];
+                    const napB = optimized[j];
+
+                    // 1. Distance check (< 300m)
+                    const dist = OLT_Optimizer.haversineDistance(napA.lat, napA.lng, napB.lat, napB.lng);
+                    if (dist > 0.3) continue;
+
+                    // 2. Capacity check
+                    const totalClients = napA.clients.length + napB.clients.length;
+                    let targetCap = 16;
+                    let targetCost = this.options.costSmall;
+
+                    if (totalClients > 16) {
+                        targetCap = 48;
+                        targetCost = this.options.costLarge;
+                    }
+
+                    if (totalClients > targetCap) continue; // Cannot merge
+
+                    // 3. Cost benefit check
+                    const currentCost = (napA.capacity === 48 ? this.options.costLarge : this.options.costSmall) +
+                        (napB.capacity === 48 ? this.options.costLarge : this.options.costSmall);
+
+                    if (targetCost >= currentCost) continue; // No savings
+
+                    // 4. Constraint Validation (New Centroid)
+                    const newLat = (napA.lat * napA.clients.length + napB.lat * napB.clients.length) / totalClients;
+                    const newLng = (napA.lng * napA.clients.length + napB.lng * napB.clients.length) / totalClients;
+
+                    // Check if all clients are still within 500m
+                    const allClientsObj = [...napA.clients, ...napB.clients];
+                    let rangeViolation = false;
+                    for (const c of allClientsObj) {
+                        if (OLT_Optimizer.haversineDistance(c.lat, c.lng, newLat, newLng) > this.options.maxDistanceNAPtoClient) {
+                            rangeViolation = true;
+                            break;
+                        }
+                    }
+                    if (rangeViolation) continue;
+
+                    // Execute Merge
+                    console.log(`Merging NAP-${i} and NAP-${j} into new ${targetCap}-port NAP. Savings: $${currentCost - targetCost}`);
+
+                    const newNAP = {
+                        id: `MERGED-${iterations}-${i}`,
+                        lat: newLat,
+                        lng: newLng,
+                        capacity: targetCap,
+                        clients: allClientsObj
+                    };
+
+                    optimized.splice(j, 1); // Remove B first (higher index)
+                    optimized.splice(i, 1); // Remove A
+                    optimized.push(newNAP);
+
+                    merged = true;
+                    break;
+                }
+            }
+        }
+        return optimized;
+    }
+
+    _calculateRouteMetrics(naps) {
+        return naps.map((nap, idx) => {
+            const distStraight = OLT_Optimizer.haversineDistance(this.oltLocation.lat, this.oltLocation.lng, nap.lat, nap.lng);
+
+            // Slack factor 1.12 for fiber route
+            const distReal = distStraight * 1.12;
+
+            // Loss Calculation
+            // Fiber: 0.35 dB/km
+            // Splices: 1 every 2km (0.1 dB each)
+            // Connectors: 1.0 dB (0.5 x 2)
+            const fiberLoss = distReal * 0.35;
+            const splices = Math.ceil(distReal / 2);
+            const spliceLoss = splices * 0.1;
+            const connectorLoss = 1.0;
+            const routeLoss = fiberLoss + spliceLoss + connectorLoss;
+
+            return {
+                ...nap,
+                id: `NAP-${String(idx + 1).padStart(3, '0')}`,
+                distancia_olt_km: Number(distStraight.toFixed(3)),
+                distancia_fibra_real_km: Number(distReal.toFixed(3)),
+                empalmes_estimados: splices,
+                perdida_ruta_db: Number(routeLoss.toFixed(2)),
+                clientes_asignados: nap.clients.map(c => c.id),
+                cantidad_clientes: nap.clients.length,
+                tipo_nap: nap.capacity === 48 ? 'NAP_48P_HD' : 'NAP_16P_IP68',
+                precio_unitario: nap.capacity === 48 ? this.options.costLarge : this.options.costSmall,
+                ocupacion_porcentaje: Number(((nap.clients.length / nap.capacity) * 100).toFixed(1)),
+                // Optical budget placeholders (filled later if needed)
+                splitter_nivel1_asignado: null,
+                perdida_splitter_nivel1_db: null
+            };
+        });
+    }
+
+    _analyzeCoverage(naps) {
+        // Grid analysis for dead zones
+        const GRID_SIZE_KM = 0.1; // 100m grid
+        const widthKm = OLT_Optimizer.haversineDistance(this.boundingBox.minLat, this.boundingBox.minLng, this.boundingBox.minLat, this.boundingBox.maxLng);
+        const heightKm = OLT_Optimizer.haversineDistance(this.boundingBox.minLat, this.boundingBox.minLng, this.boundingBox.maxLat, this.boundingBox.minLng);
+
+        const cols = Math.ceil(widthKm / GRID_SIZE_KM);
+        const rows = Math.ceil(heightKm / GRID_SIZE_KM);
+
+        let coveredPoints = 0;
+        let totalPoints = 0;
+        let deadZones = [];
+
+        // Simple check: iterate grid points within bounding box
+        // Warning: O(rows*cols * naps). Keep grid course.
+        // Limit max grid points to avoid performance hit
+        const stepLat = (this.boundingBox.maxLat - this.boundingBox.minLat) / rows;
+        const stepLng = (this.boundingBox.maxLng - this.boundingBox.minLng) / cols;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const lat = this.boundingBox.minLat + r * stepLat;
+                const lng = this.boundingBox.minLng + c * stepLng;
+                totalPoints++;
+
+                // Check distance to nearest NAP
+                let minDist = Infinity;
+                for (const nap of naps) {
+                    const d = OLT_Optimizer.haversineDistance(lat, lng, nap.lat, nap.lng);
+                    if (d < minDist) minDist = d;
+                }
+
+                if (minDist <= this.options.maxDistanceNAPtoClient) {
+                    coveredPoints++;
+                } else {
+                    // Potential dead zone
+                    // Only track if it's "significant" (not just edge)
+                    // Simplified: just store point
+                    // deadZones.push({lat, lng});
+                }
+            }
+        }
+
+        const coveragePct = totalPoints > 0 ? (coveredPoints / totalPoints) * 100 : 0;
+
+        return {
+            total_area_km2: (widthKm * heightKm).toFixed(2),
+            porcentaje_cobertura: coveragePct.toFixed(1),
+            zonas_sin_servicio: [] // Populate via clustering logic if needed, skipping for performace now
+        };
+    }
+
+    _validateConfiguration(naps) {
+        const errors = [];
+        const warnings = [];
+        let occupiedPorts = 0;
+        let totalPorts = 0;
+        let occupancies = [];
+
+        naps.forEach(nap => {
+            occupiedPorts += nap.cantidad_clientes;
+            totalPorts += nap.capacity;
+            occupancies.push(nap.ocupacion_porcentaje);
+
+            if (nap.cantidad_clientes > nap.capacity) {
+                errors.push(`NAP ${nap.id} exceeds capacity (${nap.cantidad_clientes}/${nap.capacity})`);
+            }
+            if (nap.distancia_olt_km > this.options.maxDistanceOLTtoNAP) {
+                errors.push(`NAP ${nap.id} too far from OLT (${nap.distancia_olt_km}km)`);
+            }
+            if (nap.ocupacion_porcentaje > 90) {
+                warnings.push(`NAP ${nap.id} saturated (${nap.ocupacion_porcentaje}%)`);
+            }
+            if (nap.ocupacion_porcentaje < 40) {
+                warnings.push(`NAP ${nap.id} underutilized (${nap.ocupacion_porcentaje}%)`);
+            }
+        });
+
+        // Std Dev of occupancy
+        const avgOcc = occupancies.reduce((a, b) => a + b, 0) / occupancies.length;
+        const variance = occupancies.reduce((a, b) => a + Math.pow(b - avgOcc, 2), 0) / occupancies.length;
+        const stdDev = Math.sqrt(variance);
+
+        if (stdDev > 30) warnings.push("Unbalanced NAP distribution detected");
+
+        return {
+            valid: errors.length === 0,
+            errores_criticos: errors,
+            advertencias: warnings,
+            metricas: {
+                ocupacion_promedio: avgOcc.toFixed(1),
+                desviacion_estandar: stdDev.toFixed(1)
+            }
+        };
+    }
+}
+
 // ==========================================
 // NAP CLUSTERING (K-means)
 // ==========================================
-async function calculateNAPs(clients) {
+async function calculateNAPs(clients, oltLocation = null) {
     if (!clients || clients.length === 0) return [];
 
-    // Config: 16 ports per NAP
-    const PORT_CAPACITY = 16;
-    const numNAPs = Math.ceil(clients.length / PORT_CAPACITY);
-
-    // Simple K-means
-    // 1. Init Random Centroids
-    let centroids = [];
-    for (let i = 0; i < numNAPs; i++) {
-        centroids.push(clients[Math.floor(Math.random() * clients.length)]);
+    // Backward compatibility: calculate centroid if no OLT provided
+    if (!oltLocation) {
+        console.warn("calculateNAPs called without OLT location. Using simple centroid.");
+        let sumLat = 0, sumLng = 0;
+        clients.forEach(c => { sumLat += c.lat; sumLng += c.lng; });
+        oltLocation = { lat: sumLat / clients.length, lng: sumLng / clients.length };
     }
 
-    let iterations = 0;
-    let maxIterations = 20;
-    let clusters = [];
-
-    while (iterations < maxIterations) {
-        // 2. Assign clients to nearest
-        clusters = Array(numNAPs).fill().map(() => []);
-        clients.forEach(c => {
-            let minDist = Infinity;
-            let closestIndex = 0;
-            centroids.forEach((cent, idx) => {
-                const d = OLT_Optimizer.getDistanceKm(c.lat, c.lng, cent.lat, cent.lng);
-                if (d < minDist) {
-                    minDist = d;
-                    closestIndex = idx;
-                }
-            });
-            clusters[closestIndex].push(c);
-        });
-
-        // 3. Re-calc Centroids
-        let changed = false;
-        centroids = centroids.map((cent, idx) => {
-            const cluster = clusters[idx];
-            if (cluster.length === 0) return cent; // Keep potentially empty
-
-            let sumLat = 0, sumLng = 0;
-            cluster.forEach(c => { sumLat += c.lat; sumLng += c.lng; });
-            const newLat = sumLat / cluster.length;
-            const newLng = sumLng / cluster.length;
-
-            if (Math.abs(newLat - cent.lat) > 0.0001 || Math.abs(newLng - cent.lng) > 0.0001) {
-                changed = true;
-            }
-            return { lat: newLat, lng: newLng };
-        });
-
-        if (!changed) break;
-        iterations++;
-    }
-
-    // Format output
-    return centroids.map((cent, idx) => ({
-        id: `NAP-${(idx + 1).toString().padStart(3, '0')}`,
-        lat: cent.lat,
-        lng: cent.lng,
-        clients: clusters[idx].length,
-        capacity: PORT_CAPACITY
-    }));
+    const optimizer = new NAP_Optimizer(clients, oltLocation);
+    const result = await optimizer.calculateOptimalNAPs();
+    return result.naps;
 }
 
 // ==========================================
@@ -6553,8 +6971,12 @@ async function showArchitecture(oltOverride = null) {
                 }
             }
 
-            // 5. Clustering NAPs
-            const naps = await calculateNAPs(clients);
+            // 5. Advanced NAP Clustering (v2.0)
+            const napOptimizer = new NAP_Optimizer(clients, oltOptimal);
+            const napResult = await napOptimizer.calculateOptimalNAPs();
+            const naps = napResult.naps;
+
+            console.log("✅ NAP Optimization Complete:", JSON.stringify(napResult, null, 2));
 
             // Store clients globally for recalculation
             window.currentProjectClients = clients;
@@ -6652,33 +7074,138 @@ async function showArchitecture(oltOverride = null) {
                     const newLng = event.latLng.lng();
                     console.log("📍 OLT arrastrada a:", newLat, newLng);
 
-                    // Keep InfoWindow open for a moment with final result
-                    // infoWindow.close(); 
+                    // Close InfoWindow
+                    infoWindow.close();
 
-                    // Recalculate scores
-                    if (window.currentProjectClients) {
-                        const optimizer = new OLT_Optimizer(window.currentProjectClients, { country: 'CO' });
+                    // Show loading indicator
+                    const btn = document.getElementById('btn-architecture');
+                    if (btn) btn.innerHTML = "🔄 Recalculando NAPs...";
 
-                        // Create candidate from new location
-                        const manualCandidate = {
-                            lat: newLat,
-                            lng: newLng,
-                            type: 'manual',
-                            name: 'Ubicación Manual'
-                        };
+                    try {
+                        if (window.currentProjectClients) {
+                            const optimizer = new OLT_Optimizer(window.currentProjectClients, { country: 'CO' });
 
-                        // Score the new location
-                        const newResult = optimizer.scoreCandidate(manualCandidate);
-                        newResult.razon_seleccion = "📍 Ubicación ajustada manualmente por el usuario.";
+                            // Create candidate from new location
+                            const manualCandidate = {
+                                lat: newLat,
+                                lng: newLng,
+                                type: 'manual',
+                                name: 'Ubicación Manual'
+                            };
 
-                        // Validate new location
-                        const newVal = optimizer.validateLocation(newResult);
+                            // Score the new location
+                            const newResult = await optimizer.scoreCandidate(manualCandidate);
+                            newResult.razon_seleccion = "📍 Ubicación ajustada manualmente por el usuario.";
 
-                        // Update UI
-                        renderOLTResults(newResult, window.currentProjectClients.length, naps, newVal, result);
+                            // Validate new location
+                            const newVal = optimizer.validateLocation(newResult);
 
-                        // Update Marker Title
-                        oltMarker.setTitle(`OLT Manual - Score: ${newResult.score_total}/100`);
+                            // 🔥 RECALCULATE NAPs with new OLT location
+                            const napOptimizer = new NAP_Optimizer(window.currentProjectClients, { lat: newLat, lng: newLng });
+                            const napResult = await napOptimizer.calculateOptimalNAPs();
+                            const newNaps = napResult.naps;
+
+                            console.log("✅ NAPs recalculadas:", newNaps.length);
+
+                            // Clear ALL existing markers and polylines from map
+                            // We need to store references to clear them
+                            // For now, we'll just recreate the entire map view
+
+                            // Update marker position (already done by drag)
+                            oltMarker.setTitle(`OLT Manual - Score: ${newResult.score_total}/100`);
+
+                            // Clear old NAP markers and polylines by removing them from map
+                            // Store markers globally for cleanup
+                            if (window.currentNAPMarkers) {
+                                window.currentNAPMarkers.forEach(marker => marker.setMap(null));
+                            }
+                            if (window.currentPolylines) {
+                                window.currentPolylines.forEach(line => line.setMap(null));
+                            }
+
+                            // Initialize storage arrays
+                            window.currentNAPMarkers = [];
+                            window.currentPolylines = [];
+
+                            // Redraw NAP markers and polylines
+                            newNaps.forEach(nap => {
+                                // Determine icon color based on occupancy
+                                let iconColor = 'blue';
+                                if (nap.ocupacion_porcentaje > 90) iconColor = 'orange';
+                                if (nap.ocupacion_porcentaje < 40) iconColor = 'yellow';
+
+                                // Create marker
+                                const napMarker = new google.maps.Marker({
+                                    position: { lat: nap.lat, lng: nap.lng },
+                                    map: map,
+                                    icon: `http://maps.google.com/mapfiles/ms/icons/${iconColor}-dot.png`,
+                                    title: `${nap.id} - ${nap.cantidad_clientes}/${nap.capacity} clientes (${nap.ocupacion_porcentaje.toFixed(1)}%)`
+                                });
+
+                                window.currentNAPMarkers.push(napMarker);
+
+                                // InfoWindow
+                                const napInfoContent = `
+                                    <div style="font-family: 'Inter', sans-serif; padding: 8px; min-width: 200px;">
+                                        <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px;">${nap.id}</div>
+                                        <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">
+                                            <strong>Tipo:</strong> ${nap.tipo_nap}<br>
+                                            <strong>Clientes:</strong> ${nap.cantidad_clientes} / ${nap.capacity}<br>
+                                            <strong>Ocupación:</strong> ${nap.ocupacion_porcentaje.toFixed(1)}%<br>
+                                            <strong>Distancia OLT:</strong> ${nap.distancia_olt_km.toFixed(2)} km<br>
+                                            <strong>Pérdida Ruta:</strong> ${nap.perdida_ruta_db.toFixed(2)} dB
+                                        </div>
+                                    </div>
+                                `;
+                                const napInfoWindow = new google.maps.InfoWindow({ content: napInfoContent });
+                                napMarker.addListener('click', () => {
+                                    napInfoWindow.open(map, napMarker);
+                                });
+
+                                // Draw fiber route
+                                const fiberPath = new google.maps.Polyline({
+                                    path: [
+                                        { lat: newLat, lng: newLng },
+                                        { lat: nap.lat, lng: nap.lng }
+                                    ],
+                                    geodesic: true,
+                                    strokeColor: '#10b981',
+                                    strokeOpacity: 0.6,
+                                    strokeWeight: 3,
+                                    map: map
+                                });
+
+                                window.currentPolylines.push(fiberPath);
+
+                                // Polyline click event
+                                const routeInfoContent = `
+                                    <div style="font-family: 'Inter', sans-serif; padding: 6px;">
+                                        <strong>Ruta Troncal: OLT → ${nap.id}</strong><br>
+                                        <span style="font-size: 11px; color: #64748b;">
+                                            Distancia: ${nap.distancia_fibra_real_km.toFixed(2)} km<br>
+                                            Pérdida: ${nap.perdida_ruta_db.toFixed(2)} dB<br>
+                                            Empalmes: ${nap.empalmes_estimados}
+                                        </span>
+                                    </div>
+                                `;
+                                const routeInfoWindow = new google.maps.InfoWindow();
+                                fiberPath.addListener('click', (event) => {
+                                    routeInfoWindow.setContent(routeInfoContent);
+                                    routeInfoWindow.setPosition(event.latLng);
+                                    routeInfoWindow.open(map);
+                                });
+                            });
+
+                            // Update UI with new results
+                            renderOLTResults(newResult, window.currentProjectClients.length, newNaps, newVal, result);
+
+                            console.log("✅ Mapa actualizado con nueva configuración OLT-NAPs");
+                        }
+                    } catch (error) {
+                        console.error("Error recalculando NAPs:", error);
+                        alert("Error al recalcular NAPs: " + error.message);
+                    } finally {
+                        if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida";
                     }
                 });
 
@@ -6697,13 +7224,78 @@ async function showArchitecture(oltOverride = null) {
                     });
                 }
 
-                // NAP Markers (Blue)
+                // NAP Markers (Status-based colors) + Fiber Routes
+                // Initialize global storage for cleanup on OLT drag
+                window.currentNAPMarkers = [];
+                window.currentPolylines = [];
+
                 naps.forEach(nap => {
-                    new google.maps.Marker({
+                    // Determine icon color based on occupancy
+                    let iconColor = 'blue'; // Default (Optimal)
+                    if (nap.ocupacion_porcentaje > 90) iconColor = 'orange'; // Saturated
+                    if (nap.ocupacion_porcentaje < 40) iconColor = 'yellow'; // Underutilized
+
+                    // Create marker
+                    const napMarker = new google.maps.Marker({
                         position: { lat: nap.lat, lng: nap.lng },
                         map: map,
-                        icon: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-                        title: nap.id
+                        icon: `http://maps.google.com/mapfiles/ms/icons/${iconColor}-dot.png`,
+                        title: `${nap.id} - ${nap.cantidad_clientes}/${nap.capacity} clientes (${nap.ocupacion_porcentaje.toFixed(1)}%)`
+                    });
+
+                    // Store for cleanup
+                    window.currentNAPMarkers.push(napMarker);
+
+                    // InfoWindow with detailed NAP info
+                    const napInfoContent = `
+                        <div style="font-family: 'Inter', sans-serif; padding: 8px; min-width: 200px;">
+                            <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px;">${nap.id}</div>
+                            <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">
+                                <strong>Tipo:</strong> ${nap.tipo_nap}<br>
+                                <strong>Clientes:</strong> ${nap.cantidad_clientes} / ${nap.capacity}<br>
+                                <strong>Ocupación:</strong> ${nap.ocupacion_porcentaje.toFixed(1)}%<br>
+                                <strong>Distancia OLT:</strong> ${nap.distancia_olt_km.toFixed(2)} km<br>
+                                <strong>Pérdida Ruta:</strong> ${nap.perdida_ruta_db.toFixed(2)} dB
+                            </div>
+                        </div>
+                    `;
+                    const napInfoWindow = new google.maps.InfoWindow({ content: napInfoContent });
+                    napMarker.addListener('click', () => {
+                        napInfoWindow.open(map, napMarker);
+                    });
+
+                    // Draw fiber route (OLT to NAP)
+                    const fiberPath = new google.maps.Polyline({
+                        path: [
+                            { lat: oltOptimal.lat, lng: oltOptimal.lng },
+                            { lat: nap.lat, lng: nap.lng }
+                        ],
+                        geodesic: true,
+                        strokeColor: '#10b981', // Green
+                        strokeOpacity: 0.6,
+                        strokeWeight: 3,
+                        map: map
+                    });
+
+                    // Store for cleanup
+                    window.currentPolylines.push(fiberPath);
+
+                    // Polyline click event
+                    const routeInfoContent = `
+                        <div style="font-family: 'Inter', sans-serif; padding: 6px;">
+                            <strong>Ruta Troncal: OLT → ${nap.id}</strong><br>
+                            <span style="font-size: 11px; color: #64748b;">
+                                Distancia: ${nap.distancia_fibra_real_km.toFixed(2)} km<br>
+                                Pérdida: ${nap.perdida_ruta_db.toFixed(2)} dB<br>
+                                Empalmes: ${nap.empalmes_estimados}
+                            </span>
+                        </div>
+                    `;
+                    const routeInfoWindow = new google.maps.InfoWindow();
+                    fiberPath.addListener('click', (event) => {
+                        routeInfoWindow.setContent(routeInfoContent);
+                        routeInfoWindow.setPosition(event.latLng);
+                        routeInfoWindow.open(map);
                     });
                 });
             }
