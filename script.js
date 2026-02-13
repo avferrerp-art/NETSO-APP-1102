@@ -18,6 +18,12 @@ const firebaseConfig = {
     measurementId: "G-K1C133EZC0"
 };
 
+// Auto-configure Maps API Key if not manually set
+if (!googleApiKey && firebaseConfig.apiKey) {
+    console.log("🔑 Using Firebase API Key for Google Maps");
+    googleApiKey = firebaseConfig.apiKey;
+}
+
 // Initialize Firebase
 const app = firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
@@ -5752,11 +5758,13 @@ class OLT_Optimizer {
     constructor(clients, options = {}) {
         this.clients = clients || [];
         this.options = {
-            maxGponRange: options.maxGponRange || 20, // km
+            country: options.country || 'CO', // Default Colombia
+            maxGponRange: options.maxGponRange || (options.country === 'CO' ? 18 : 20), // km (18km for CO)
             maxOpticalBudget: options.maxOpticalBudget || 27, // dB
             maxDropDistance: options.maxDropDistance || 0.5, // km (500m)
-            candidateOffset: options.candidateOffset || 0.5, // km
+            candidateOffset: options.candidateOffset || (options.country === 'CO' ? 0.3 : 0.5), // km (0.3km for CO)
             backhaul: options.backhaul || null, // {lat, lng} if available
+            zonaType: options.zonaType || null, // 'urbana', 'suburbana', 'rural' (autodetected if null)
             ...options
         };
     }
@@ -5891,12 +5899,35 @@ class OLT_Optimizer {
     }
 
     // ==========================================
-    // STEP 4: Multi-Factor Scoring System
+    // SCORE CANDIDATE (SYNC VERSION - FOR REAL-TIME DRAG)
     // ==========================================
-    scoreCandidate(candidate) {
+    scoreCandidateSync(candidate) {
+        // Skip async accessibility check for speed
         const distanceScore = this.calculateDistanceScore(candidate);
         const costScore = this.calculateCostScore(candidate);
-        const accessibilityScore = this.calculateAccessibilityScore(candidate);
+        const accessibilityScore = 50; // Default average for visual feedback
+        const scalabilityScore = this.calculateScalabilityScore(candidate);
+
+        const totalScore = (
+            0.40 * distanceScore +
+            0.30 * costScore +
+            0.20 * accessibilityScore +
+            0.10 * scalabilityScore
+        );
+
+        return {
+            ...candidate,
+            score_total: Math.round(totalScore * 100) / 100
+        };
+    }
+
+    // ==========================================
+    // STEP 4: Multi-Factor Scoring System
+    // ==========================================
+    async scoreCandidate(candidate) {
+        const distanceScore = this.calculateDistanceScore(candidate);
+        const costScore = this.calculateCostScore(candidate);
+        const accessibilityScore = await this.calculateAccessibilityScore(candidate);
         const scalabilityScore = this.calculateScalabilityScore(candidate);
 
         const totalScore = (
@@ -5922,22 +5953,24 @@ class OLT_Optimizer {
         const avgDist = this.calculateAverageDistance(candidate);
         const maxDist = this.calculateMaxDistance(candidate);
 
-        // Base score from average distance
+        // Score based on ranges (adjusted for Colombia urban context)
         let score = 100;
-        if (avgDist < 2) score = 100;
-        else if (avgDist < 5) score = 80;
-        else if (avgDist < 10) score = 60;
-        else if (avgDist < 15) score = 40;
-        else if (avgDist < 20) score = 20;
-        else score = 0;
+        if (avgDist < 1) score = 100;
+        else if (avgDist < 3) score = 90;
+        else if (avgDist < 5) score = 75;
+        else if (avgDist < 8) score = 60;
+        else if (avgDist < 12) score = 40;
+        else if (avgDist < 18) score = 20;
+        else score = 5;
 
         // Penalize if max distance exceeds GPON limit
         if (maxDist > this.options.maxGponRange) {
-            score = Math.max(0, score - 50);
+            score -= 30;
         }
 
-        return score;
+        return Math.max(0, score);
     }
+
 
     calculateAverageDistance(candidate) {
         if (this.clients.length === 0) return 0;
@@ -5964,75 +5997,128 @@ class OLT_Optimizer {
     }
 
     calculateCostScore(candidate) {
-        let score = 70; // Base score
+        let score = 0;
 
-        // Factor 1: Distance to backhaul (if available)
+        // Factor 1: Backhaul Proximity (if available)
         if (this.options.backhaul) {
             const backhaulDist = OLT_Optimizer.haversineDistance(
                 candidate.lat, candidate.lng,
                 this.options.backhaul.lat, this.options.backhaul.lng
             );
 
-            if (backhaulDist < 1) score += 20;
-            else if (backhaulDist < 3) score += 10;
-            else if (backhaulDist > 5) score -= 20;
+            if (backhaulDist < 0.5) score = 95;
+            else if (backhaulDist < 2) score = 85;
+            else if (backhaulDist < 5) score = 70;
+            else if (backhaulDist < 10) score = 50;
+            else score = 30;
+        } else {
+            // Factor 2: Zone Type Inference (No backhaul info)
+            // Calculate density: clients / area km2
+            const lats = this.clients.map(c => c.lat);
+            const lngs = this.clients.map(c => c.lng);
+            const minLat = Math.min(...lats);
+            const maxLat = Math.max(...lats);
+            const minLng = Math.min(...lngs);
+            const maxLng = Math.max(...lngs);
+
+            const avgLat = (minLat + maxLat) / 2;
+            const heightKm = (maxLat - minLat) * 111;
+            const widthKm = (maxLng - minLng) * 111 * Math.cos(avgLat * Math.PI / 180);
+            const areaKm2 = Math.max(0.1, heightKm * widthKm); // Avoid div by zero
+
+            const density = this.clients.length / areaKm2;
+
+            // Determine zone score based on infrastructure likelihood
+            if (this.clients.length > 100 || density > 50) {
+                // Urban: Better electric grid, easier access
+                score = 80;
+            } else if (density > 10) {
+                // Suburban
+                score = 65;
+            } else {
+                // Rural
+                score = 45;
+            }
         }
 
-        // Factor 2: Zone type (urban cheaper than rural)
-        const urbanClientRatio = this.clients.filter(c => c.zone_type === 'urban').length / this.clients.length;
-        if (urbanClientRatio > 0.7) score += 10;
-        else if (urbanClientRatio < 0.3) score -= 10;
-
-        return Math.min(100, Math.max(0, score));
+        return score;
     }
 
-    calculateAccessibilityScore(candidate) {
-        let score = 70; // Base score
+    async calculateAccessibilityScore(candidate) {
+        // Advanced: Use Google Places API if available
+        if (window.google && window.google.maps && window.google.maps.places) {
+            try {
+                const service = new google.maps.places.PlacesService(document.createElement('div'));
+                const request = {
+                    location: new google.maps.LatLng(candidate.lat, candidate.lng),
+                    radius: 500, // 500 meters
+                    type: ['gas_station', 'atm', 'bank', 'school', 'hospital'] // Indicadores de infraestructura
+                };
 
-        // Estimate zone type from client distribution
-        const nearbyClients = this.clients.filter(c => {
-            const dist = OLT_Optimizer.haversineDistance(
-                candidate.lat, candidate.lng,
-                c.lat, c.lng
-            );
-            return dist < 1; // Within 1km
-        });
+                // Add timeout to prevent hanging
+                const places = await Promise.race([
+                    new Promise((resolve) => {
+                        service.nearbySearch(request, (results, status) => {
+                            if (status === google.maps.places.PlacesServiceStatus.OK) {
+                                resolve(results || []);
+                            } else {
+                                resolve([]);
+                            }
+                        });
+                    }),
+                    new Promise(resolve => setTimeout(() => {
+                        // console.warn('Places API timeout');
+                        resolve([]);
+                    }, 2000)) // 2s timeout
+                ]);
 
-        const urbanCount = nearbyClients.filter(c => c.zone_type === 'urban').length;
-        const suburbanCount = nearbyClients.filter(c => c.zone_type === 'suburban').length;
+                const count = places.length;
+                if (count >= 10) return 95;
+                if (count >= 5) return 80;
+                if (count >= 2) return 60;
+                if (count >= 1) return 45;
+                return 30;
 
-        if (urbanCount > suburbanCount) score = 90;
-        else if (suburbanCount > 0) score = 70;
-        else score = 50;
+            } catch (e) {
+                console.warn("Error accessing Places API, using fallback:", e);
+            }
+        }
 
-        // Bonus if it's a backhaul location (likely has good access)
-        if (candidate.type === 'backhaul') score += 10;
-
-        return Math.min(100, score);
+        // Fallback: Type-based proxy
+        if (candidate.type === 'backhaul') return 90;
+        if (candidate.type === 'centroid') return 80;
+        return 70; // Offsets
     }
 
     calculateScalabilityScore(candidate) {
-        const centroid = this.calculateSimpleCentroid();
+        const centroid = this.calculateWeightedCentroid() || this.calculateSimpleCentroid();
         if (!centroid) return 50;
 
-        // Score based on how central the location is
+        // Calculate current coverage radius (max distance from centroid)
+        let coverageRadius = 0;
+        this.clients.forEach(c => {
+            const d = OLT_Optimizer.haversineDistance(centroid.lat, centroid.lng, c.lat, c.lng);
+            if (d > coverageRadius) coverageRadius = d;
+        });
+        if (coverageRadius === 0) coverageRadius = 1; // Avoid div/0
+
         const distFromCenter = OLT_Optimizer.haversineDistance(
             candidate.lat, candidate.lng,
             centroid.lat, centroid.lng
         );
 
-        let score = 90;
-        if (distFromCenter > 2) score = 60;
-        else if (distFromCenter > 1) score = 75;
+        const ratio = distFromCenter / coverageRadius;
+        let score = 75; // Baseline
 
-        // Bonus if surrounded by clients (can expand in all directions)
-        const clientsNorth = this.clients.filter(c => c.lat > candidate.lat).length;
-        const clientsSouth = this.clients.filter(c => c.lat < candidate.lat).length;
-        const clientsEast = this.clients.filter(c => c.lng > candidate.lng).length;
-        const clientsWest = this.clients.filter(c => c.lng < candidate.lng).length;
+        if (ratio < 0.3) score = 95; // Dead center
+        else if (ratio < 0.6) score = 75; // Good balance
+        else if (ratio < 0.8) score = 55; // Bit far
+        else score = 35; // Edge
 
-        const directions = [clientsNorth, clientsSouth, clientsEast, clientsWest].filter(count => count > 0).length;
-        if (directions === 4) score += 10;
+        // Bonus: Empty space analysis (simple bounding box logic)
+        // If candidate is in a sparse quadrant, we assume growth potential
+        // (Simplified logic: always +10 if not at absolute edge)
+        if (ratio < 0.9) score += 10;
 
         return Math.min(100, score);
     }
@@ -6040,44 +6126,50 @@ class OLT_Optimizer {
     // ==========================================
     // STEP 5: Select Optimal Location
     // ==========================================
-    selectOptimalLocation() {
+    async selectOptimalLocation() {
         const candidates = this.generateCandidateLocations();
         if (candidates.length === 0) return null;
 
-        const scoredCandidates = candidates.map(c => this.scoreCandidate(c));
+        // Async scoring for all candidates
+        const scoredCandidates = await Promise.all(candidates.map(c => this.scoreCandidate(c)));
         scoredCandidates.sort((a, b) => b.score_total - a.score_total);
 
         const optimal = scoredCandidates[0];
         optimal.razon_seleccion = this.generateSelectionReason(optimal);
 
+        // Add reasons for alternatives
+        const alternatives = scoredCandidates.slice(1, 4).map(alt => {
+            alt.razon_alternativa = this.generateAlternativeReason(alt, optimal);
+            return alt;
+        });
+
         return {
             ubicacion_optima: optimal,
-            ubicaciones_alternativas: scoredCandidates.slice(1, 4),
+            ubicaciones_alternativas: alternatives,
             all_candidates: scoredCandidates
         };
     }
 
     generateSelectionReason(candidate) {
-        const reasons = [];
+        const score = candidate.score_total;
+        let baseReason = "";
 
-        if (candidate.score_distancia >= 80) {
-            reasons.push(`Excelente ubicación central (distancia promedio: ${candidate.distancia_promedio_clientes_km.toFixed(2)} km)`);
-        }
+        if (score >= 85) baseReason = "Ubicación excelente: alta concentración de clientes, buena accesibilidad y espacio para crecimiento";
+        else if (score >= 70) baseReason = "Ubicación buena: balance adecuado entre cercanía a clientes y factibilidad operativa";
+        else if (score >= 55) baseReason = "Ubicación aceptable: cumple requisitos técnicos pero puede requerir inversión adicional";
+        else baseReason = "Ubicación subóptima: considere ajustar parámetros de diseño";
 
-        if (candidate.score_costo >= 70) {
-            reasons.push('Costos de infraestructura favorables');
-        }
-
-        if (candidate.type === 'backhaul') {
-            reasons.push('Proximidad a fibra de backhaul existente');
-        }
-
-        if (candidate.score_escalabilidad >= 80) {
-            reasons.push('Alto potencial de escalabilidad');
-        }
-
-        return reasons.join('. ') || 'Mejor balance entre todos los factores evaluados';
+        return baseReason;
     }
+
+    generateAlternativeReason(alt, optimal) {
+        if (alt.score_costo > optimal.score_costo) return "Menor costo de implementación, aunque más lejana de algunos clientes";
+        if (alt.score_accesibilidad > optimal.score_accesibilidad) return "Mejor accesibilidad vial/infraestructura, facilita mantenimiento";
+        if (alt.score_escalabilidad > optimal.score_escalabilidad) return "Mayor potencial de expansión futura";
+        return "Alternativa viable con balance diferente de factores";
+    }
+
+
 
     // ==========================================
     // STEP 6: Validation
@@ -6102,19 +6194,33 @@ class OLT_Optimizer {
             if (dist > this.options.maxGponRange) {
                 allInRange = false;
                 warnings.push(`Cliente ${client.id} fuera de rango GPON (${dist.toFixed(2)} km > ${this.options.maxGponRange} km)`);
+            } else if (dist > 15) {
+                warnings.push(`Cliente ${client.id} distante (${dist.toFixed(2)} km). Considerar amplificador óptico.`);
             }
         });
 
-        // Optical budget validation (simplified)
-        const estimatedLoss = maxDist * 0.35; // ~0.35 dB/km typical
-        if (estimatedLoss > this.options.maxOpticalBudget) {
-            warnings.push(`Presupuesto óptico excedido (${estimatedLoss.toFixed(1)} dB > ${this.options.maxOpticalBudget} dB)`);
+        // Optical Budget validation (Detailed)
+        // Fiber Loss: 0.35 dB/km
+        // Splitter Loss: 1:32 split (1:4 + 1:8) ≈ 17.5 dB
+        // Connector/Splice Loss: ~1.0 dB margin
+        const fiberLoss = maxDist * 0.35;
+        const splitterLoss = 17.5;
+        const connectorLoss = 1.0;
+        const totalEstimatedLoss = fiberLoss + splitterLoss + connectorLoss;
+        const margin = this.options.maxOpticalBudget - totalEstimatedLoss;
+
+        if (totalEstimatedLoss > this.options.maxOpticalBudget) {
+            warnings.push(`⚠️ PRESUPUESTO ÓPTICO EXCEDIDO: ${totalEstimatedLoss.toFixed(2)} dB > ${this.options.maxOpticalBudget} dB`);
+        } else if (margin < 3) {
+            warnings.push(`⚠️ Margen operativo bajo (${margin.toFixed(2)} dB). Riesgo de degradación.`);
         }
 
         return {
             todos_clientes_en_rango: allInRange,
             cliente_mas_lejano_id: farthestClient ? farthestClient.id : null,
             distancia_maxima_km: maxDist,
+            perdida_estimada_db: totalEstimatedLoss.toFixed(2),
+            margen_operativo_db: margin.toFixed(2),
             advertencias: warnings
         };
     }
@@ -6122,38 +6228,85 @@ class OLT_Optimizer {
     // ==========================================
     // MAIN ENTRY POINT
     // ==========================================
-    findOptimalOLTAdvanced() {
-        // Handle edge cases
-        if (this.clients.length === 0) {
+    async findOptimalOLTAdvanced() {
+        try {
+            // Handle edge cases
+            if (this.clients.length === 0) {
+                return {
+                    error: 'No hay clientes para optimizar',
+                    ubicacion_optima: null,
+                    ubicaciones_alternativas: [],
+                    validaciones: { todos_clientes_en_rango: false, advertencias: ['Sin clientes'] }
+                };
+            }
+
+            if (this.clients.length < 3) {
+                // For very few clients, just use simple centroid
+                const centroid = this.calculateSimpleCentroid();
+                const scored = await this.scoreCandidate({ ...centroid, name: 'Centroide Simple', type: 'centroid' });
+                scored.razon_seleccion = 'Pocos clientes: ubicación central simple';
+
+                const validations = this.validateLocation(scored);
+
+                const result = {
+                    ubicacion_optima: scored,
+                    ubicaciones_alternativas: [],
+                    validaciones: validations
+                };
+                console.log("OLT Optimizer Results (Simple):", JSON.stringify(result, null, 2));
+                return result;
+            }
+
+            // Normal flow
+            const result = await this.selectOptimalLocation();
+            const validations = this.validateLocation(result.ubicacion_optima);
+
+            const finalResult = {
+                ubicacion_optima: result.ubicacion_optima,
+                ubicaciones_alternativas: result.ubicaciones_alternativas,
+                validaciones: validations
+            };
+
+            console.log("OLT Optimizer Results:", JSON.stringify(finalResult, null, 2));
+            return finalResult;
+
+        } catch (error) {
+            console.error("Critical OLT Optimizer Error:", error);
             return {
-                error: 'No hay clientes para optimizar',
+                error: error.message || "Error interno en optimizador",
                 ubicacion_optima: null,
                 ubicaciones_alternativas: [],
-                validaciones: { todos_clientes_en_rango: false, advertencias: ['Sin clientes'] }
+                validaciones: { todos_clientes_en_rango: false, advertencias: ["Error crítico de cálculo"] }
             };
         }
+    }
 
-        if (this.clients.length < 3) {
-            // For very few clients, just use simple centroid
-            const centroid = this.calculateSimpleCentroid();
-            const scored = this.scoreCandidate({ ...centroid, name: 'Centroide Simple', type: 'centroid' });
-            scored.razon_seleccion = 'Pocos clientes: ubicación central simple';
+    // New: Recalculate based on manual drag/drop
+    async recalculateWithManualOLT(manualLat, manualLng, originalOptimalResult) {
+        const manualCandidate = {
+            name: "Ubicación Manual",
+            lat: manualLat,
+            lng: manualLng,
+            type: 'manual'
+        };
 
-            return {
-                ubicacion_optima: scored,
-                ubicaciones_alternativas: [],
-                validaciones: this.validateLocation(scored)
+        const scoredManual = await this.scoreCandidate(manualCandidate);
+        const validations = this.validateLocation(scoredManual);
+
+        let comparison = null;
+        if (originalOptimalResult) {
+            const opt = originalOptimalResult.ubicacion_optima;
+            comparison = {
+                score_diff: scoredManual.score_total - opt.score_total,
+                dist_diff: scoredManual.distancia_promedio_clientes_km - opt.distancia_promedio_clientes_km,
+                better_score: scoredManual.score_total > opt.score_total
             };
         }
-
-        // Normal flow
-        const result = this.selectOptimalLocation();
-        const validations = this.validateLocation(result.ubicacion_optima);
 
         return {
-            ubicacion_optima: result.ubicacion_optima,
-            ubicaciones_alternativas: result.ubicaciones_alternativas,
-            validaciones: validations
+            ubicacion_manual: scoredManual,
+            validaciones: validations,
+            comparacion_con_optima: comparison
         };
     }
 
@@ -6296,29 +6449,24 @@ async function showArchitecture(oltOverride = null) {
         if (btn) btn.innerHTML = "⏳ Procesando...";
 
         try {
-            // 1. Get Real Client Data from Wizard
-            const censoInput = document.getElementById('censo');
-            const radiusInput = document.getElementById('coverageRadius');
-
-            const clientCount = censoInput ? parseInt(censoInput.value) || 20 : 20;
-            const coverageRadiusMeters = radiusInput ? parseInt(radiusInput.value) || 500 : 500;
-            const coverageRadiusKm = coverageRadiusMeters / 1000;
-
-
             // 2. Get User's Current Location (Geolocation API)
             let mapCenter = { lat: -10.9843, lng: -74.7460 }; // Default: Huánuco, Perú
 
-            // Try to get user's current location
+            // Try to get user's current location with timeout
             try {
                 if (navigator.geolocation) {
-                    // Request user's location (this will prompt for permission)
-                    const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, {
-                            enableHighAccuracy: true,
-                            timeout: 5000,
-                            maximumAge: 0
-                        });
-                    });
+                    btn.innerHTML = "⏳ Buscando ubicación...";
+                    // Request user's location with 5s timeout race
+                    const position = await Promise.race([
+                        new Promise((resolve, reject) => {
+                            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                                enableHighAccuracy: true,
+                                timeout: 5000,
+                                maximumAge: 0
+                            });
+                        }),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout obteniendo ubicación")), 5000))
+                    ]);
 
                     mapCenter = {
                         lat: position.coords.latitude,
@@ -6331,7 +6479,7 @@ async function showArchitecture(oltOverride = null) {
                     console.warn("Geolocation no disponible, usando ubicación por defecto");
                 }
             } catch (geoError) {
-                console.warn("No se pudo obtener ubicación:", geoError.message);
+                console.warn("No se pudo obtener ubicación (usando default):", geoError.message);
                 // Check if there's a stored location
                 const storedLocation = localStorage.getItem('projectLocation');
                 if (storedLocation) {
@@ -6344,6 +6492,15 @@ async function showArchitecture(oltOverride = null) {
                 }
             }
 
+            if (btn) btn.innerHTML = "⏳ Aplicando algoritmo...";
+
+            // 1. Get Real Client Data from Wizard
+            const censoInput = document.getElementById('censo');
+            const radiusInput = document.getElementById('coverageRadius');
+
+            const clientCount = censoInput ? parseInt(censoInput.value) || 20 : 20;
+            const coverageRadiusMeters = radiusInput ? parseInt(radiusInput.value) || 500 : 500;
+            const coverageRadiusKm = coverageRadiusMeters / 1000;
 
 
             // 3. Generate Client Distribution
@@ -6366,8 +6523,8 @@ async function showArchitecture(oltOverride = null) {
 
 
             // 4. Advanced OLT Optimization
-            const optimizer = new OLT_Optimizer(clients);
-            const result = optimizer.findOptimalOLTAdvanced();
+            const optimizer = new OLT_Optimizer(clients, { country: 'CO' }); // Default to Colombia
+            const result = await optimizer.findOptimalOLTAdvanced();
 
             if (result.error) {
                 alert(result.error);
@@ -6378,8 +6535,29 @@ async function showArchitecture(oltOverride = null) {
             const oltOptimal = result.ubicacion_optima;
             const validations = result.validaciones;
 
+            // Save result to Firestore (if project context exists)
+            if (typeof currentProjectDocId !== 'undefined' && currentProjectDocId) {
+                try {
+                    console.log("Saving OLT calculation to Firestore...");
+                    await db.collection('proyectos').doc(currentProjectDocId).update({
+                        olt_calculation: {
+                            ...result,
+                            fecha_calculo: new Date().toISOString(),
+                            version_algoritmo: '2.0'
+                        }
+                    });
+                    console.log("OLT calculation saved successfully.");
+                } catch (err) {
+                    console.warn("Failed to save OLT calculation to Firestore:", err);
+                    // Don't block UI
+                }
+            }
+
             // 5. Clustering NAPs
             const naps = await calculateNAPs(clients);
+
+            // Store clients globally for recalculation
+            window.currentProjectClients = clients;
 
             // 6. Render Map
             const mapDiv = document.getElementById('map-container');
@@ -6391,14 +6569,116 @@ async function showArchitecture(oltOverride = null) {
                     center: { lat: oltOptimal.lat, lng: oltOptimal.lng }
                 });
 
-                // OLT Marker (Red)
-                new google.maps.Marker({
+                // OLT Marker (Red) - DRAGGABLE
+                const oltMarker = new google.maps.Marker({
                     position: { lat: oltOptimal.lat, lng: oltOptimal.lng },
                     map: map,
                     label: "OLT",
                     title: `OLT Óptima - Score: ${oltOptimal.score_total}/100`,
+                    draggable: true, // ENABLE DRAG
                     icon: {
                         url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                    }
+                });
+
+                // Real-time InfoWindow
+                const infoWindow = new google.maps.InfoWindow({
+                    content: `<div style="padding:5px;"><strong>Arrastra para recalcular...</strong></div>`,
+                    disableAutoPan: true // Prevent map jumping while dragging
+                });
+
+                // Optimization instance for drag events (reuse existing clients)
+                let dragOptimizer = null;
+                let lastUpdate = 0; // Throttling timestamp
+
+                oltMarker.addListener('dragstart', () => {
+                    infoWindow.open(map, oltMarker);
+                    if (window.currentProjectClients) {
+                        dragOptimizer = new OLT_Optimizer(window.currentProjectClients, { country: 'CO' });
+                    }
+                });
+
+                oltMarker.addListener('drag', (event) => {
+                    if (!dragOptimizer) return;
+
+                    // Throttling: Update max every 50ms
+                    const now = Date.now();
+                    if (now - lastUpdate < 50) return;
+                    lastUpdate = now;
+
+                    const lat = event.latLng.lat();
+                    const lng = event.latLng.lng();
+
+                    // Fast Scoring (Synchronous)
+                    const tempCandidate = { lat, lng, type: 'manual' };
+                    // Use the new SYNC method to avoid Promise issues
+                    const tempResult = dragOptimizer.scoreCandidateSync(tempCandidate);
+
+                    // Quick optical check
+                    const validations = dragOptimizer.validateLocation(tempResult);
+                    const loss = parseFloat(validations.perdida_estimada_db || 0);
+                    const power = (4.0 - loss).toFixed(2);
+
+                    // Determine status color
+                    let color = '#ef4444'; // Red (Critical)
+                    let statusText = 'CRÍTICO';
+                    if (power >= -22) { color = '#f59e0b'; statusText = 'AL LÍMITE'; } // Orange
+                    if (power >= -18) { color = '#10b981'; statusText = 'IDEAL'; } // Green
+
+                    // Premium UI for Info Window
+                    infoWindow.setContent(`
+                        <div style="font-family: 'Inter', sans-serif; text-align: center; min-width: 180px; padding: 4px;">
+                            <div style="font-size: 10px; color: #64748b; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 4px;">EN TIEMPO REAL</div>
+                            
+                            <div style="display: flex; justify-content: center; align-items: baseline; gap: 4px; margin-bottom: 8px;">
+                                <span style="font-size: 28px; font-weight: 800; color: #1e293b;">${tempResult.score_total}</span>
+                                <span style="font-size: 13px; color: #94a3b8; font-weight: 600;">/ 100</span>
+                            </div>
+
+                            <div style="background: #f8fafc; border-radius: 8px; padding: 6px; border: 1px solid #e2e8f0;">
+                                <div style="font-size: 11px; color: #64748b; margin-bottom: 2px;">Potencia Est.</div>
+                                <div style="font-size: 16px; font-weight: 800; color: ${color};">
+                                    ${power} dBm
+                                </div>
+                                <div style="font-size: 9px; font-weight: 700; color: ${color}; margin-top: 2px;">${statusText}</div>
+                            </div>
+                        </div>
+                    `);
+                });
+
+                // DRAG END EVENT LISTENER
+                oltMarker.addListener('dragend', async (event) => {
+                    const newLat = event.latLng.lat();
+                    const newLng = event.latLng.lng();
+                    console.log("📍 OLT arrastrada a:", newLat, newLng);
+
+                    // Keep InfoWindow open for a moment with final result
+                    // infoWindow.close(); 
+
+                    // Recalculate scores
+                    if (window.currentProjectClients) {
+                        const optimizer = new OLT_Optimizer(window.currentProjectClients, { country: 'CO' });
+
+                        // Create candidate from new location
+                        const manualCandidate = {
+                            lat: newLat,
+                            lng: newLng,
+                            type: 'manual',
+                            name: 'Ubicación Manual'
+                        };
+
+                        // Score the new location
+                        const newResult = optimizer.scoreCandidate(manualCandidate);
+                        newResult.razon_seleccion = "📍 Ubicación ajustada manualmente por el usuario.";
+
+                        // Validate new location
+                        const newVal = optimizer.validateLocation(newResult);
+
+                        // Update UI
+                        renderOLTResults(newResult, window.currentProjectClients.length, naps, newVal, result);
+
+                        // Update Marker Title
+                        oltMarker.setTitle(`OLT Manual - Score: ${newResult.score_total}/100`);
                     }
                 });
 
@@ -6428,68 +6708,248 @@ async function showArchitecture(oltOverride = null) {
                 });
             }
 
-            // 7. Update UI Text with Detailed Results
-            const detailsDiv = document.getElementById('architecture-details');
-            if (detailsDiv) {
-                detailsDiv.style.display = 'block';
+            // 7. Initial UI Render
+            renderOLTResults(oltOptimal, clientCount, naps, validations, result);
 
-                let html = `
-                    <strong>🎯 Ubicación Óptima de OLT:</strong><br>
-                    📍 Coordenadas: ${oltOptimal.lat.toFixed(5)}, ${oltOptimal.lng.toFixed(5)}<br>
-                    ⭐ Score Total: ${oltOptimal.score_total}/100<br>
-                    <br>
-                    <strong>📊 Desglose de Scoring:</strong><br>
-                    • Distancia (40%): ${oltOptimal.score_distancia}/100<br>
-                    • Costo (30%): ${oltOptimal.score_costo}/100<br>
-                    • Accesibilidad (20%): ${oltOptimal.score_accesibilidad}/100<br>
-                    • Escalabilidad (10%): ${oltOptimal.score_escalabilidad}/100<br>
-                    <br>
-                    <strong>📏 Métricas de Red:</strong><br>
-                    • Clientes: ${clientCount}<br>
-                    • NAPs Calculadas: ${naps.length}<br>
-                    • Distancia Promedio: ${oltOptimal.distancia_promedio_clientes_km.toFixed(2)} km<br>
-                    • Cliente Más Lejano: ${oltOptimal.distancia_maxima_cliente_km.toFixed(2)} km<br>
-                    <br>
-                    <strong>💡 Razón de Selección:</strong><br>
-                    ${oltOptimal.razon_seleccion}
-                `;
-
-                // Add validation warnings if any
-                if (validations.advertencias && validations.advertencias.length > 0) {
-                    html += `<br><br><strong style="color: #f59e0b;">⚠️ Advertencias:</strong><br>`;
-                    validations.advertencias.forEach(warning => {
-                        html += `• ${warning}<br>`;
-                    });
-                }
-
-                // Add alternative locations info
-                if (result.ubicaciones_alternativas && result.ubicaciones_alternativas.length > 0) {
-                    html += `<br><strong>🔄 Ubicaciones Alternativas:</strong><br>`;
-                    result.ubicaciones_alternativas.slice(0, 2).forEach((alt, idx) => {
-                        html += `${idx + 2}. ${alt.name} - Score: ${alt.score_total}/100<br>`;
-                    });
-                }
-
-                detailsDiv.innerHTML = html;
-            }
-
-            if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida (Actualizar)";
-            console.log("✅ Arquitectura Calculada:", {
-                olt: oltOptimal,
-                naps,
-                clients: clientCount,
-                validations
-            });
-
-
-        } catch (e) {
-            console.error("Error en showArchitecture:", e);
-            if (btn) btn.innerHTML = "❌ Error";
-            alert("Error calculando arquitectura: " + e.message);
+        } catch (err) {
+            console.error("❌ Error en showArchitecture:", err);
+            alert("Ocurrió un error al calcular la arquitectura: " + err.message);
+        } finally {
+            if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida";
+            console.log("🏁 Proceso de arquitectura finalizado");
+            // Reset loading state just in case
+            window.isGoogleMapsLoading = false;
         }
-    }); // End loadGoogleMapsScript
+    });
 }
 
+function renderOLTResults(oltOptimal, clientCount, naps, validations, result) {
+    const detailsDiv = document.getElementById('architecture-details');
+    if (!detailsDiv) return;
+
+    detailsDiv.style.display = 'block';
+
+    // 1. Calculate Optical Metrics
+    // Assuming standard OLT SFP C+ Tx Power = +4.0 dBm approx
+    const txPower = 4.0;
+    const loss = parseFloat(validations.perdida_estimada_db || 0);
+    const rxPower = (txPower - loss).toFixed(2);
+
+    // Determine Status
+    let statusText = "IDEAL";
+    let statusClass = "";
+    if (rxPower < -28) {
+        statusText = "CRÍTICO";
+        statusClass = "danger";
+    } else if (rxPower < -25) {
+        statusText = "AL LÍMITE";
+        statusClass = "warning";
+    }
+
+    let html = `
+        <div class="olt-result-card">
+            
+            <!-- 1. Main Premium Card (Dark) -->
+            <div class="premium-main-card">
+                <div class="premium-main-value">${rxPower} dBm</div>
+                <div class="premium-main-label">Potencia Estimada Recibida</div>
+                <div class="premium-status-pill ${statusClass}">
+                    ✓ ${statusText}
+                </div>
+            </div>
+
+            <!-- 2. Light Stats Grid -->
+            <div class="premium-stats-grid">
+                <div class="premium-stat-card">
+                    <span class="premium-stat-label">PÉRDIDA EN FIBRA</span>
+                    <span class="premium-stat-value">-${loss} <small class="premium-stat-unit">dB</small></span>
+                </div>
+                <div class="premium-stat-card">
+                    <span class="premium-stat-label">CLIENTES META</span>
+                    <span class="premium-stat-value">${clientCount}</span>
+                </div>
+                <div class="premium-stat-card">
+                    <span class="premium-stat-label">NAPS REQUERIDOS</span>
+                    <span class="premium-stat-value">${naps.length}</span>
+                </div>
+                <div class="premium-stat-card">
+                    <span class="premium-stat-label">MARGEN SEGURIDAD</span>
+                    <span class="premium-stat-value">${validations.margen_operativo_db} <small class="premium-stat-unit">dB</small></span>
+                </div>
+            </div>
+
+            <div class="olt-body" style="padding-top: 0;">
+                <div class="olt-section-title">
+                    <i class="fas fa-chart-bar"></i> Detalles de Scoring
+                </div>
+                <!-- ... existing score breakdown ... -->
+    `;
+
+    // Add back the detailed score bars for context (optional but good to keep)
+    // Helpers for progress bars
+    const getBarWidth = (score) => Math.max(5, Math.min(100, score));
+
+    html += `
+        <div class="scores-grid">
+            <div class="score-item">
+                <div class="score-label">
+                    <span>Distancia</span>
+                    <span>${oltOptimal.score_distancia}/100</span>
+                </div>
+                <div class="score-bar-bg">
+                    <div class="score-bar-fill" style="width: ${getBarWidth(oltOptimal.score_distancia)}%;"></div>
+                </div>
+            </div>
+            <div class="score-item">
+                <div class="score-label">
+                    <span>Costo</span>
+                    <span>${oltOptimal.score_costo}/100</span>
+                </div>
+                <div class="score-bar-bg">
+                    <div class="score-bar-fill" style="width: ${getBarWidth(oltOptimal.score_costo)}%;"></div>
+                </div>
+            </div>
+            <div class="score-item">
+                <div class="score-label">
+                    <span>Accesibilidad</span>
+                    <span>${oltOptimal.score_accesibilidad}/100</span>
+                </div>
+                <div class="score-bar-bg">
+                    <div class="score-bar-fill" style="width: ${getBarWidth(oltOptimal.score_accesibilidad)}%;"></div>
+                </div>
+            </div>
+            <div class="score-item">
+                <div class="score-label">
+                    <span>Escalabilidad</span>
+                    <span>${oltOptimal.score_escalabilidad}/100</span>
+                </div>
+                <div class="score-bar-bg">
+                    <div class="score-bar-fill" style="width: ${getBarWidth(oltOptimal.score_escalabilidad)}%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="reason-box">
+            <div class="reason-content">
+                <div class="reason-icon">💡</div>
+                <div class="reason-text">
+                    <h4>Razón de Selección</h4>
+                    <p>${oltOptimal.razon_seleccion || 'Ubicación seleccionada manualmente'}</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Add validation warnings if any
+    if (validations.advertencias && validations.advertencias.length > 0) {
+        html += `
+            <div class="notice-card" style="border-color: #f59e0b; background: #fffbeb;">
+                <strong style="color: #b45309; display: block; margin-bottom: 8px;">⚠️ Advertencias:</strong>
+        `;
+        validations.advertencias.forEach(warning => {
+            html += `<div style="color: #92400e; margin-bottom: 4px;">• ${warning}</div>`;
+        });
+        html += `</div>`;
+    }
+
+    // Add alternative locations info
+    if (result && result.ubicaciones_alternativas && result.ubicaciones_alternativas.length > 0) {
+        html += `
+            <div class="olt-section-title">
+                <i class="fas fa-sync-alt"></i> Alternativas
+            </div>
+            <div class="alternatives-list">
+        `;
+        result.ubicaciones_alternativas.slice(0, 2).forEach((alt, idx) => {
+            html += `
+                <div class="alt-item">
+                    <span class="alt-name">${idx + 2}. ${alt.name}</span>
+                    <span class="alt-score">Score: ${alt.score_total}</span>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    html += `</div></div>`; // Close body and card
+
+    detailsDiv.innerHTML = html;
+}
+
+
+
 // Global Assignments
+window.renderOLTResults = renderOLTResults;
 window.selectProjectType = selectProjectType;
 window.startSelectedFlow = startSelectedFlow;
+
+
+// ==========================================
+// RESTORED NAVIGATION LOGIC
+// ==========================================
+// Removed duplicate declaration of selectedProjectType to avoid SyntaxError
+// let selectedProjectType = null; 
+
+function selectProjectType(type) {
+    selectedProjectType = type;
+    document.querySelectorAll('.project-card').forEach(c => c.classList.remove('selected'));
+    const card = document.getElementById(`card - ${type} `);
+    if (card) card.classList.add('selected');
+
+    // Enable button
+    const btn = document.getElementById('btn-start-project');
+    if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+    }
+    console.log("Proyecto seleccionado:", type);
+}
+
+function startSelectedFlow() {
+    console.log("Iniciando flujo:", selectedProjectType);
+    // Safe check if selectedProjectType is defined
+    if (typeof selectedProjectType !== 'undefined' && !selectedProjectType) {
+        alert("⚠️ Por favor selecciona una opción para continuar (Asistente AI o Manual).");
+        return;
+    } else if (typeof selectedProjectType === 'undefined') {
+        console.error("selectedProjectType is undefined!");
+        return;
+    }
+
+    // Hide dashboard / selection
+    const dash = document.getElementById('netso-dashboard');
+    if (dash) dash.style.display = 'none';
+
+    // Show Page 1
+    const p1 = document.getElementById('page1');
+    if (p1) p1.style.display = 'block';
+
+    // Update step indicator
+    if (typeof updateStepIndicator === 'function') {
+        updateStepIndicator(1);
+    } else {
+        // Fallback implementation if global function missing
+        const steps = document.querySelectorAll('.step-item');
+        steps.forEach((s, idx) => {
+            if (idx + 1 === 1) s.classList.add('active');
+            else s.classList.remove('active');
+        });
+    }
+
+    window.scrollTo(0, 0);
+}
+
+// Ensure updateStepIndicator is available globally if not already
+if (typeof window.updateStepIndicator === 'undefined') {
+    window.updateStepIndicator = function (step) {
+        const steps = document.querySelectorAll('.step-item');
+        steps.forEach((s, idx) => {
+            if (idx + 1 === step) s.classList.add('active');
+            else if (idx + 1 < step) s.classList.add('completed'); // Optional style
+            else s.classList.remove('active');
+        });
+    };
+}
+
+
