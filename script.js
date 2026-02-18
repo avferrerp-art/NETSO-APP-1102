@@ -6892,13 +6892,79 @@ function loadGoogleMapsScript(callback) {
 }
 
 // ==========================================
-// ARCHITECTURE VISUALIZATION (Main Handler)
+// API KEY MANAGEMENT
 // ==========================================
+window.resetGoogleMapsKey = function () {
+    const newKey = prompt("🔑 Ingresa tu nueva Google Maps API Key:");
+    if (newKey && newKey.trim().length > 10) {
+        localStorage.setItem('googleApiKey', newKey.trim());
+        googleApiKey = newKey.trim();
+        alert("✅ API Key actualizada. La página se recargará.");
+        location.reload();
+    } else if (newKey !== null) {
+        alert("❌ API Key inválida o cancelada.");
+    }
+};
+
+// ==========================================
+// ADDRESS SEARCH & GEOCODING
+// ==========================================
+async function handleAddressSearch(map, oltMarker) {
+    const input = document.getElementById('address-search');
+    if (!input || !input.value.trim()) return;
+
+    const geocoder = new google.maps.Geocoder();
+
+    // Mostramos feedback de carga
+    const originalPlaceholder = input.placeholder;
+    input.placeholder = "🔍 Buscando...";
+    input.disabled = true;
+
+    try {
+        const result = await new Promise((resolve, reject) => {
+            geocoder.geocode({ address: input.value }, (results, status) => {
+                if (status === 'OK' && results[0]) {
+                    resolve(results[0]);
+                } else {
+                    reject(status);
+                }
+            });
+        });
+
+        const location = result.geometry.location;
+        const newLat = location.lat();
+        const newLng = location.lng();
+
+        console.log(`📍 Dirección encontrada: ${result.formatted_address} (${newLat}, ${newLng})`);
+
+        // 1. Mover Mapa
+        map.setCenter(location);
+        map.setZoom(16);
+
+        // 2. Mover OLT
+        if (oltMarker) {
+            oltMarker.setPosition(location);
+            // Disparar evento de dragend manualmente para recalcular todo
+            google.maps.event.trigger(oltMarker, 'dragend', { latLng: location });
+        }
+
+        // Feedback visual
+        input.value = result.formatted_address;
+
+    } catch (error) {
+        console.error("Geocoding error:", error);
+        alert("❌ No se encontró la dirección: " + input.value);
+    } finally {
+        input.placeholder = originalPlaceholder;
+        input.disabled = false;
+    }
+}
 window.showArchitecture = showArchitecture;
 
 async function showArchitecture(oltOverride = null) {
     loadGoogleMapsScript(async () => {
         console.log("🗺️ Calculando Arquitectura...");
+        let mstResult = null;
 
         // La sección de presupuesto se muestra ahora a través de renderOLTResults
 
@@ -7024,11 +7090,18 @@ async function showArchitecture(oltOverride = null) {
             const mapDiv = document.getElementById('map-container');
             if (mapDiv) {
                 mapDiv.style.display = 'block';
-                // Now guaranteed to have window.google by loader
+                // 5. Initialize Map with optimal center
                 const map = new google.maps.Map(mapDiv, {
-                    zoom: 14,
-                    center: { lat: oltOptimal.lat, lng: oltOptimal.lng }
+                    zoom: 15,
+                    center: { lat: oltOptimal.lat, lng: oltOptimal.lng },
+                    mapTypeId: google.maps.MapTypeId.HYBRID,
+                    mapTypeControl: true,
+                    streetViewControl: true,
+                    fullscreenControl: true
                 });
+
+                // 🔥 AGREGAR LEYENDA PREMIUM
+                FibraDespliegue.createMapLegend(map);
 
                 // OLT Marker (Red) - DRAGGABLE
                 const oltMarker = new google.maps.Marker({
@@ -7041,6 +7114,21 @@ async function showArchitecture(oltOverride = null) {
                         url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
                     }
                 });
+
+                // Address Search Handler
+                const searchInput = document.getElementById('address-search');
+                if (searchInput) {
+                    // Remove old listeners to avoid duplicates
+                    const newInput = searchInput.cloneNode(true);
+                    searchInput.parentNode.replaceChild(newInput, searchInput);
+
+                    newInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddressSearch(map, oltMarker);
+                        }
+                    });
+                }
 
                 // Real-time InfoWindow
                 const infoWindow = new google.maps.InfoWindow({
@@ -7166,77 +7254,31 @@ async function showArchitecture(oltOverride = null) {
                             window.currentNAPMarkers = [];
                             window.currentPolylines = [];
 
-                            // Redraw NAP markers and polylines
+                            // Redraw NAP markers
                             newNaps.forEach(nap => {
-                                // Determine icon color based on occupancy
-                                let iconColor = 'blue';
-                                if (nap.ocupacion_porcentaje > 90) iconColor = 'orange';
-                                if (nap.ocupacion_porcentaje < 40) iconColor = 'yellow';
+                                // Diferenciar por capacidad para la leyenda
+                                let iconColor = (nap.capacity === 48) ? 'blue' : 'orange';
 
-                                // Create marker
                                 const napMarker = new google.maps.Marker({
                                     position: { lat: nap.lat, lng: nap.lng },
                                     map: map,
                                     icon: `http://maps.google.com/mapfiles/ms/icons/${iconColor}-dot.png`,
                                     title: `${nap.id} - ${nap.cantidad_clientes}/${nap.capacity} clientes (${nap.ocupacion_porcentaje.toFixed(1)}%)`
                                 });
-
                                 window.currentNAPMarkers.push(napMarker);
-
-                                // InfoWindow
-                                const napInfoContent = `
-                                    <div style="font-family: 'Inter', sans-serif; padding: 8px; min-width: 200px;">
-                                        <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px;">${nap.id}</div>
-                                        <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">
-                                            <strong>Tipo:</strong> ${nap.tipo_nap}<br>
-                                            <strong>Clientes:</strong> ${nap.cantidad_clientes} / ${nap.capacity}<br>
-                                            <strong>Ocupación:</strong> ${nap.ocupacion_porcentaje.toFixed(1)}%<br>
-                                            <strong>Distancia OLT:</strong> ${nap.distancia_olt_km.toFixed(2)} km<br>
-                                            <strong>Pérdida Ruta:</strong> ${nap.perdida_ruta_db.toFixed(2)} dB
-                                        </div>
-                                    </div>
-                                `;
-                                const napInfoWindow = new google.maps.InfoWindow({ content: napInfoContent });
-                                napMarker.addListener('click', () => {
-                                    napInfoWindow.open(map, napMarker);
-                                });
-
-                                // Draw fiber route
-                                const fiberPath = new google.maps.Polyline({
-                                    path: [
-                                        { lat: newLat, lng: newLng },
-                                        { lat: nap.lat, lng: nap.lng }
-                                    ],
-                                    geodesic: true,
-                                    strokeColor: '#10b981',
-                                    strokeOpacity: 0.6,
-                                    strokeWeight: 3,
-                                    map: map
-                                });
-
-                                window.currentPolylines.push(fiberPath);
-
-                                // Polyline click event
-                                const routeInfoContent = `
-                                    <div style="font-family: 'Inter', sans-serif; padding: 6px;">
-                                        <strong>Ruta Troncal: OLT → ${nap.id}</strong><br>
-                                        <span style="font-size: 11px; color: #64748b;">
-                                            Distancia: ${nap.distancia_fibra_real_km.toFixed(2)} km<br>
-                                            Pérdida: ${nap.perdida_ruta_db.toFixed(2)} dB<br>
-                                            Empalmes: ${nap.empalmes_estimados}
-                                        </span>
-                                    </div>
-                                `;
-                                const routeInfoWindow = new google.maps.InfoWindow();
-                                fiberPath.addListener('click', (event) => {
-                                    routeInfoWindow.setContent(routeInfoContent);
-                                    routeInfoWindow.setPosition(event.latLng);
-                                    routeInfoWindow.open(map);
-                                });
                             });
 
+                            // 🔥 DIBUJAR MST CON RUTAS REALES
+                            let mstResult = null;
+                            try {
+                                mstResult = await FibraDespliegue.calcularMSTConRutas(map, { lat: newLat, lng: newLng }, newNaps);
+                                console.log("✅ MST con rutas reales completado:", mstResult);
+                            } catch (mstErr) {
+                                console.warn("Fallo al calcular MST en drag:", mstErr);
+                            }
+
                             // Update UI with new results
-                            renderOLTResults(newResult, window.currentProjectClients.length, newNaps, newVal, result);
+                            renderOLTResults(newResult, window.currentProjectClients.length, newNaps, newVal, result, mstResult);
 
                             console.log("✅ Mapa actualizado con nueva configuración OLT-NAPs");
                         }
@@ -7271,21 +7313,17 @@ async function showArchitecture(oltOverride = null) {
                 window.currentNAPMarkers = [];
                 window.currentPolylines = [];
 
+                // Redraw NAP markers
                 naps.forEach(nap => {
-                    // Determine icon color based on occupancy
-                    let iconColor = 'blue'; // Default (Optimal)
-                    if (nap.ocupacion_porcentaje > 90) iconColor = 'orange'; // Saturated
-                    if (nap.ocupacion_porcentaje < 40) iconColor = 'yellow'; // Underutilized
+                    // Diferenciar por capacidad para la leyenda
+                    let iconColor = (nap.capacity === 48) ? 'blue' : 'orange';
 
-                    // Create marker
                     const napMarker = new google.maps.Marker({
                         position: { lat: nap.lat, lng: nap.lng },
                         map: map,
                         icon: `http://maps.google.com/mapfiles/ms/icons/${iconColor}-dot.png`,
                         title: `${nap.id} - ${nap.cantidad_clientes}/${nap.capacity} clientes (${nap.ocupacion_porcentaje.toFixed(1)}%)`
                     });
-
-                    // Store for cleanup
                     window.currentNAPMarkers.push(napMarker);
 
                     // InfoWindow with detailed NAP info
@@ -7305,49 +7343,26 @@ async function showArchitecture(oltOverride = null) {
                     napMarker.addListener('click', () => {
                         napInfoWindow.open(map, napMarker);
                     });
-
-                    // Draw fiber route (OLT to NAP)
-                    const fiberPath = new google.maps.Polyline({
-                        path: [
-                            { lat: oltOptimal.lat, lng: oltOptimal.lng },
-                            { lat: nap.lat, lng: nap.lng }
-                        ],
-                        geodesic: true,
-                        strokeColor: '#10b981', // Green
-                        strokeOpacity: 0.6,
-                        strokeWeight: 3,
-                        map: map
-                    });
-
-                    // Store for cleanup
-                    window.currentPolylines.push(fiberPath);
-
-                    // Polyline click event
-                    const routeInfoContent = `
-                        <div style="font-family: 'Inter', sans-serif; padding: 6px;">
-                            <strong>Ruta Troncal: OLT → ${nap.id}</strong><br>
-                            <span style="font-size: 11px; color: #64748b;">
-                                Distancia: ${nap.distancia_fibra_real_km.toFixed(2)} km<br>
-                                Pérdida: ${nap.perdida_ruta_db.toFixed(2)} dB<br>
-                                Empalmes: ${nap.empalmes_estimados}
-                            </span>
-                        </div>
-                    `;
-                    const routeInfoWindow = new google.maps.InfoWindow();
-                    fiberPath.addListener('click', (event) => {
-                        routeInfoWindow.setContent(routeInfoContent);
-                        routeInfoWindow.setPosition(event.latLng);
-                        routeInfoWindow.open(map);
-                    });
                 });
+
+                // 🔥 DIBUJAR MST CON RUTAS REALES (RENDER INICIAL)
+                try {
+                    mstResult = await FibraDespliegue.calcularMSTConRutas(map, { lat: oltOptimal.lat, lng: oltOptimal.lng }, naps);
+                    console.log("✅ MST Inicial completado:", mstResult);
+                } catch (mstErr) {
+                    console.warn("⚠️ Fallo en cálculo MST inicial (usando fallback):", mstErr);
+                }
             }
 
             // 7. Initial UI Render
-            renderOLTResults(oltOptimal, clientCount, naps, validations, result);
+            renderOLTResults(oltOptimal, window.currentProjectClients.length, naps, validations, result, mstResult);
 
         } catch (err) {
             console.error("❌ Error en showArchitecture:", err);
-            alert("Ocurrió un error al calcular la arquitectura: " + err.message);
+            // Solo mostramos alerta si es error crítico, no de MST
+            if (!err.message.includes('mstResult')) {
+                alert("Ocurrió un error al calcular la arquitectura: " + err.message);
+            }
         } finally {
             if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida";
             console.log("🏁 Proceso de arquitectura finalizado");
@@ -7357,17 +7372,25 @@ async function showArchitecture(oltOverride = null) {
     });
 }
 
-function renderOLTResults(oltOptimal, clientCount, naps, validations, result) {
+function renderOLTResults(oltOptimal, clientCount, naps, validations, result, mstData = null) {
     const detailsDiv = document.getElementById('architecture-details');
     if (!detailsDiv) return;
 
     detailsDiv.style.display = 'block';
 
-    // 1. Calculate Optical Metrics
-    // Assuming standard OLT SFP C+ Tx Power = +4.0 dBm approx
-    const txPower = 4.0;
-    const loss = parseFloat(validations.perdida_estimada_db || 0);
-    const rxPower = (txPower - loss).toFixed(2);
+    // 1. Calculate Optical Metrics with REAL fiber distance if available
+    const txPower = FibraDespliegue.config.P_TX; // 7.0 dBm
+
+    // Si tenemos datos del MST, usamos la distancia real. Si no, usamos la validación estimada.
+    const realDistKm = mstData ? parseFloat(mstData.total_km) : parseFloat(validations.distancia_maxima_km || 0);
+    const lossFiber = realDistKm * FibraDespliegue.config.ALPHA;
+
+    // Splitter loss según capacidad (asumimos predominante)
+    const napCap = naps[0]?.capacity || 16;
+    const splitterLoss = napCap === 48 ? FibraDespliegue.config.SPLITTER_NAP48 : FibraDespliegue.config.SPLITTER_NAP16;
+
+    const totalLoss = lossFiber + splitterLoss + FibraDespliegue.config.PERDIDA_CONECTOR + FibraDespliegue.config.MARGEN_SEGURIDAD;
+    const rxPower = (txPower - totalLoss).toFixed(2);
 
     // Determine Status
     let statusText = "IDEAL";
@@ -7395,12 +7418,12 @@ function renderOLTResults(oltOptimal, clientCount, naps, validations, result) {
             <!-- 2. Light Stats Grid -->
             <div class="premium-stats-grid">
                 <div class="premium-stat-card">
-                    <span class="premium-stat-label">PÉRDIDA EN FIBRA</span>
-                    <span class="premium-stat-value">-${loss} <small class="premium-stat-unit">dB</small></span>
+                    <span class="premium-stat-label">PÉRDIDA EN MST</span>
+                    <span class="premium-stat-value">-${totalLoss.toFixed(2)} <small class="premium-stat-unit">dB</small></span>
                 </div>
                 <div class="premium-stat-card">
-                    <span class="premium-stat-label">CLIENTES META</span>
-                    <span class="premium-stat-value">${clientCount}</span>
+                    <span class="premium-stat-label">DISTANCIA REAL</span>
+                    <span class="premium-stat-value">${realDistKm.toFixed(2)} <small class="premium-stat-unit">km</small></span>
                 </div>
                 <div class="premium-stat-card">
                     <span class="premium-stat-label">NAPS REQUERIDOS</span>
@@ -7408,7 +7431,7 @@ function renderOLTResults(oltOptimal, clientCount, naps, validations, result) {
                 </div>
                 <div class="premium-stat-card">
                     <span class="premium-stat-label">MARGEN SEGURIDAD</span>
-                    <span class="premium-stat-value">${validations.margen_operativo_db} <small class="premium-stat-unit">dB</small></span>
+                    <span class="premium-stat-value">${FibraDespliegue.config.MARGEN_SEGURIDAD} <small class="premium-stat-unit">dB</small></span>
                 </div>
             </div>
 
@@ -7463,15 +7486,6 @@ function renderOLTResults(oltOptimal, clientCount, naps, validations, result) {
             </div>
         </div>
 
-        <div class="reason-box">
-            <div class="reason-content">
-                <div class="reason-icon">💡</div>
-                <div class="reason-text">
-                    <h4>Razón de Selección</h4>
-                    <p>${oltOptimal.razon_seleccion || 'Ubicación seleccionada manualmente'}</p>
-                </div>
-            </div>
-        </div>
     `;
 
     // Add validation warnings if any
@@ -7486,24 +7500,6 @@ function renderOLTResults(oltOptimal, clientCount, naps, validations, result) {
         html += `</div>`;
     }
 
-    // Add alternative locations info
-    if (result && result.ubicaciones_alternativas && result.ubicaciones_alternativas.length > 0) {
-        html += `
-            <div class="olt-section-title">
-                <i class="fas fa-sync-alt"></i> Alternativas
-            </div>
-            <div class="alternatives-list">
-        `;
-        result.ubicaciones_alternativas.slice(0, 2).forEach((alt, idx) => {
-            html += `
-                <div class="alt-item">
-                    <span class="alt-name">${idx + 2}. ${alt.name}</span>
-                    <span class="alt-score">Score: ${alt.score_total}</span>
-                </div>
-            `;
-        });
-        html += `</div>`;
-    }
 
     html += `</div></div>`; // Close body and card
 
