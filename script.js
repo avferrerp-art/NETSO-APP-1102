@@ -2262,6 +2262,19 @@ function applyMaterialRulesToReport(reportItems) {
 }
 
 
+// Helper para determinar capacidad de NAP según densidad
+function getOptimalNAPCapacity(clientCount, radioKm) {
+    // Si no hay radio o clientes, default 16
+    if (!radioKm || !clientCount) return 16;
+
+    // Calcular densidad aproximada (clientes / area circular estimada)
+    const areaKm2 = Math.max(0.01, Math.PI * Math.pow(radioKm, 2));
+    const density = clientCount / areaKm2;
+
+    // Umbral de alta densidad: > 200 clientes/km2 (mismo que NAP_Optimizer)
+    return (density > 200) ? 48 : 16;
+}
+
 function procesarCalculos() {
     try {
         console.log("Iniciando cálculo de diseño...");
@@ -2347,6 +2360,10 @@ function finalizar() {
     const radioVal = getVal('coverageRadius') || 500;
     const radioKm = parseFloat(radioVal) / 1000;
 
+    // DETERMINAR CAPACIDAD DE NAP (16 o 48)
+    const napCap = getOptimalNAPCapacity(hp, radioKm);
+    const divisor = napCap === 48 ? 43.2 : 14.4; // 14.4 es 16 * 0.9 (90% llenado)
+
     let sfpVal = getVal('sfp-status') || 'none'; // Default safe value
 
     // Determinar potencia del SFP
@@ -2356,36 +2373,48 @@ function finalizar() {
     const lossC = (radioKm * 1.5) * 0.35;
 
     // Cálculo de potencia final
-    // sfpP - pérdida_cable - pérdida_splitter - margen_seguridad
-    const pF = (sfpP - lossC - 13.8 - 3.5).toFixed(2);
+    // Splitter loss: 1:16 -> 13.8dB, 1:32 -> 17.2dB, 1:64 -> 20.5dB
+    // 48 puertos usa splitter 1:32 (L2) + algo de L1. Estimado 17.5dB para 48.
+    const splitterLoss = napCap === 48 ? 17.5 : 13.8;
+    const pF = (sfpP - lossC - splitterLoss - 3.5).toFixed(2);
 
-    // Actualizar resultados
-    document.getElementById('res-potencia').innerText = pF + " dBm";
-    document.getElementById('res-hp').innerText = hp;
-    const napsRequeridos = Math.ceil(hp / 14.4);
-    document.getElementById('res-naps-total').innerText = napsRequeridos;
-    document.getElementById('res-loss-cable').innerText = "-" + lossC.toFixed(2) + " dB";
+    // Actualizar resultados (Safe check)
+    const setRes = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = val;
+    };
+    setRes('res-potencia', pF + " dBm");
+    setRes('res-hp', hp);
+    const napsRequeridos = Math.ceil(hp / (napCap * 0.9));
+    setRes('res-naps-total', napsRequeridos);
 
-    // Determinar estado
+    // Actualizar etiqueta si es necesario para claridad
+    const napLabel = document.querySelector('span[id="res-naps-total"]')?.parentElement?.querySelector('span');
+    if (napLabel) napLabel.innerText = `NAPs (${napCap})`;
+
+    setRes('res-loss-cable', "-" + lossC.toFixed(2) + " dB");
+
+    // Determinar estado (Safe)
     const badge = document.getElementById('res-status');
-    if (pF > -27) {
-        badge.innerText = "✓ IDEAL";
-        badge.style.background = "linear-gradient(135deg, #10b981 0%, #059669 100%)";
-    } else if (pF > -28) {
-        badge.innerText = "⚠ ACEPTABLE";
-        badge.style.background = "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)";
-    } else {
-        badge.innerText = "✕ CRÍTICO";
-        badge.style.background = "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)";
+    if (badge) {
+        if (pF > -27) {
+            badge.innerText = "✓ IDEAL";
+            badge.style.background = "linear-gradient(135deg, #10b981 0%, #059669 100%)";
+        } else if (pF > -28) {
+            badge.innerText = "⚠ ACEPTABLE";
+            badge.style.background = "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)";
+        } else {
+            badge.innerText = "✕ CRÍTICO";
+            badge.style.background = "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)";
+        }
     }
 
-    // Generar lista de cotización
-    console.log("Generando lista cotización...");
-    generarListaCotizacion(hp, napsRequeridos, radioKm);
+    // Generar lista de cotización pasándole la capacidad decidida
+    console.log(`Generando lista cotización con NAPs de ${napCap}...`);
+    generarListaCotizacion(hp, napsRequeridos, radioKm, napCap);
 
-    // REGISTRO AUTOMÁTICO DE PROYECTO (PARA DASHBOARD NETSO)
+    // REGISTRO AUTOMÁTICO DE PROYECTO
     if (currentUser && currentUser.role === 'isp') {
-        console.log("Guardando proyecto ISP...");
         saveProjectRegistry({
             id: generateId(),
             ispName: currentUser.company,
@@ -2397,6 +2426,7 @@ function finalizar() {
                 potencia: pF,
                 clientes: hp,
                 naps: napsRequeridos,
+                napCapacity: napCap,
                 cable: lossC.toFixed(2)
             },
             reportData: (() => { try { return generateReportData(); } catch (e) { console.error("Error GenReport:", e); return []; } })()
@@ -2404,7 +2434,6 @@ function finalizar() {
     }
 
     // Cambiar a página de resultados
-    console.log("Navegando a resultados...");
     nextPage(4);
 }
 
@@ -2599,11 +2628,18 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
     // ==========================================
     // 2. EQUIPOS DE DISTRIBUCIÓN
     // ==========================================
-    // NAPS: 1 por cada 14.4 HP (según finalizar) o según clientes directamente
-    const naps = napsRequeridos || Math.ceil(clientes / 16);
-    processReq("📦 Equipos de Distribución", "Caja Nap 16 puertos (Splitter 1x16 APC)", naps, "unidades", "alta", stock.distribucion);
+    // NAPS: Dinámico según capacidad (16 o 48)
+    const napCap = arguments[3] || 16;
+    const naps = napsRequeridos || Math.ceil(clientes / (napCap * 0.9));
 
-    const splittersL1 = Math.ceil(naps / 4);
+    let napProductName = "Caja Nap 16 puertos (Splitter 1x16 APC)";
+    if (napCap === 48) {
+        napProductName = "Caja Nap 48 puertos (2x Splitter 1x32 APC)";
+    }
+
+    processReq("📦 Equipos de Distribución", napProductName, naps, "unidades", "alta", stock.distribucion);
+
+    const splittersL1 = Math.ceil(naps / (napCap === 48 ? 2 : 4));
     processReq("🔗 Conectorización", "Splitter PLC 1x4 (Nivel 1)", splittersL1, "unidades", "alta", stock.conectorizacion);
 
     // ==========================================
@@ -6863,6 +6899,9 @@ window.showArchitecture = showArchitecture;
 async function showArchitecture(oltOverride = null) {
     loadGoogleMapsScript(async () => {
         console.log("🗺️ Calculando Arquitectura...");
+
+        // La sección de presupuesto se muestra ahora a través de renderOLTResults
+
         const btn = event?.target;
         if (btn) btn.innerHTML = "⏳ Procesando...";
 
@@ -7209,7 +7248,9 @@ async function showArchitecture(oltOverride = null) {
                     }
                 });
 
-                // Alternative OLT Locations (Yellow)
+                // Alternative OLT Locations (Yellow) - DISABLED
+                // User can now drag OLT freely, so alternative locations are not needed
+                /*
                 if (result.ubicaciones_alternativas && result.ubicaciones_alternativas.length > 0) {
                     result.ubicaciones_alternativas.forEach((alt, idx) => {
                         new google.maps.Marker({
@@ -7223,6 +7264,7 @@ async function showArchitecture(oltOverride = null) {
                         });
                     });
                 }
+                */
 
                 // NAP Markers (Status-based colors) + Fiber Routes
                 // Initialize global storage for cleanup on OLT drag
@@ -7466,6 +7508,33 @@ function renderOLTResults(oltOptimal, clientCount, naps, validations, result) {
     html += `</div></div>`; // Close body and card
 
     detailsDiv.innerHTML = html;
+
+    // --- SINCRONIZACIÓN DINÁMICA CON LISTA DE MATERIALES ---
+    try {
+        console.log("Sincronizando lista de materiales con resultados del Optimizador...");
+
+        const capCounts = naps.reduce((acc, n) => {
+            const cap = n.capacity || 16;
+            acc[cap] = (acc[cap] || 0) + 1;
+            return acc;
+        }, {});
+
+        const mainCap = parseInt(Object.keys(capCounts).sort((a, b) => capCounts[b] - capCounts[a])[0] || 16);
+        const radioKm = parseFloat(document.getElementById('coverageRadius')?.value || 500) / 1000;
+
+        // Regenerar lista con los datos precisos del mapa
+        generarListaCotizacion(clientCount, naps.length, radioKm, mainCap);
+
+        // Actualizar el resumen rápido
+        const resNapsTotal = document.getElementById('res-naps-total');
+        if (resNapsTotal) {
+            resNapsTotal.innerText = naps.length;
+            const napLabel = resNapsTotal.parentElement.querySelector('span');
+            if (napLabel) napLabel.innerText = `NAPs (${mainCap})`;
+        }
+    } catch (syncErr) {
+        console.warn("Error en sincronización dinámica:", syncErr);
+    }
 }
 
 
