@@ -2330,6 +2330,23 @@ function procesarCalculos() {
     }
 }
 
+// ============================================
+// NAP MIX OPTIMIZER: 16 + 48 puertos
+// ============================================
+function calcularMixNAPs(hp) {
+    const util = 0.9; // 90% utilización objetivo
+    const cap16 = 16 * util; // 14.4 clientes por NAP de 16
+    const cap48 = 48 * util; // 43.2 clientes por NAP de 48
+
+    // Maximizar NAPs de 48 (menor cantidad de equipos)
+    const naps48 = Math.floor(hp / cap48);
+    const remanente = hp - naps48 * cap48;
+    const naps16 = remanente > 0 ? Math.ceil(remanente / cap16) : 0;
+    const total = naps48 + naps16;
+
+    return { naps16, naps48, total };
+}
+
 function finalizar() {
     // Helper para obtener valor seguro
     const getVal = (id) => {
@@ -2356,8 +2373,30 @@ function finalizar() {
     // Actualizar resultados
     document.getElementById('res-potencia').innerText = pF + " dBm";
     document.getElementById('res-hp').innerText = hp;
-    const napsRequeridos = Math.ceil(hp / 14.4);
-    document.getElementById('res-naps-total').innerText = napsRequeridos;
+
+    // Cálculo optimizado de mezcla NAPs 16+48
+    const napMix = calcularMixNAPs(hp);
+    const napsRequeridos = napMix.total;
+    window.suggestedNapMix = napMix; // Guardar para materiales y mapa
+
+    // Mostrar desglose en UI
+    const napTotalEl = document.getElementById('res-naps-total');
+    if (napTotalEl) {
+        napTotalEl.innerText = napsRequeridos;
+        // Mostrar desglose debajo si existe el contenedor
+        let desglose = document.getElementById('res-naps-desglose');
+        if (!desglose) {
+            desglose = document.createElement('div');
+            desglose.id = 'res-naps-desglose';
+            desglose.style.cssText = 'font-size:11px; color:#64748b; margin-top:4px;';
+            napTotalEl.parentNode.appendChild(desglose);
+        }
+        const partes = [];
+        if (napMix.naps48 > 0) partes.push(`${napMix.naps48}×48p`);
+        if (napMix.naps16 > 0) partes.push(`${napMix.naps16}×16p`);
+        desglose.innerText = partes.length > 0 ? '(' + partes.join(' + ') + ')' : '';
+    }
+
     document.getElementById('res-loss-cable').innerText = "-" + lossC.toFixed(2) + " dB";
 
     // Determinar estado
@@ -2593,9 +2632,40 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
     // ==========================================
     // 2. EQUIPOS DE DISTRIBUCIÓN
     // ==========================================
-    // NAPS: 1 por cada 14.4 HP (según finalizar) o según clientes directamente
-    const naps = napsRequeridos || Math.ceil(clientes / 16);
-    processReq("📦 Equipos de Distribución", "Caja Nap 16 puertos (Splitter 1x16 APC)", naps, "unidades", "alta", stock.distribucion);
+    // NAPS: Separar 16 y 48 puertos.
+    // Si el mapa tiene datos reales (window.naps), usar esos conteos exactos.
+    // Si no, usar cálculo por defecto (todo de 16 puertos).
+    let naps16 = 0;
+    let naps48 = 0;
+
+    if (window.naps && window.naps.length > 0) {
+        // Leer del mapa: contar por capacidad
+        window.naps.forEach(n => {
+            if (n.capacidad === 48) naps48++;
+            else naps16++; // 16 es el default
+        });
+        console.log(`Materiales desde mapa: ${naps16} NAPs de 16, ${naps48} NAPs de 48`);
+    } else if (window.suggestedNapMix) {
+        // Usar mezcla óptima calculada por calcularMixNAPs() en finalizar()
+        naps16 = window.suggestedNapMix.naps16;
+        naps48 = window.suggestedNapMix.naps48;
+        console.log(`Materiales desde suggestedNapMix: ${naps16} NAPs de 16, ${naps48} NAPs de 48`);
+    } else {
+        // Fallback final: calcular mix ahora mismo
+        const mix = calcularMixNAPs(clientes);
+        naps16 = mix.naps16;
+        naps48 = mix.naps48;
+        console.log(`Materiales calculados en el momento: ${naps16} NAPs de 16, ${naps48} NAPs de 48`);
+    }
+
+    const naps = naps16 + naps48; // Total para cálculos posteriores (splitters, etc.)
+
+    if (naps16 > 0) {
+        processReq("📦 Equipos de Distribución", "Caja Nap 16 puertos (Splitter 1x16 APC)", naps16, "unidades", "alta", stock.distribucion);
+    }
+    if (naps48 > 0) {
+        processReq("📦 Equipos de Distribución", "Caja Nap 48 puertos (2x Splitter 1x32 APC)", naps48, "unidades", "alta", stock.distribucion);
+    }
 
     const splittersL1 = Math.ceil(naps / 4);
     processReq("🔗 Conectorización", "Splitter PLC 1x4 (Nivel 1)", splittersL1, "unidades", "alta", stock.conectorizacion);
@@ -5813,16 +5883,358 @@ class OLT_Optimizer {
 }
 
 // ==========================================
+// NAP OPTIMIZER ALGORITHM
+// ==========================================
+class NAP_Optimizer {
+    constructor(clients, capacity = 16) {
+        this.clients = clients || [];
+        this.capacity = capacity;
+    }
+
+    clusterClients() {
+        if (this.clients.length === 0) return [];
+
+        const clusters = [];
+        const unassigned = [...this.clients];
+
+        while (unassigned.length > 0) {
+            // Pick a seed (greedy)
+            const seed = unassigned.shift();
+            const currentCluster = [seed];
+
+            // Find nearest neighbors within ~150m (typical NAP range)
+            for (let i = 0; i < unassigned.length; i++) {
+                if (currentCluster.length >= this.capacity) break;
+
+                const d = OLT_Optimizer.getDistanceKm(seed.lat, seed.lng, unassigned[i].lat, unassigned[i].lng);
+                if (d <= 0.15) { // 150 meters
+                    currentCluster.push(unassigned[i]);
+                    unassigned.splice(i, 1);
+                    i--;
+                }
+            }
+
+            // Calculate center of cluster
+            let sumLat = 0, sumLng = 0;
+            currentCluster.forEach(c => {
+                sumLat += c.lat;
+                sumLng += c.lng;
+            });
+
+            clusters.push({
+                lat: sumLat / currentCluster.length,
+                lng: sumLng / currentCluster.length,
+                clients: currentCluster,
+                clientCount: currentCluster.length
+            });
+        }
+        return clusters;
+    }
+
+    clusterKMeans(k) {
+        if (this.clients.length === 0 || k <= 0) return [];
+        if (k >= this.clients.length) {
+            // If more NAPs than clients, each client is a NAP
+            return this.clients.map(c => ({
+                lat: c.lat,
+                lng: c.lng,
+                clients: [c],
+                clientCount: 1
+            }));
+        }
+
+        // 1. Initialize Centroids (Randomly pick k clients)
+        let centroids = [];
+        const indices = new Set();
+        while (indices.size < k) {
+            indices.add(Math.floor(Math.random() * this.clients.length));
+        }
+        indices.forEach(i => centroids.push({ ...this.clients[i] }));
+
+        let assignments = new Array(this.clients.length).fill(-1);
+        let changed = true;
+        let iterations = 0;
+
+        while (changed && iterations < 20) { // Max 20 iterations
+            changed = false;
+
+            // 2. Assign clients to nearest centroid
+            const newClusters = Array(k).fill(null).map(() => []);
+
+            this.clients.forEach((client, idx) => {
+                let minDist = Infinity;
+                let bestK = 0;
+
+                centroids.forEach((c, cIdx) => {
+                    const d = OLT_Optimizer.getDistanceKm(client.lat, client.lng, c.lat, c.lng);
+                    if (d < minDist) {
+                        minDist = d;
+                        bestK = cIdx;
+                    }
+                });
+
+                if (assignments[idx] !== bestK) {
+                    assignments[idx] = bestK;
+                    changed = true;
+                }
+                newClusters[bestK].push(client);
+            });
+
+            // 3. Recompute Centroids
+            if (changed) {
+                centroids = centroids.map((c, cIdx) => {
+                    const cluster = newClusters[cIdx];
+                    if (cluster.length === 0) return c; // Keep old pos if empty
+
+                    let sumLat = 0, sumLng = 0;
+                    cluster.forEach(cl => { sumLat += cl.lat; sumLng += cl.lng; });
+                    return {
+                        lat: sumLat / cluster.length,
+                        lng: sumLng / cluster.length
+                    };
+                });
+            }
+            iterations++;
+        }
+
+        // Return formatted clusters
+        return centroids.map((c, idx) => {
+            const clusterClients = this.clients.filter((_, pid) => assignments[pid] === idx);
+            return {
+                lat: c.lat,
+                lng: c.lng,
+                clients: clusterClients,
+                clientCount: clusterClients.length
+            };
+        });
+    }
+}
+
+// ==========================================
+// POLE MANAGER (DATA FROM OSM)
+// ==========================================
+class PoleManager {
+    constructor() {
+        // Global storage for routing usage later
+        window.postes = window.postes || [];
+    }
+
+    async fetchPoles(lat, lng, radiusMeters) {
+        console.log(`__PHASE 3__: Fetching infrastructure around ${lat}, ${lng}...`);
+        const radius = radiusMeters / 1000;
+
+        // Overpass QL to get poles AND roads
+        const query = `
+            [out:json][timeout:25];
+            (
+              node["man_made"="utility_pole"](around:${radiusMeters},${lat},${lng});
+              node["power"="pole"](around:${radiusMeters},${lat},${lng});
+              node["highway"="lighting"](around:${radiusMeters},${lat},${lng});
+              node["telecom"="pole"](around:${radiusMeters},${lat},${lng});
+              way["highway"](around:${radiusMeters},${lat},${lng});
+            );
+            out body;
+            >;
+            out skel qt;
+        `;
+
+        try {
+            const response = await fetch("https://overpass-api.de/api/interpreter", {
+                method: "POST",
+                body: query
+            });
+            const data = await response.json();
+
+            const realPoles = [];
+            const ways = [];
+            const nodes = {};
+
+            data.elements.forEach(el => {
+                if (el.type === 'node') {
+                    nodes[el.id] = { lat: el.lat, lng: el.lon };
+
+                    let type = null;
+                    if (el.tags) {
+                        if (el.tags.power === 'pole') type = 'electric';
+                        else if (el.tags.man_made === 'utility_pole') type = 'utility';
+                        else if (el.tags.highway === 'lighting') type = 'light';
+                        else if (el.tags.telecom === 'pole') type = 'telecom';
+                    }
+
+                    if (type) {
+                        realPoles.push({
+                            id: el.id,
+                            lat: el.lat,
+                            lng: el.lon,
+                            type: type,
+                            source: 'osm'
+                        });
+                    }
+                } else if (el.type === 'way') {
+                    ways.push(el);
+                }
+            });
+
+            // Interpolate Virtual Poles on ways
+            const virtualPoles = this.generateVirtualPoles(ways, nodes);
+
+            // Update Global State
+            window.postes = [...realPoles, ...virtualPoles];
+
+            console.log(`Infrastructure updated: ${realPoles.length} real, ${virtualPoles.length} virtual.`);
+            return window.postes;
+        } catch (e) {
+            console.error("Overpass error:", e);
+            return [];
+        }
+    }
+
+    generateVirtualPoles(ways, nodes) {
+        const virtual = [];
+        const intervalKm = 0.04; // 40 meters
+        let vId = 0;
+
+        ways.forEach(way => {
+            if (!way.nodes) return;
+            for (let i = 0; i < way.nodes.length - 1; i++) {
+                const n1 = nodes[way.nodes[i]];
+                const n2 = nodes[way.nodes[i + 1]];
+                if (!n1 || !n2) continue;
+
+                const dist = OLT_Optimizer.getDistanceKm(n1.lat, n1.lng, n2.lat, n2.lng);
+                const steps = Math.floor(dist / intervalKm);
+
+                for (let j = 1; j <= steps; j++) {
+                    const ratio = j / (steps + 1);
+                    virtual.push({
+                        id: `v_${vId++}`,
+                        lat: n1.lat + (n2.lat - n1.lat) * ratio,
+                        lng: n1.lng + (n2.lng - n1.lng) * ratio,
+                        type: 'virtual',
+                        source: 'generated'
+                    });
+                }
+            }
+        });
+        return virtual;
+    }
+
+    snapToNearestPole(coords) {
+        if (window.postes.length === 0) return coords;
+
+        let nearest = window.postes[0];
+        let minDist = OLT_Optimizer.getDistanceKm(coords.lat, coords.lng, nearest.lat, nearest.lng);
+
+        window.postes.forEach(p => {
+            const d = OLT_Optimizer.getDistanceKm(coords.lat, coords.lng, p.lat, p.lng);
+            if (d < minDist) {
+                minDist = d;
+                nearest = p;
+            }
+        });
+
+        return { lat: nearest.lat, lng: nearest.lng, type: nearest.type, snappedId: nearest.id };
+    }
+}
+
+// ==========================================
 // MAPLIBRE IMPLEMENTATION (PHASE 1.5)
 // ==========================================
 
 // Global map variable
 let map = null;
 let currentOLTMarker = null;
+let napMarkers = [];
+let poleMarkers = [];
+let poleManager = new PoleManager();
 
 // Override or define showArchitecture
 window.showArchitecture = function () {
     console.log("Iniciando Fase 1.5: Cálculo de OLT y Visualización");
+
+    // Inject CSS for custom pins if not present
+    if (!document.getElementById('pin-styles')) {
+        const style = document.createElement('style');
+        style.id = 'pin-styles';
+        style.innerHTML = `
+            .custom-pin {
+                width: 20px;
+                height: 20px;
+                border-radius: 50% 50% 50% 0;
+                transform: rotate(-45deg);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                border: 2px solid white;
+                cursor: pointer;
+                transition: transform 0.2s;
+                position: relative; /* For z-index context */
+            }
+            .custom-pin:hover {
+                transform: rotate(-45deg) scale(1.1);
+                z-index: 10;
+            }
+            .custom-pin::after {
+                content: '';
+                width: 6px;
+                height: 6px;
+                background: #1e1e1e; /* Black dot */
+                border-radius: 50%;
+                transform: rotate(45deg); /* Counter-rotate if needed, but circle is circle */
+            }
+            .pin-label {
+                background: white; /* Clean background for text */
+                padding: 1px 4px;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+                color: #333;
+                margin-top: 4px; /* Space below pin */
+                box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+                white-space: nowrap;
+                border: 1px solid #ccc;
+                pointer-events: none; /* Let clicks pass to marker */
+            }
+            .pin-wrapper {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-end; /* Pin at top? No, anchor is usually bottom. */
+                /* MapLibre anchors the element's 'anchor' point (e.g. bottom) to the coord. */
+                /* If we return a wrapper, we need to ensure the "pin tip" is at the anchor. */
+                /* The pin tip is the bottom-left corner of the rotated square. */
+                /* This is tricky with a wrapper because the rotation messes up the bounding box. */
+            }
+            .pin-olt { background-color: #ef4444; } /* Red */
+            .pin-nap-16 { background-color: #f97316; } /* Orange */
+            .pin-nap-48 { background-color: #3b82f6; } /* Blue */
+            
+            /* Logic for wrapper centering:
+               The wrapper will be the Marker element. 
+               MapLibre centers the 'anchor' point of this element on the lat/lng.
+               If usage anchor='bottom', the bottom-center of the wrapper is the lat/lng.
+               We want the PIN TIP to be at the bottom-center.
+               
+               Structure:
+               Wrapper (Flex Col)
+                 [Pin]
+                 [Label]
+               
+               If we anchor 'bottom', the bottom of the "Label" will be at the coordinate. WRONG.
+               We want the Label BELOW the coordinate (or above?), and the PIN TIP at the coordinate.
+               
+               Easier approach:
+               Label inside the pin element but absolute positioned?
+               Or just offset the label in CSS.
+               
+               Let's try:
+               Wrapper contains Pin.
+               Label is absolute positioned relative to wrapper.
+            */
+        `;
+        document.head.appendChild(style);
+    }
 
     // 1. Gather User Inputs
     const censoInput = document.getElementById('censo');
@@ -5838,6 +6250,10 @@ window.showArchitecture = function () {
     const centerLat = 10.4806;
     const centerLng = -66.9036;
     const syntheticClients = [];
+
+    // Store globally for search access
+    window.currentSyntheticClients = syntheticClients;
+    window.currentRadiusMeters = radiusMeters;
 
     for (let i = 0; i < clientCount; i++) {
         // Random point within radius
@@ -5859,6 +6275,26 @@ window.showArchitecture = function () {
     const optimizer = new OLT_Optimizer(syntheticClients);
     const result = optimizer.findOptimalOLT();
     const oltOptimal = result ? result.optimal : { lat: centerLat, lng: centerLng };
+
+    // 3.1. Run NAP Optimizer
+    const napOptim = new NAP_Optimizer(syntheticClients, 16);
+
+    // Try to get suggested NAP count from Phase 1 calculation
+    const suggestedNapsEl = document.getElementById('res-naps-total');
+    let rawNaps = [];
+
+    if (suggestedNapsEl && suggestedNapsEl.innerText !== '--') {
+        const k = parseInt(suggestedNapsEl.innerText);
+        if (!isNaN(k) && k > 0) {
+            console.log(`Using suggested NAP count: ${k}`);
+            rawNaps = napOptim.clusterKMeans(k);
+        } else {
+            rawNaps = napOptim.clusterClients();
+        }
+    } else {
+        // Fallback if no calculation was run (direct access)
+        rawNaps = napOptim.clusterClients();
+    }
 
     // 4. Update UI
     const mapContainer = document.getElementById('map-container');
@@ -5887,13 +6323,13 @@ window.showArchitecture = function () {
         `;
     }
 
-    // 5. Initialize/Update Map
+    // 5. Initialize/Update Map (fullRefresh=true: recalculate NAPs)
     if (!map) {
-        initMap(oltOptimal);
+        initMap(oltOptimal, rawNaps, radiusMeters);
     } else {
         map.resize();
-        // Update marker and center
-        updateMap(oltOptimal);
+        // fullRefresh=true: always recalculate on showArchitecture
+        updateMap(oltOptimal, rawNaps, radiusMeters, true);
     }
 
     // Scroll to map
@@ -5903,48 +6339,320 @@ window.showArchitecture = function () {
 };
 
 // Functions to handle map updates
-// Functions to handle map updates
-function updateMap(oltLocation) {
+// fullRefresh=true means regenerate NAPs from rawNaps (first load / showArchitecture)
+// fullRefresh=false (default) means just re-render existing window.naps (OLT drag, address search)
+async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false) {
     if (!map) return;
 
-    map.flyTo({
-        center: [oltLocation.lng, oltLocation.lat],
-        zoom: 16 // Zoom in closer on OLT
+    // Clear old markers only (NOT window.naps, unless fullRefresh)
+    if (currentOLTMarker) currentOLTMarker.remove();
+    napMarkers.forEach(m => m.remove());
+    napMarkers = [];
+    poleMarkers.forEach(m => m.remove());
+    poleMarkers = [];
+
+    // 1. Fetch poles + Reset NAPs ONLY on fullRefresh
+    if (fullRefresh && radiusMeters) {
+        await poleManager.fetchPoles(oltLocation.lat, oltLocation.lng, radiusMeters + 200);
+
+        // Snap auto-generated NAPs to poles and reset window.naps
+        if (rawNaps && rawNaps.length > 0) {
+            // Sort by clientCount descending to assign 48p to the busiest clusters
+            const sortedByLoad = [...rawNaps].sort((a, b) => (b.clientCount || 0) - (a.clientCount || 0));
+            const naps48count = window.suggestedNapMix ? window.suggestedNapMix.naps48 : 0;
+            const ids48 = new Set(sortedByLoad.slice(0, naps48count).map((_, i) => i));
+
+            window.naps = sortedByLoad.map((n, i) => {
+                const snapped = poleManager.snapToNearestPole(n);
+                const capacidad = ids48.has(i) ? 48 : 16;
+                return {
+                    id: `nap_${i + 1}`,
+                    lat: snapped.lat,
+                    lng: snapped.lng,
+                    capacidad,
+                    clientesCubiertos: n.clientCount,
+                    distanciaOLT: OLT_Optimizer.getDistanceKm(oltLocation.lat, oltLocation.lng, snapped.lat, snapped.lng) * 1000,
+                    type: snapped.type
+                };
+            });
+        } else {
+            window.naps = []; // Reset to empty if no rawNaps
+        }
+    }
+    // If NOT fullRefresh: window.naps stays as-is (user's manually placed/moved NAPs are preserved)
+
+    // 2. Render Poles (from global state)
+    console.log(`Rendering ${window.postes.length} poles...`);
+    window.postes.forEach(p => {
+        const color = p.type === 'electric' ? '#eab308' : // Yellow
+            p.type === 'light' ? '#f97316' :    // Orange
+                p.type === 'telecom' ? '#3b82f6' :  // Blue
+                    p.type === 'virtual' ? '#cbd5e1' : '#64748b'; // Gray/DarkGray
+
+        const marker = new maplibregl.Marker({
+            element: createSmallDot(color)
+        })
+            .setLngLat([p.lng, p.lat])
+            .setPopup(new maplibregl.Popup({ closeButton: false }).setHTML(`<span style="font-size:10px">${p.type}</span>`))
+            .addTo(map);
+        poleMarkers.push(marker);
     });
 
-    if (currentOLTMarker) currentOLTMarker.remove();
+    // 3. Render NAPs (from global state)
+    // Recalculate OLT dist for all (in case OLT moved)
+    window.naps.forEach((nap, i) => {
+        nap.distanciaOLT = OLT_Optimizer.getDistanceKm(oltLocation.lat, oltLocation.lng, nap.lat, nap.lng) * 1000;
+        renderNapMarker(nap, i + 1); // Pass index + 1 for numbering
+    });
 
-    // Create Draggable Marker
+    // Update Optimization Label
+    updateOptimizationLabel(window.naps, radiusMeters || window.currentRadiusMeters || 500);
+
+    // 4. Create Draggable OLT Marker with Custom Pin
+    const oltPin = createCustomPin('olt');
     currentOLTMarker = new maplibregl.Marker({
-        color: 'red',
-        draggable: true
+        element: oltPin,
+        draggable: true,
+        anchor: 'bottom'
     })
         .setLngLat([oltLocation.lng, oltLocation.lat])
-        .setPopup(new maplibregl.Popup().setHTML("<b>OLT Sugerida</b><br>Arrastrame para mover"))
+        .setPopup(new maplibregl.Popup({ offset: 35 }).setHTML("<b>📍 OLT Central</b><br>Radio: 10km"))
         .addTo(map);
 
     // Listen for drag end to update coordinates
-    currentOLTMarker.on('dragend', () => {
+    currentOLTMarker.on('dragend', async () => {
         const lngLat = currentOLTMarker.getLngLat();
         console.log(`OLT Moved to: ${lngLat.lat}, ${lngLat.lng}`);
 
-        // Update UI details with new location
+        // Re-render only (fullRefresh=false): preserves user's NAPs
+        updateMap({ lat: lngLat.lat, lng: lngLat.lng }, null, null, false);
+
+        // Update UI details
         const detailsDiv = document.getElementById('architecture-details');
         if (detailsDiv) {
             detailsDiv.innerHTML = `
                 <div style="background: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 10px; margin-bottom: 10px;">
-                    <p style="margin:0; font-weight:bold; color: #0284c7;">✅ OLT Ubicada (Manual)</p>
+                    <p style="margin:0; font-weight:bold; color: #0284c7;">✅ OLT Reubicada</p>
                     <p style="margin:5px 0 0; font-size:13px; color: #0369a1;">
-                        Ubicación ajustada manualmente.
-                        <br>Coordenadas: ${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}
+                        Nuevas Coordenadas: ${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}
                     </p>
                 </div>
             `;
         }
     });
+
+    // 5. Draw Connection Lines (Simple Polyline for now - Phase 4 will accept routing)
+    drawNetworkLines(oltLocation, window.naps);
+
+    // 6. Draw Coverage Circles (Phase 3.5)
+    drawCoverageCircles(oltLocation, window.naps);
 }
 
-function initMap(initialLoc) {
+function renderNapMarker(nap, index) {
+    const typeClass = nap.capacidad === 48 ? 'nap-48' : 'nap-16';
+    const label = `NAP ${index}`;
+    const pin = createCustomPin(typeClass, label);
+
+    // Create marker with custom element
+    const marker = new maplibregl.Marker({
+        element: pin,
+        draggable: true,
+        anchor: 'bottom', // Anchors the bottom of the wrapper (label bottom) to the point.
+        offset: [0, 25]   // Shift down by ~25px so the Pin's tip (above label) is at the point, and label is below.
+    })
+        .setLngLat([nap.lng, nap.lat])
+        .setPopup(new maplibregl.Popup({ offset: 35 }).setHTML(`
+            <div style="text-align:center;">
+                <b>${nap.tipo || 'NAP'}</b><br>
+                <span style="font-size:12px; color:#64748b;">${nap.capacidad} Puertos</span><br>
+                Dist: ${nap.distanciaOLT.toFixed(0)}m<br>
+                <div style="background:#f1f5f9; border-radius:4px; padding:2px; margin:5px 0; font-size:11px;">
+                   <i>Radio Cob: 300m</i>
+                </div>
+                <button onclick="removeNap('${nap.id}')" style="color:white; background:#ef4444; border:none; border-radius:4px; padding:2px 6px; margin-top:5px; cursor:pointer;">Eliminar</button>
+            </div>
+        `))
+        .addTo(map);
+
+    marker.on('dragend', () => {
+        const pos = marker.getLngLat();
+        nap.lat = pos.lat;
+        nap.lng = pos.lng;
+
+        // Snap to nearest pole
+        const snapped = poleManager.snapToNearestPole({ lat: pos.lat, lng: pos.lng });
+        marker.setLngLat([snapped.lng, snapped.lat]);
+        nap.lat = snapped.lat;
+        nap.lng = snapped.lng;
+
+        // Refresh system (no fullRefresh: preserve other NAPs)
+        const oltPos = currentOLTMarker.getLngLat();
+        updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
+    });
+
+    napMarkers.push(marker);
+}
+
+// Function to draw coverage circles
+function drawCoverageCircles(olt, naps) {
+    // A. OLT 10km Radius
+    const oltPoly = generateCirclePolygon({ lat: olt.lat, lng: olt.lng }, 10);
+
+    // Source Data for OLT
+    const oltSource = {
+        'type': 'FeatureCollection',
+        'features': [{
+            'type': 'Feature',
+            'properties': {},
+            'geometry': {
+                'type': 'Polygon',
+                'coordinates': [oltPoly]
+            }
+        }]
+    };
+
+    // Update/Add OLT Source
+    if (map.getSource('olt-coverage')) {
+        map.getSource('olt-coverage').setData(oltSource);
+    } else {
+        map.addSource('olt-coverage', { 'type': 'geojson', 'data': oltSource });
+        map.addLayer({
+            'id': 'olt-coverage-layer',
+            'type': 'fill',
+            'source': 'olt-coverage',
+            'paint': {
+                'fill-color': '#ef4444',
+                'fill-opacity': 0.1,
+                'fill-outline-color': '#ef4444'
+            }
+        });
+    }
+
+    // NAP Coverage Circles REMOVED per user request (too saturated)
+    if (map.getLayer('nap-coverage-layer')) map.removeLayer('nap-coverage-layer');
+    if (map.getSource('nap-coverage')) map.removeSource('nap-coverage');
+}
+
+function drawNetworkLines(olt, naps) {
+    const features = naps.map(nap => ({
+        'type': 'Feature',
+        'geometry': {
+            'type': 'LineString',
+            'coordinates': [
+                [olt.lng, olt.lat],
+                [nap.lng, nap.lat]
+            ]
+        }
+    }));
+
+    const sourceData = {
+        'type': 'FeatureCollection',
+        'features': features
+    };
+
+    if (map.getSource('network-lines')) {
+        map.getSource('network-lines').setData(sourceData);
+    } else {
+        map.addSource('network-lines', {
+            'type': 'geojson',
+            'data': sourceData
+        });
+        map.addLayer({
+            'id': 'network-lines-layer',
+            'type': 'line',
+            'source': 'network-lines',
+            'layout': {
+                'line-join': 'round',
+                'line-cap': 'round'
+            },
+            'paint': {
+                'line-color': '#3b82f6',
+                'line-width': 2,
+                'line-dasharray': [2, 2] // Dashed line for logical connection
+            }
+        });
+    }
+}
+
+// Global helper to remove NAP
+window.removeNap = function (id) {
+    if (!confirm("¿Eliminar esta NAP?")) return;
+    window.naps = window.naps.filter(n => n.id !== id);
+    if (currentOLTMarker) {
+        const oltPos = currentOLTMarker.getLngLat();
+        updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
+    }
+};
+
+// Map Click to Add NAP
+function enableMapInteractions() {
+    map.on('click', (e) => {
+        // Prevent if clicking on existing marker handled by bubbling?
+        // MapLibre events are separate.
+        const features = map.queryRenderedFeatures(e.point);
+        // If clicked on a marker logic check... (skipped for MVP simplicity)
+
+        if (e.originalEvent.target.closest('.maplibregl-popup')) return;
+        if (e.originalEvent.target.tagName === 'BUTTON') return;
+
+        // Custom Logic: Click map -> Ask Capacity -> Add NAP
+        // Simple native interaction for now
+        // Only trigger if modifier key held? OR just always?
+        // Always triggering might be annoying if dragging map.
+        // 'click' only fires on release without drag.
+
+        // Let's add a small check: "Shift+Click" to add?
+        // Or just Confirm?
+
+        // For user friendly: Just confirm.
+        // "Deseas agregar una NAP aquí?"
+
+        // Actually, let's use a non-blocking UI or just do it.
+        // Let's ASK via prompt for capacity to kill two birds with one stone.
+        // If cancel, nothing happens.
+    });
+
+    // Better: Add a custom control or just Right Click? 
+    // MapLibre 'contextmenu'
+    map.on('contextmenu', (e) => {
+        const cap = prompt("📝 Añadir NAP en este punto.\n\nIngresa capacidad (16 o 48):", "16");
+        if (cap !== "16" && cap !== "48") return;
+
+        const newNap = {
+            id: `nap_man_${Date.now()}`,
+            lat: e.lngLat.lat,
+            lng: e.lngLat.lng,
+            capacidad: parseInt(cap),
+            tipo: `NAP ${cap}`,
+            clientesCubiertos: 0,
+            distanciaOLT: 0
+        };
+
+        // Snap
+        const snapped = poleManager.snapToNearestPole(newNap);
+        newNap.lat = snapped.lat;
+        newNap.lng = snapped.lng;
+        newNap.type = snapped.type;
+
+        window.naps.push(newNap);
+
+        const oltPos = currentOLTMarker.getLngLat();
+        // Re-draw NAPs only, no full reset
+        updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
+    });
+}
+
+function createSmallDot(color) {
+    const el = document.createElement('div');
+    el.style.width = '6px';
+    el.style.height = '6px';
+    el.style.backgroundColor = color;
+    el.style.borderRadius = '50%';
+    el.style.cursor = 'pointer';
+    return el;
+}
+
+function initMap(initialLoc, rawNaps, radiusMeters) {
     const mapContainer = document.getElementById('map-container');
     if (!mapContainer) return;
 
@@ -5963,24 +6671,22 @@ function initMap(initialLoc) {
         map.addControl(new maplibregl.NavigationControl());
 
         map.on('load', () => {
-            console.log("✅ MapLibre cargado - Fase 2");
+            console.log("✅ MapLibre cargado - Fase 2.5");
             if (initialLoc) {
-                updateMap(initialLoc);
+                updateMap(initialLoc, rawNaps, radiusMeters, true); // fullRefresh on first load
             } else {
-                // Default marker if no initialLoc passed (fallback)
+                // Default marker fallback
                 currentOLTMarker = new maplibregl.Marker({ color: 'red', draggable: true })
                     .setLngLat(startPos)
                     .setPopup(new maplibregl.Popup().setHTML("<b>Ubicación Inicial</b>"))
                     .addTo(map);
-
-                currentOLTMarker.on('dragend', () => {
-                    const lngLat = currentOLTMarker.getLngLat();
-                    console.log(`OLT Moved to: ${lngLat.lat}, ${lngLat.lng}`);
-                });
             }
 
             // Enable Address Search (Nominatim)
             enableAddressSearch();
+
+            // Enable Interactive NAPs (Click/Context Menu)
+            enableMapInteractions();
         });
 
     } catch (e) {
@@ -6021,8 +6727,8 @@ function enableAddressSearch() {
 
                     console.log(`Found: ${lat}, ${lng}`);
 
-                    // Move visual elements
-                    updateMap({ lat, lng });
+                    // Move OLT to new address — preserve existing NAPs (fullRefresh=false)
+                    updateMap({ lat, lng }, null, null, false);
 
                     // Update UI text
                     const detailsDiv = document.getElementById('architecture-details');
@@ -6053,5 +6759,136 @@ function enableAddressSearch() {
             }
         }
     });
+}
+
+function updateOptimizationLabel(naps, radiusMeters) {
+    const labelId = 'opt-label-badge';
+    let badge = document.getElementById(labelId);
+
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.id = labelId;
+        badge.style.position = 'absolute';
+        badge.style.top = '10px';
+        badge.style.left = '50%';
+        badge.style.transform = 'translateX(-50%)';
+        badge.style.padding = '8px 15px';
+        badge.style.borderRadius = '20px';
+        badge.style.fontWeight = 'bold';
+        badge.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+        badge.style.zIndex = '1000';
+        badge.style.fontSize = '14px';
+        badge.style.transition = 'all 0.3s ease';
+
+        const mapContainer = document.getElementById('map-container');
+        if (mapContainer) mapContainer.appendChild(badge);
+    }
+
+    if (!naps || naps.length === 0) {
+        badge.style.display = 'none';
+        return;
+    }
+    badge.style.display = 'block';
+
+    // Metrics Calculation
+    let withinRadius = 0;
+    // Fix: Use 10km (10000m) as the OLT connectivity limit, consistent with the visual red circle.
+    // previously it was using 'radiusMeters' which is the NAP service radius (e.g. 500m).
+    const OLT_LIMIT_METERS = 10000;
+
+    naps.forEach(n => {
+        if (n.distanciaOLT <= OLT_LIMIT_METERS) withinRadius++;
+    });
+
+    const coveragePct = (withinRadius / naps.length) * 100;
+
+    // Simple logic for MVP
+    let status = '';
+    let color = '';
+    let bg = '';
+
+    if (coveragePct >= 80) {
+        status = '🟢 ÓPTIMO';
+        color = '#14532d';
+        bg = '#dcfce7';
+    } else if (coveragePct >= 50) {
+        status = '🟡 ACEPTABLE';
+        color = '#713f12';
+        bg = '#fef9c3';
+    } else {
+        status = '🔴 DEFICIENTE';
+        color = '#7f1d1d';
+        bg = '#fee2e2';
+    }
+
+    badge.innerHTML = `${status} (${coveragePct.toFixed(0)}% Conectividad OLT)`;
+    badge.style.color = color;
+    badge.style.backgroundColor = bg;
+    badge.style.border = `2px solid ${color}`;
+}
+
+// ==========================================
+// PHASE 3.5: VISUAL REFINEMENT HELPERS
+// ==========================================
+
+function createCustomPin(type, label) {
+    // Wrapper for both Pin and Label
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pin-wrapper';
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.alignItems = 'center';
+    // Pointer handling: We want the pin itself to be the click target mostly, but label is fine too.
+
+    // The Pin
+    const el = document.createElement('div');
+    el.className = 'custom-pin';
+
+    if (type === 'olt') el.classList.add('pin-olt');
+    else if (type === 'nap-16') el.classList.add('pin-nap-16');
+    else if (type === 'nap-48') el.classList.add('pin-nap-48');
+
+    wrapper.appendChild(el);
+
+    // The Label (Optional)
+    if (label) {
+        const lbl = document.createElement('div');
+        lbl.className = 'pin-label';
+        lbl.innerText = label;
+        // Transform the label to counteract any potential parent rotation? No, parent isn't rotated.
+        // But since pin is rotated -45deg, let's keep label separate in flow.
+        wrapper.appendChild(lbl);
+    }
+
+    return wrapper;
+}
+
+function generateCirclePolygon(center, radiusKm, points = 64) {
+    const coords = {
+        latitude: center.lat,
+        longitude: center.lng
+    };
+
+    const km = radiusKm;
+    const ret = [];
+    const distanceX = km / (111.320 * Math.cos(coords.latitude * Math.PI / 180));
+    const distanceY = km / 110.574;
+
+    let theta, x, y;
+    for (let i = 0; i < points; i++) {
+        theta = (i / points) * (2 * Math.PI);
+        x = distanceX * Math.cos(theta);
+        y = distanceY * Math.sin(theta);
+        ret.push([coords.longitude + x, coords.latitude + y]);
+    }
+    ret.push(ret[0]); // Close polygon
+    return ret;
+}
+
+// Placeholder for Phase 4
+async function calculateRouteOSRM(start, end) {
+    console.log("Future: Calculating Walking Route via OSRM...");
+    // Will return GeoJSON LineString
+    return null;
 }
 
