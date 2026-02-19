@@ -5863,6 +5863,11 @@ window.showArchitecture = function () {
     // 4. Update UI
     const mapContainer = document.getElementById('map-container');
     const detailsDiv = document.getElementById('architecture-details');
+    // Reveal search container
+    const searchContainer = document.getElementById('olt-search-container');
+    if (searchContainer) {
+        searchContainer.style.display = 'block';
+    }
 
     if (mapContainer) {
         mapContainer.style.display = 'block';
