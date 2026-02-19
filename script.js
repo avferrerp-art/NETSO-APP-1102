@@ -5662,3 +5662,391 @@ function dismissSuggestion(elementId) {
         }, 300);
     }
 }
+
+// ==========================================
+// OLT OPTIMIZER ALGORITHM
+// ==========================================
+class OLT_Optimizer {
+    constructor(clients) {
+        this.clients = clients || [];
+    }
+
+    calculateInitialCentroid() {
+        if (this.clients.length === 0) return null;
+
+        let sumLat = 0, sumLng = 0;
+        this.clients.forEach(c => {
+            sumLat += c.lat;
+            sumLng += c.lng;
+        });
+
+        return {
+            lat: sumLat / this.clients.length,
+            lng: sumLng / this.clients.length
+        };
+    }
+
+    static getDistanceKm(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    countNearbyClients(client, radiusKm = 0.2) {
+        let count = 0;
+        this.clients.forEach(c => {
+            if (c !== client) {
+                if (OLT_Optimizer.getDistanceKm(client.lat, client.lng, c.lat, c.lng) <= radiusKm) {
+                    count++;
+                }
+            }
+        });
+        return count;
+    }
+
+    calculateWeightedCentroid() {
+        if (this.clients.length === 0) return null;
+
+        let sumLat = 0, sumLng = 0, sumWeight = 0;
+
+        this.clients.forEach(c => {
+            const planFactor = c.planWeight || 1.0;
+            const nearby = this.countNearbyClients(c, 0.2);
+            let densityFactor = 1.0;
+            if (nearby >= 5) densityFactor = 1.5;
+            else if (nearby >= 2) densityFactor = 1.2;
+
+            const weight = planFactor * densityFactor;
+
+            sumLat += c.lat * weight;
+            sumLng += c.lng * weight;
+            sumWeight += weight;
+        });
+
+        if (sumWeight === 0) return this.calculateInitialCentroid();
+
+        return {
+            lat: sumLat / sumWeight,
+            lng: sumLng / sumWeight
+        };
+    }
+
+    generateCandidates(center) {
+        if (!center) return [];
+        const offset = 0.0045;
+        return [
+            { name: 'Centroide Ponderado', lat: center.lat, lng: center.lng, type: 'centroid' },
+            { name: 'Norte (+500m)', lat: center.lat + offset, lng: center.lng, type: 'offset' },
+            { name: 'Sur (-500m)', lat: center.lat - offset, lng: center.lng, type: 'offset' },
+            { name: 'Este (+500m)', lat: center.lat, lng: center.lng + offset, type: 'offset' },
+            { name: 'Oeste (-500m)', lat: center.lat, lng: center.lng - offset, type: 'offset' }
+        ];
+    }
+
+    scoreCandidate(candidate) {
+        let totalDist = 0;
+        let maxDist = 0;
+        this.clients.forEach(c => {
+            const d = OLT_Optimizer.getDistanceKm(candidate.lat, candidate.lng, c.lat, c.lng);
+            totalDist += d;
+            if (d > maxDist) maxDist = d;
+        });
+        const avgDist = this.clients.length > 0 ? totalDist / this.clients.length : 0;
+
+        let scoreDist = 0;
+        if (maxDist > 20) {
+            scoreDist = 0;
+        } else {
+            if (avgDist < 2) scoreDist = 100;
+            else if (avgDist < 5) scoreDist = 80;
+            else if (avgDist < 10) scoreDist = 60;
+            else if (avgDist < 15) scoreDist = 40;
+            else if (avgDist < 20) scoreDist = 20;
+            else scoreDist = 0;
+        }
+
+        const initialC = this.calculateInitialCentroid();
+        const distFromCenter = OLT_Optimizer.getDistanceKm(candidate.lat, candidate.lng, initialC.lat, initialC.lng);
+        let scoreCost = 100 - (distFromCenter * 20);
+        if (scoreCost < 0) scoreCost = 0;
+
+        const pseudoRandom = (candidate.lat + candidate.lng) % 1;
+        let scoreAccess = 70;
+        if (pseudoRandom > 0.8) scoreAccess = 90;
+        if (pseudoRandom < 0.2) scoreAccess = 50;
+
+        let scoreScale = (candidate.type === 'centroid') ? 90 : 60;
+
+        const totalScore = (0.4 * scoreDist) + (0.3 * scoreCost) + (0.2 * scoreAccess) + (0.1 * scoreScale);
+
+        return {
+            ...candidate,
+            scoreTotal: parseFloat(totalScore.toFixed(2)),
+            details: {
+                avgDistKm: parseFloat(avgDist.toFixed(2)),
+                maxDistKm: parseFloat(maxDist.toFixed(2)),
+                scoreDist, scoreCost, scoreAccess, scoreScale
+            }
+        };
+    }
+
+    findOptimalOLT() {
+        const weightedCenter = this.calculateWeightedCentroid();
+        if (!weightedCenter) return null;
+
+        const candidates = this.generateCandidates(weightedCenter);
+        const scoredCandidates = candidates.map(c => this.scoreCandidate(c));
+
+        scoredCandidates.sort((a, b) => b.scoreTotal - a.scoreTotal);
+
+        return {
+            optimal: scoredCandidates[0],
+            alternatives: scoredCandidates.slice(1, 4),
+            allScored: scoredCandidates
+        };
+    }
+}
+
+// ==========================================
+// MAPLIBRE IMPLEMENTATION (PHASE 1.5)
+// ==========================================
+
+// Global map variable
+let map = null;
+let currentOLTMarker = null;
+
+// Override or define showArchitecture
+window.showArchitecture = function () {
+    console.log("Iniciando Fase 1.5: Cálculo de OLT y Visualización");
+
+    // 1. Gather User Inputs
+    const censoInput = document.getElementById('censo');
+    const radiusInput = document.getElementById('coverageRadius');
+
+    // Default to 20 clients/500m if inputs missing or invalid
+    const clientCount = (censoInput && censoInput.value) ? parseInt(censoInput.value) : 20;
+    const radiusMeters = (radiusInput && radiusInput.value) ? parseInt(radiusInput.value) : 500;
+
+    console.log(`Inputs: Clientes=${clientCount}, Radio=${radiusMeters}m`);
+
+    // 2. Generate Synthetic Clients (around Caracas default for now)
+    const centerLat = 10.4806;
+    const centerLng = -66.9036;
+    const syntheticClients = [];
+
+    for (let i = 0; i < clientCount; i++) {
+        // Random point within radius
+        const r = (radiusMeters / 1000) * Math.sqrt(Math.random()); // sqrt for uniform distribution
+        const theta = Math.random() * 2 * Math.PI;
+
+        // Approx conversion (1deg lat = 111km)
+        const dLat = (r * Math.cos(theta)) / 111;
+        const dLng = (r * Math.sin(theta)) / (111 * Math.cos(centerLat * Math.PI / 180));
+
+        syntheticClients.push({
+            lat: centerLat + dLat,
+            lng: centerLng + dLng,
+            planWeight: 1
+        });
+    }
+
+    // 3. Run OLT Optimizer
+    const optimizer = new OLT_Optimizer(syntheticClients);
+    const result = optimizer.findOptimalOLT();
+    const oltOptimal = result ? result.optimal : { lat: centerLat, lng: centerLng };
+
+    // 4. Update UI
+    const mapContainer = document.getElementById('map-container');
+    const detailsDiv = document.getElementById('architecture-details');
+
+    if (mapContainer) {
+        mapContainer.style.display = 'block';
+        mapContainer.offsetHeight; // force refresh
+    }
+
+    if (detailsDiv) {
+        detailsDiv.style.display = 'block';
+        detailsDiv.innerHTML = `
+            <div style="background: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 10px; margin-bottom: 10px;">
+                <p style="margin:0; font-weight:bold; color: #0284c7;">✅ OLT Calculada (Fase 1.5)</p>
+                <p style="margin:5px 0 0; font-size:13px; color: #0369a1;">
+                    Ubicación óptima encontrada para ${clientCount} clientes simulados.
+                    <br>Coordenadas: ${oltOptimal.lat.toFixed(5)}, ${oltOptimal.lng.toFixed(5)}
+                </p>
+            </div>
+        `;
+    }
+
+    // 5. Initialize/Update Map
+    if (!map) {
+        initMap(oltOptimal);
+    } else {
+        map.resize();
+        // Update marker and center
+        updateMap(oltOptimal);
+    }
+
+    // Scroll to map
+    setTimeout(() => {
+        if (mapContainer) mapContainer.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+};
+
+// Functions to handle map updates
+// Functions to handle map updates
+function updateMap(oltLocation) {
+    if (!map) return;
+
+    map.flyTo({
+        center: [oltLocation.lng, oltLocation.lat],
+        zoom: 16 // Zoom in closer on OLT
+    });
+
+    if (currentOLTMarker) currentOLTMarker.remove();
+
+    // Create Draggable Marker
+    currentOLTMarker = new maplibregl.Marker({
+        color: 'red',
+        draggable: true
+    })
+        .setLngLat([oltLocation.lng, oltLocation.lat])
+        .setPopup(new maplibregl.Popup().setHTML("<b>OLT Sugerida</b><br>Arrastrame para mover"))
+        .addTo(map);
+
+    // Listen for drag end to update coordinates
+    currentOLTMarker.on('dragend', () => {
+        const lngLat = currentOLTMarker.getLngLat();
+        console.log(`OLT Moved to: ${lngLat.lat}, ${lngLat.lng}`);
+
+        // Update UI details with new location
+        const detailsDiv = document.getElementById('architecture-details');
+        if (detailsDiv) {
+            detailsDiv.innerHTML = `
+                <div style="background: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 10px; margin-bottom: 10px;">
+                    <p style="margin:0; font-weight:bold; color: #0284c7;">✅ OLT Ubicada (Manual)</p>
+                    <p style="margin:5px 0 0; font-size:13px; color: #0369a1;">
+                        Ubicación ajustada manualmente.
+                        <br>Coordenadas: ${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}
+                    </p>
+                </div>
+            `;
+        }
+    });
+}
+
+function initMap(initialLoc) {
+    const mapContainer = document.getElementById('map-container');
+    if (!mapContainer) return;
+
+    // Use passed location or default
+    const startPos = initialLoc ? [initialLoc.lng, initialLoc.lat] : [-66.9036, 10.4806];
+
+    try {
+        console.log("Intializing MapLibre on map-container...");
+        map = new maplibregl.Map({
+            container: 'map-container',
+            style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=tLt9XVNR31ZloWQqtsMO',
+            center: startPos,
+            zoom: 14 // Higher zoom to see clients better (if visualized later)
+        });
+
+        map.addControl(new maplibregl.NavigationControl());
+
+        map.on('load', () => {
+            console.log("✅ MapLibre cargado - Fase 2");
+            if (initialLoc) {
+                updateMap(initialLoc);
+            } else {
+                // Default marker if no initialLoc passed (fallback)
+                currentOLTMarker = new maplibregl.Marker({ color: 'red', draggable: true })
+                    .setLngLat(startPos)
+                    .setPopup(new maplibregl.Popup().setHTML("<b>Ubicación Inicial</b>"))
+                    .addTo(map);
+
+                currentOLTMarker.on('dragend', () => {
+                    const lngLat = currentOLTMarker.getLngLat();
+                    console.log(`OLT Moved to: ${lngLat.lat}, ${lngLat.lng}`);
+                });
+            }
+
+            // Enable Address Search (Nominatim)
+            enableAddressSearch();
+        });
+
+    } catch (e) {
+        console.error("Error inicializando MapLibre:", e);
+        alert("Error al cargar el mapa: " + e.message);
+    }
+}
+
+// Function to handle Nominatim Search
+function enableAddressSearch() {
+    const addrInput = document.getElementById('address-search');
+    if (!addrInput) return;
+
+    // Clone to remove old listeners
+    const newInput = addrInput.cloneNode(true);
+    addrInput.parentNode.replaceChild(newInput, addrInput);
+
+    newInput.placeholder = "Buscar dirección (Nominatim)...";
+
+    newInput.addEventListener('keypress', async (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const query = newInput.value;
+            if (!query) return;
+
+            newInput.disabled = true;
+            newInput.style.opacity = "0.6";
+
+            try {
+                console.log(`Searching Nominatim for: ${query}`);
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data && data.length > 0) {
+                    const result = data[0];
+                    const lat = parseFloat(result.lat);
+                    const lng = parseFloat(result.lon);
+
+                    console.log(`Found: ${lat}, ${lng}`);
+
+                    // Move visual elements
+                    updateMap({ lat, lng });
+
+                    // Update UI text
+                    const detailsDiv = document.getElementById('architecture-details');
+                    if (detailsDiv) {
+                        detailsDiv.style.display = 'block';
+                        detailsDiv.innerHTML = `
+                            <div style="background: #dcfce7; border-left: 4px solid #22c55e; padding: 10px; margin-bottom: 10px;">
+                                <p style="margin:0; font-weight:bold; color: #15803d;">📍 Dirección Encontrada</p>
+                                <p style="margin:5px 0 0; font-size:13px; color: #166534;">
+                                    ${result.display_name}
+                                    <br>Coordenadas: ${lat.toFixed(5)}, ${lng.toFixed(5)}
+                                </p>
+                            </div>
+                        `;
+                    }
+
+                } else {
+                    alert("No se encontraron resultados para esa dirección.");
+                }
+            } catch (err) {
+                console.error("Nominatim error:", err);
+                alert("Error al buscar dirección.");
+            } finally {
+                newInput.disabled = false;
+                newInput.style.opacity = "1";
+                // Keep focus
+                newInput.focus();
+            }
+        }
+    });
+}
+
