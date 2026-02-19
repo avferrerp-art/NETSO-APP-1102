@@ -18,12 +18,6 @@ const firebaseConfig = {
     measurementId: "G-K1C133EZC0"
 };
 
-// Auto-configure Maps API Key if not manually set
-if (!googleApiKey && firebaseConfig.apiKey) {
-    console.log("🔑 Using Firebase API Key for Google Maps");
-    googleApiKey = firebaseConfig.apiKey;
-}
-
 // Initialize Firebase
 const app = firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
@@ -2262,19 +2256,6 @@ function applyMaterialRulesToReport(reportItems) {
 }
 
 
-// Helper para determinar capacidad de NAP según densidad
-function getOptimalNAPCapacity(clientCount, radioKm) {
-    // Si no hay radio o clientes, default 16
-    if (!radioKm || !clientCount) return 16;
-
-    // Calcular densidad aproximada (clientes / area circular estimada)
-    const areaKm2 = Math.max(0.01, Math.PI * Math.pow(radioKm, 2));
-    const density = clientCount / areaKm2;
-
-    // Umbral de alta densidad: > 200 clientes/km2 (mismo que NAP_Optimizer)
-    return (density > 200) ? 48 : 16;
-}
-
 function procesarCalculos() {
     try {
         console.log("Iniciando cálculo de diseño...");
@@ -2349,6 +2330,23 @@ function procesarCalculos() {
     }
 }
 
+// ============================================
+// NAP MIX OPTIMIZER: 16 + 48 puertos
+// ============================================
+function calcularMixNAPs(hp) {
+    const util = 0.9; // 90% utilización objetivo
+    const cap16 = 16 * util; // 14.4 clientes por NAP de 16
+    const cap48 = 48 * util; // 43.2 clientes por NAP de 48
+
+    // Maximizar NAPs de 48 (menor cantidad de equipos)
+    const naps48 = Math.floor(hp / cap48);
+    const remanente = hp - naps48 * cap48;
+    const naps16 = remanente > 0 ? Math.ceil(remanente / cap16) : 0;
+    const total = naps48 + naps16;
+
+    return { naps16, naps48, total };
+}
+
 function finalizar() {
     // Helper para obtener valor seguro
     const getVal = (id) => {
@@ -2360,10 +2358,6 @@ function finalizar() {
     const radioVal = getVal('coverageRadius') || 500;
     const radioKm = parseFloat(radioVal) / 1000;
 
-    // DETERMINAR CAPACIDAD DE NAP (16 o 48)
-    const napCap = getOptimalNAPCapacity(hp, radioKm);
-    const divisor = napCap === 48 ? 43.2 : 14.4; // 14.4 es 16 * 0.9 (90% llenado)
-
     let sfpVal = getVal('sfp-status') || 'none'; // Default safe value
 
     // Determinar potencia del SFP
@@ -2373,48 +2367,58 @@ function finalizar() {
     const lossC = (radioKm * 1.5) * 0.35;
 
     // Cálculo de potencia final
-    // Splitter loss: 1:16 -> 13.8dB, 1:32 -> 17.2dB, 1:64 -> 20.5dB
-    // 48 puertos usa splitter 1:32 (L2) + algo de L1. Estimado 17.5dB para 48.
-    const splitterLoss = napCap === 48 ? 17.5 : 13.8;
-    const pF = (sfpP - lossC - splitterLoss - 3.5).toFixed(2);
+    // sfpP - pérdida_cable - pérdida_splitter - margen_seguridad
+    const pF = (sfpP - lossC - 13.8 - 3.5).toFixed(2);
 
-    // Actualizar resultados (Safe check)
-    const setRes = (id, val) => {
-        const el = document.getElementById(id);
-        if (el) el.innerText = val;
-    };
-    setRes('res-potencia', pF + " dBm");
-    setRes('res-hp', hp);
-    const napsRequeridos = Math.ceil(hp / (napCap * 0.9));
-    setRes('res-naps-total', napsRequeridos);
+    // Actualizar resultados
+    document.getElementById('res-potencia').innerText = pF + " dBm";
+    document.getElementById('res-hp').innerText = hp;
 
-    // Actualizar etiqueta si es necesario para claridad
-    const napLabel = document.querySelector('span[id="res-naps-total"]')?.parentElement?.querySelector('span');
-    if (napLabel) napLabel.innerText = `NAPs (${napCap})`;
+    // Cálculo optimizado de mezcla NAPs 16+48
+    const napMix = calcularMixNAPs(hp);
+    const napsRequeridos = napMix.total;
+    window.suggestedNapMix = napMix; // Guardar para materiales y mapa
 
-    setRes('res-loss-cable', "-" + lossC.toFixed(2) + " dB");
-
-    // Determinar estado (Safe)
-    const badge = document.getElementById('res-status');
-    if (badge) {
-        if (pF > -27) {
-            badge.innerText = "✓ IDEAL";
-            badge.style.background = "linear-gradient(135deg, #10b981 0%, #059669 100%)";
-        } else if (pF > -28) {
-            badge.innerText = "⚠ ACEPTABLE";
-            badge.style.background = "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)";
-        } else {
-            badge.innerText = "✕ CRÍTICO";
-            badge.style.background = "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)";
+    // Mostrar desglose en UI
+    const napTotalEl = document.getElementById('res-naps-total');
+    if (napTotalEl) {
+        napTotalEl.innerText = napsRequeridos;
+        // Mostrar desglose debajo si existe el contenedor
+        let desglose = document.getElementById('res-naps-desglose');
+        if (!desglose) {
+            desglose = document.createElement('div');
+            desglose.id = 'res-naps-desglose';
+            desglose.style.cssText = 'font-size:11px; color:#64748b; margin-top:4px;';
+            napTotalEl.parentNode.appendChild(desglose);
         }
+        const partes = [];
+        if (napMix.naps48 > 0) partes.push(`${napMix.naps48}×48p`);
+        if (napMix.naps16 > 0) partes.push(`${napMix.naps16}×16p`);
+        desglose.innerText = partes.length > 0 ? '(' + partes.join(' + ') + ')' : '';
     }
 
-    // Generar lista de cotización pasándole la capacidad decidida
-    console.log(`Generando lista cotización con NAPs de ${napCap}...`);
-    generarListaCotizacion(hp, napsRequeridos, radioKm, napCap);
+    document.getElementById('res-loss-cable').innerText = "-" + lossC.toFixed(2) + " dB";
 
-    // REGISTRO AUTOMÁTICO DE PROYECTO
+    // Determinar estado
+    const badge = document.getElementById('res-status');
+    if (pF > -27) {
+        badge.innerText = "✓ IDEAL";
+        badge.style.background = "linear-gradient(135deg, #10b981 0%, #059669 100%)";
+    } else if (pF > -28) {
+        badge.innerText = "⚠ ACEPTABLE";
+        badge.style.background = "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)";
+    } else {
+        badge.innerText = "✕ CRÍTICO";
+        badge.style.background = "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)";
+    }
+
+    // Generar lista de cotización
+    console.log("Generando lista cotización...");
+    generarListaCotizacion(hp, napsRequeridos, radioKm);
+
+    // REGISTRO AUTOMÁTICO DE PROYECTO (PARA DASHBOARD NETSO)
     if (currentUser && currentUser.role === 'isp') {
+        console.log("Guardando proyecto ISP...");
         saveProjectRegistry({
             id: generateId(),
             ispName: currentUser.company,
@@ -2426,7 +2430,6 @@ function finalizar() {
                 potencia: pF,
                 clientes: hp,
                 naps: napsRequeridos,
-                napCapacity: napCap,
                 cable: lossC.toFixed(2)
             },
             reportData: (() => { try { return generateReportData(); } catch (e) { console.error("Error GenReport:", e); return []; } })()
@@ -2434,6 +2437,7 @@ function finalizar() {
     }
 
     // Cambiar a página de resultados
+    console.log("Navegando a resultados...");
     nextPage(4);
 }
 
@@ -2628,18 +2632,42 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
     // ==========================================
     // 2. EQUIPOS DE DISTRIBUCIÓN
     // ==========================================
-    // NAPS: Dinámico según capacidad (16 o 48)
-    const napCap = arguments[3] || 16;
-    const naps = napsRequeridos || Math.ceil(clientes / (napCap * 0.9));
+    // NAPS: Separar 16 y 48 puertos.
+    // Si el mapa tiene datos reales (window.naps), usar esos conteos exactos.
+    // Si no, usar cálculo por defecto (todo de 16 puertos).
+    let naps16 = 0;
+    let naps48 = 0;
 
-    let napProductName = "Caja Nap 16 puertos (Splitter 1x16 APC)";
-    if (napCap === 48) {
-        napProductName = "Caja Nap 48 puertos (2x Splitter 1x32 APC)";
+    if (window.naps && window.naps.length > 0) {
+        // Leer del mapa: contar por capacidad
+        window.naps.forEach(n => {
+            if (n.capacidad === 48) naps48++;
+            else naps16++; // 16 es el default
+        });
+        console.log(`Materiales desde mapa: ${naps16} NAPs de 16, ${naps48} NAPs de 48`);
+    } else if (window.suggestedNapMix) {
+        // Usar mezcla óptima calculada por calcularMixNAPs() en finalizar()
+        naps16 = window.suggestedNapMix.naps16;
+        naps48 = window.suggestedNapMix.naps48;
+        console.log(`Materiales desde suggestedNapMix: ${naps16} NAPs de 16, ${naps48} NAPs de 48`);
+    } else {
+        // Fallback final: calcular mix ahora mismo
+        const mix = calcularMixNAPs(clientes);
+        naps16 = mix.naps16;
+        naps48 = mix.naps48;
+        console.log(`Materiales calculados en el momento: ${naps16} NAPs de 16, ${naps48} NAPs de 48`);
     }
 
-    processReq("📦 Equipos de Distribución", napProductName, naps, "unidades", "alta", stock.distribucion);
+    const naps = naps16 + naps48; // Total para cálculos posteriores (splitters, etc.)
 
-    const splittersL1 = Math.ceil(naps / (napCap === 48 ? 2 : 4));
+    if (naps16 > 0) {
+        processReq("📦 Equipos de Distribución", "Caja Nap 16 puertos (Splitter 1x16 APC)", naps16, "unidades", "alta", stock.distribucion);
+    }
+    if (naps48 > 0) {
+        processReq("📦 Equipos de Distribución", "Caja Nap 48 puertos (2x Splitter 1x32 APC)", naps48, "unidades", "alta", stock.distribucion);
+    }
+
+    const splittersL1 = Math.ceil(naps / 4);
     processReq("🔗 Conectorización", "Splitter PLC 1x4 (Nivel 1)", splittersL1, "unidades", "alta", stock.conectorizacion);
 
     // ==========================================
@@ -5705,110 +5733,15 @@ function dismissSuggestion(elementId) {
     }
 }
 
-
 // ==========================================
-// RESTORED NAVIGATION LOGIC
+// OLT OPTIMIZER ALGORITHM
 // ==========================================
-// Removed duplicate declaration of selectedProjectType to avoid SyntaxError
-// let selectedProjectType = null; 
-
-function selectProjectType(type) {
-    selectedProjectType = type;
-    document.querySelectorAll('.project-card').forEach(c => c.classList.remove('selected'));
-    const card = document.getElementById(`card-${type}`);
-    if (card) card.classList.add('selected');
-
-    // Enable button
-    const btn = document.getElementById('btn-start-project');
-    if (btn) {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
-    }
-    console.log("Proyecto seleccionado:", type);
-}
-
-function startSelectedFlow() {
-    console.log("Iniciando flujo:", selectedProjectType);
-    // Safe check if selectedProjectType is defined
-    if (typeof selectedProjectType !== 'undefined' && !selectedProjectType) {
-        alert("⚠️ Por favor selecciona una opción para continuar (Asistente AI o Manual).");
-        return;
-    } else if (typeof selectedProjectType === 'undefined') {
-        console.error("selectedProjectType is undefined!");
-        return;
-    }
-
-    // Hide dashboard / selection
-    const dash = document.getElementById('netso-dashboard');
-    if (dash) dash.style.display = 'none';
-
-    // Show Page 1
-    const p1 = document.getElementById('page1');
-    if (p1) p1.style.display = 'block';
-
-    // Update step indicator
-    if (typeof updateStepIndicator === 'function') {
-        updateStepIndicator(1);
-    } else {
-        // Fallback implementation if global function missing
-        const steps = document.querySelectorAll('.step-item');
-        steps.forEach((s, idx) => {
-            if (idx + 1 === 1) s.classList.add('active');
-            else s.classList.remove('active');
-        });
-    }
-
-    window.scrollTo(0, 0);
-}
-
-// Ensure updateStepIndicator is available globally if not already
-if (typeof window.updateStepIndicator === 'undefined') {
-    window.updateStepIndicator = function (step) {
-        const steps = document.querySelectorAll('.step-item');
-        steps.forEach((s, idx) => {
-            if (idx + 1 === step) s.classList.add('active');
-            else if (idx + 1 < step) s.classList.add('completed'); // Optional style
-            else s.classList.remove('active');
-        });
-    };
-}
-
-
-// ==========================================
-// OLT OPTIMIZER (Restored)
-// ==========================================
-// ==========================================
-// OLT OPTIMIZER (Advanced Multi-Objective Algorithm)
-// ==========================================
-
-/**
- * Advanced OLT Optimizer for FTTH Networks
- * Implements multi-objective optimization with:
- * - Weighted centroid calculation (density + plan value)
- * - Candidate generation (5-6 locations)
- * - Multi-factor scoring (distance 40%, cost 30%, accessibility 20%, scalability 10%)
- * - GPON technical validation (20km range, 27dB optical budget)
- */
 class OLT_Optimizer {
-    constructor(clients, options = {}) {
+    constructor(clients) {
         this.clients = clients || [];
-        this.options = {
-            country: options.country || 'CO', // Default Colombia
-            maxGponRange: options.maxGponRange || (options.country === 'CO' ? 18 : 20), // km (18km for CO)
-            maxOpticalBudget: options.maxOpticalBudget || 27, // dB
-            maxDropDistance: options.maxDropDistance || 0.5, // km (500m)
-            candidateOffset: options.candidateOffset || (options.country === 'CO' ? 0.3 : 0.5), // km (0.3km for CO)
-            backhaul: options.backhaul || null, // {lat, lng} if available
-            zonaType: options.zonaType || null, // 'urbana', 'suburbana', 'rural' (autodetected if null)
-            ...options
-        };
     }
 
-    // ==========================================
-    // STEP 1: Simple Centroid Calculation
-    // ==========================================
-    calculateSimpleCentroid() {
+    calculateInitialCentroid() {
         if (this.clients.length === 0) return null;
 
         let sumLat = 0, sumLng = 0;
@@ -5823,57 +5756,24 @@ class OLT_Optimizer {
         };
     }
 
-    // ==========================================
-    // UTILITY: Haversine Distance (Precise)
-    // ==========================================
-    static haversineDistance(lat1, lng1, lat2, lng2) {
-        const R = 6371; // Earth radius in km
+    static getDistanceKm(lat1, lon1, lat2, lon2) {
+        const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
-    }
-
-    // Alias for backward compatibility
-    static getDistanceKm(lat1, lng1, lat2, lng2) {
-        return OLT_Optimizer.haversineDistance(lat1, lng1, lat2, lng2);
-    }
-
-    // ==========================================
-    // STEP 2: Client Weighting
-    // ==========================================
-    calculateClientWeights() {
-        return this.clients.map(client => {
-            // Plan factor: basic=1.0, medium=1.5, premium=2.0
-            let planFactor = 1.0;
-            if (client.plan === 'medium') planFactor = 1.5;
-            else if (client.plan === 'premium') planFactor = 2.0;
-
-            // Density factor: count nearby clients within 200m
-            const nearby = this.countNearbyClients(client, 0.2);
-            let densityFactor = 1.0;
-            if (nearby >= 5) densityFactor = 1.5;
-            else if (nearby >= 2) densityFactor = 1.2;
-
-            return {
-                clientId: client.id,
-                weight: planFactor * densityFactor,
-                planFactor,
-                densityFactor,
-                nearbyCount: nearby
-            };
-        });
     }
 
     countNearbyClients(client, radiusKm = 0.2) {
         let count = 0;
         this.clients.forEach(c => {
-            if (c.id !== client.id) {
-                const dist = OLT_Optimizer.haversineDistance(client.lat, client.lng, c.lat, c.lng);
-                if (dist <= radiusKm) count++;
+            if (c !== client) {
+                if (OLT_Optimizer.getDistanceKm(client.lat, client.lng, c.lat, c.lng) <= radiusKm) {
+                    count++;
+                }
             }
         });
         return count;
@@ -5882,17 +5782,23 @@ class OLT_Optimizer {
     calculateWeightedCentroid() {
         if (this.clients.length === 0) return null;
 
-        const weights = this.calculateClientWeights();
         let sumLat = 0, sumLng = 0, sumWeight = 0;
 
-        this.clients.forEach((client, idx) => {
-            const weight = weights[idx].weight;
-            sumLat += client.lat * weight;
-            sumLng += client.lng * weight;
+        this.clients.forEach(c => {
+            const planFactor = c.planWeight || 1.0;
+            const nearby = this.countNearbyClients(c, 0.2);
+            let densityFactor = 1.0;
+            if (nearby >= 5) densityFactor = 1.5;
+            else if (nearby >= 2) densityFactor = 1.2;
+
+            const weight = planFactor * densityFactor;
+
+            sumLat += c.lat * weight;
+            sumLng += c.lng * weight;
             sumWeight += weight;
         });
 
-        if (sumWeight === 0) return this.calculateSimpleCentroid();
+        if (sumWeight === 0) return this.calculateInitialCentroid();
 
         return {
             lat: sumLat / sumWeight,
@@ -5900,1713 +5806,1209 @@ class OLT_Optimizer {
         };
     }
 
-    // ==========================================
-    // STEP 3: Generate Candidate Locations
-    // ==========================================
-    generateCandidateLocations() {
-        const center = this.calculateWeightedCentroid();
+    generateCandidates(center) {
         if (!center) return [];
-
-        const offsetKm = this.options.candidateOffset;
-        // 1 degree lat ≈ 111 km
-        const latOffset = offsetKm / 111;
-        // Adjust lng offset by latitude
-        const lngOffset = offsetKm / (111 * Math.cos(center.lat * Math.PI / 180));
-
-        const candidates = [
+        const offset = 0.0045;
+        return [
             { name: 'Centroide Ponderado', lat: center.lat, lng: center.lng, type: 'centroid' },
-            { name: 'Norte (+500m)', lat: center.lat + latOffset, lng: center.lng, type: 'offset_n' },
-            { name: 'Sur (-500m)', lat: center.lat - latOffset, lng: center.lng, type: 'offset_s' },
-            { name: 'Este (+500m)', lat: center.lat, lng: center.lng + lngOffset, type: 'offset_e' },
-            { name: 'Oeste (-500m)', lat: center.lat, lng: center.lng - lngOffset, type: 'offset_w' }
+            { name: 'Norte (+500m)', lat: center.lat + offset, lng: center.lng, type: 'offset' },
+            { name: 'Sur (-500m)', lat: center.lat - offset, lng: center.lng, type: 'offset' },
+            { name: 'Este (+500m)', lat: center.lat, lng: center.lng + offset, type: 'offset' },
+            { name: 'Oeste (-500m)', lat: center.lat, lng: center.lng - offset, type: 'offset' }
         ];
-
-        // Add backhaul candidate if available
-        if (this.options.backhaul) {
-            candidates.push({
-                name: 'Cerca de Backhaul',
-                lat: this.options.backhaul.lat,
-                lng: this.options.backhaul.lng,
-                type: 'backhaul'
-            });
-        }
-
-        return candidates;
     }
 
-    // ==========================================
-    // SCORE CANDIDATE (SYNC VERSION - FOR REAL-TIME DRAG)
-    // ==========================================
-    scoreCandidateSync(candidate) {
-        // Skip async accessibility check for speed
-        const distanceScore = this.calculateDistanceScore(candidate);
-        const costScore = this.calculateCostScore(candidate);
-        const accessibilityScore = 50; // Default average for visual feedback
-        const scalabilityScore = this.calculateScalabilityScore(candidate);
-
-        const totalScore = (
-            0.40 * distanceScore +
-            0.30 * costScore +
-            0.20 * accessibilityScore +
-            0.10 * scalabilityScore
-        );
-
-        return {
-            ...candidate,
-            score_total: Math.round(totalScore * 100) / 100
-        };
-    }
-
-    // ==========================================
-    // STEP 4: Multi-Factor Scoring System
-    // ==========================================
-    async scoreCandidate(candidate) {
-        const distanceScore = this.calculateDistanceScore(candidate);
-        const costScore = this.calculateCostScore(candidate);
-        const accessibilityScore = await this.calculateAccessibilityScore(candidate);
-        const scalabilityScore = this.calculateScalabilityScore(candidate);
-
-        const totalScore = (
-            0.40 * distanceScore +
-            0.30 * costScore +
-            0.20 * accessibilityScore +
-            0.10 * scalabilityScore
-        );
-
-        return {
-            ...candidate,
-            score_total: Math.round(totalScore * 100) / 100,
-            score_distancia: Math.round(distanceScore * 100) / 100,
-            score_costo: Math.round(costScore * 100) / 100,
-            score_accesibilidad: Math.round(accessibilityScore * 100) / 100,
-            score_escalabilidad: Math.round(scalabilityScore * 100) / 100,
-            distancia_promedio_clientes_km: this.calculateAverageDistance(candidate),
-            distancia_maxima_cliente_km: this.calculateMaxDistance(candidate)
-        };
-    }
-
-    calculateDistanceScore(candidate) {
-        const avgDist = this.calculateAverageDistance(candidate);
-        const maxDist = this.calculateMaxDistance(candidate);
-
-        // Score based on ranges (adjusted for Colombia urban context)
-        let score = 100;
-        if (avgDist < 1) score = 100;
-        else if (avgDist < 3) score = 90;
-        else if (avgDist < 5) score = 75;
-        else if (avgDist < 8) score = 60;
-        else if (avgDist < 12) score = 40;
-        else if (avgDist < 18) score = 20;
-        else score = 5;
-
-        // Penalize if max distance exceeds GPON limit
-        if (maxDist > this.options.maxGponRange) {
-            score -= 30;
-        }
-
-        return Math.max(0, score);
-    }
-
-
-    calculateAverageDistance(candidate) {
-        if (this.clients.length === 0) return 0;
-
-        const totalDist = this.clients.reduce((sum, client) => {
-            return sum + OLT_Optimizer.haversineDistance(
-                candidate.lat, candidate.lng,
-                client.lat, client.lng
-            );
-        }, 0);
-
-        return totalDist / this.clients.length;
-    }
-
-    calculateMaxDistance(candidate) {
-        if (this.clients.length === 0) return 0;
-
-        return Math.max(...this.clients.map(client =>
-            OLT_Optimizer.haversineDistance(
-                candidate.lat, candidate.lng,
-                client.lat, client.lng
-            )
-        ));
-    }
-
-    calculateCostScore(candidate) {
-        let score = 0;
-
-        // Factor 1: Backhaul Proximity (if available)
-        if (this.options.backhaul) {
-            const backhaulDist = OLT_Optimizer.haversineDistance(
-                candidate.lat, candidate.lng,
-                this.options.backhaul.lat, this.options.backhaul.lng
-            );
-
-            if (backhaulDist < 0.5) score = 95;
-            else if (backhaulDist < 2) score = 85;
-            else if (backhaulDist < 5) score = 70;
-            else if (backhaulDist < 10) score = 50;
-            else score = 30;
-        } else {
-            // Factor 2: Zone Type Inference (No backhaul info)
-            // Calculate density: clients / area km2
-            const lats = this.clients.map(c => c.lat);
-            const lngs = this.clients.map(c => c.lng);
-            const minLat = Math.min(...lats);
-            const maxLat = Math.max(...lats);
-            const minLng = Math.min(...lngs);
-            const maxLng = Math.max(...lngs);
-
-            const avgLat = (minLat + maxLat) / 2;
-            const heightKm = (maxLat - minLat) * 111;
-            const widthKm = (maxLng - minLng) * 111 * Math.cos(avgLat * Math.PI / 180);
-            const areaKm2 = Math.max(0.1, heightKm * widthKm); // Avoid div by zero
-
-            const density = this.clients.length / areaKm2;
-
-            // Determine zone score based on infrastructure likelihood
-            if (this.clients.length > 100 || density > 50) {
-                // Urban: Better electric grid, easier access
-                score = 80;
-            } else if (density > 10) {
-                // Suburban
-                score = 65;
-            } else {
-                // Rural
-                score = 45;
-            }
-        }
-
-        return score;
-    }
-
-    async calculateAccessibilityScore(candidate) {
-        // Advanced: Use Google Places API if available
-        if (window.google && window.google.maps && window.google.maps.places) {
-            try {
-                const service = new google.maps.places.PlacesService(document.createElement('div'));
-                const request = {
-                    location: new google.maps.LatLng(candidate.lat, candidate.lng),
-                    radius: 500, // 500 meters
-                    type: ['gas_station', 'atm', 'bank', 'school', 'hospital'] // Indicadores de infraestructura
-                };
-
-                // Add timeout to prevent hanging
-                const places = await Promise.race([
-                    new Promise((resolve) => {
-                        service.nearbySearch(request, (results, status) => {
-                            if (status === google.maps.places.PlacesServiceStatus.OK) {
-                                resolve(results || []);
-                            } else {
-                                resolve([]);
-                            }
-                        });
-                    }),
-                    new Promise(resolve => setTimeout(() => {
-                        // console.warn('Places API timeout');
-                        resolve([]);
-                    }, 2000)) // 2s timeout
-                ]);
-
-                const count = places.length;
-                if (count >= 10) return 95;
-                if (count >= 5) return 80;
-                if (count >= 2) return 60;
-                if (count >= 1) return 45;
-                return 30;
-
-            } catch (e) {
-                console.warn("Error accessing Places API, using fallback:", e);
-            }
-        }
-
-        // Fallback: Type-based proxy
-        if (candidate.type === 'backhaul') return 90;
-        if (candidate.type === 'centroid') return 80;
-        return 70; // Offsets
-    }
-
-    calculateScalabilityScore(candidate) {
-        const centroid = this.calculateWeightedCentroid() || this.calculateSimpleCentroid();
-        if (!centroid) return 50;
-
-        // Calculate current coverage radius (max distance from centroid)
-        let coverageRadius = 0;
-        this.clients.forEach(c => {
-            const d = OLT_Optimizer.haversineDistance(centroid.lat, centroid.lng, c.lat, c.lng);
-            if (d > coverageRadius) coverageRadius = d;
-        });
-        if (coverageRadius === 0) coverageRadius = 1; // Avoid div/0
-
-        const distFromCenter = OLT_Optimizer.haversineDistance(
-            candidate.lat, candidate.lng,
-            centroid.lat, centroid.lng
-        );
-
-        const ratio = distFromCenter / coverageRadius;
-        let score = 75; // Baseline
-
-        if (ratio < 0.3) score = 95; // Dead center
-        else if (ratio < 0.6) score = 75; // Good balance
-        else if (ratio < 0.8) score = 55; // Bit far
-        else score = 35; // Edge
-
-        // Bonus: Empty space analysis (simple bounding box logic)
-        // If candidate is in a sparse quadrant, we assume growth potential
-        // (Simplified logic: always +10 if not at absolute edge)
-        if (ratio < 0.9) score += 10;
-
-        return Math.min(100, score);
-    }
-
-    // ==========================================
-    // STEP 5: Select Optimal Location
-    // ==========================================
-    async selectOptimalLocation() {
-        const candidates = this.generateCandidateLocations();
-        if (candidates.length === 0) return null;
-
-        // Async scoring for all candidates
-        const scoredCandidates = await Promise.all(candidates.map(c => this.scoreCandidate(c)));
-        scoredCandidates.sort((a, b) => b.score_total - a.score_total);
-
-        const optimal = scoredCandidates[0];
-        optimal.razon_seleccion = this.generateSelectionReason(optimal);
-
-        // Add reasons for alternatives
-        const alternatives = scoredCandidates.slice(1, 4).map(alt => {
-            alt.razon_alternativa = this.generateAlternativeReason(alt, optimal);
-            return alt;
-        });
-
-        return {
-            ubicacion_optima: optimal,
-            ubicaciones_alternativas: alternatives,
-            all_candidates: scoredCandidates
-        };
-    }
-
-    generateSelectionReason(candidate) {
-        const score = candidate.score_total;
-        let baseReason = "";
-
-        if (score >= 85) baseReason = "Ubicación excelente: alta concentración de clientes, buena accesibilidad y espacio para crecimiento";
-        else if (score >= 70) baseReason = "Ubicación buena: balance adecuado entre cercanía a clientes y factibilidad operativa";
-        else if (score >= 55) baseReason = "Ubicación aceptable: cumple requisitos técnicos pero puede requerir inversión adicional";
-        else baseReason = "Ubicación subóptima: considere ajustar parámetros de diseño";
-
-        return baseReason;
-    }
-
-    generateAlternativeReason(alt, optimal) {
-        if (alt.score_costo > optimal.score_costo) return "Menor costo de implementación, aunque más lejana de algunos clientes";
-        if (alt.score_accesibilidad > optimal.score_accesibilidad) return "Mejor accesibilidad vial/infraestructura, facilita mantenimiento";
-        if (alt.score_escalabilidad > optimal.score_escalabilidad) return "Mayor potencial de expansión futura";
-        return "Alternativa viable con balance diferente de factores";
-    }
-
-
-
-    // ==========================================
-    // STEP 6: Validation
-    // ==========================================
-    validateLocation(location) {
-        const warnings = [];
-        let allInRange = true;
-        let farthestClient = null;
+    scoreCandidate(candidate) {
+        let totalDist = 0;
         let maxDist = 0;
-
-        this.clients.forEach(client => {
-            const dist = OLT_Optimizer.haversineDistance(
-                location.lat, location.lng,
-                client.lat, client.lng
-            );
-
-            if (dist > maxDist) {
-                maxDist = dist;
-                farthestClient = client;
-            }
-
-            if (dist > this.options.maxGponRange) {
-                allInRange = false;
-                warnings.push(`Cliente ${client.id} fuera de rango GPON (${dist.toFixed(2)} km > ${this.options.maxGponRange} km)`);
-            } else if (dist > 15) {
-                warnings.push(`Cliente ${client.id} distante (${dist.toFixed(2)} km). Considerar amplificador óptico.`);
-            }
+        this.clients.forEach(c => {
+            const d = OLT_Optimizer.getDistanceKm(candidate.lat, candidate.lng, c.lat, c.lng);
+            totalDist += d;
+            if (d > maxDist) maxDist = d;
         });
+        const avgDist = this.clients.length > 0 ? totalDist / this.clients.length : 0;
 
-        // Optical Budget validation (Detailed)
-        // Fiber Loss: 0.35 dB/km
-        // Splitter Loss: 1:32 split (1:4 + 1:8) ≈ 17.5 dB
-        // Connector/Splice Loss: ~1.0 dB margin
-        const fiberLoss = maxDist * 0.35;
-        const splitterLoss = 17.5;
-        const connectorLoss = 1.0;
-        const totalEstimatedLoss = fiberLoss + splitterLoss + connectorLoss;
-        const margin = this.options.maxOpticalBudget - totalEstimatedLoss;
-
-        if (totalEstimatedLoss > this.options.maxOpticalBudget) {
-            warnings.push(`⚠️ PRESUPUESTO ÓPTICO EXCEDIDO: ${totalEstimatedLoss.toFixed(2)} dB > ${this.options.maxOpticalBudget} dB`);
-        } else if (margin < 3) {
-            warnings.push(`⚠️ Margen operativo bajo (${margin.toFixed(2)} dB). Riesgo de degradación.`);
+        let scoreDist = 0;
+        if (maxDist > 20) {
+            scoreDist = 0;
+        } else {
+            if (avgDist < 2) scoreDist = 100;
+            else if (avgDist < 5) scoreDist = 80;
+            else if (avgDist < 10) scoreDist = 60;
+            else if (avgDist < 15) scoreDist = 40;
+            else if (avgDist < 20) scoreDist = 20;
+            else scoreDist = 0;
         }
+
+        const initialC = this.calculateInitialCentroid();
+        const distFromCenter = OLT_Optimizer.getDistanceKm(candidate.lat, candidate.lng, initialC.lat, initialC.lng);
+        let scoreCost = 100 - (distFromCenter * 20);
+        if (scoreCost < 0) scoreCost = 0;
+
+        const pseudoRandom = (candidate.lat + candidate.lng) % 1;
+        let scoreAccess = 70;
+        if (pseudoRandom > 0.8) scoreAccess = 90;
+        if (pseudoRandom < 0.2) scoreAccess = 50;
+
+        let scoreScale = (candidate.type === 'centroid') ? 90 : 60;
+
+        const totalScore = (0.4 * scoreDist) + (0.3 * scoreCost) + (0.2 * scoreAccess) + (0.1 * scoreScale);
 
         return {
-            todos_clientes_en_rango: allInRange,
-            cliente_mas_lejano_id: farthestClient ? farthestClient.id : null,
-            distancia_maxima_km: maxDist,
-            perdida_estimada_db: totalEstimatedLoss.toFixed(2),
-            margen_operativo_db: margin.toFixed(2),
-            advertencias: warnings
-        };
-    }
-
-    // ==========================================
-    // MAIN ENTRY POINT
-    // ==========================================
-    async findOptimalOLTAdvanced() {
-        try {
-            // Handle edge cases
-            if (this.clients.length === 0) {
-                return {
-                    error: 'No hay clientes para optimizar',
-                    ubicacion_optima: null,
-                    ubicaciones_alternativas: [],
-                    validaciones: { todos_clientes_en_rango: false, advertencias: ['Sin clientes'] }
-                };
+            ...candidate,
+            scoreTotal: parseFloat(totalScore.toFixed(2)),
+            details: {
+                avgDistKm: parseFloat(avgDist.toFixed(2)),
+                maxDistKm: parseFloat(maxDist.toFixed(2)),
+                scoreDist, scoreCost, scoreAccess, scoreScale
             }
-
-            if (this.clients.length < 3) {
-                // For very few clients, just use simple centroid
-                const centroid = this.calculateSimpleCentroid();
-                const scored = await this.scoreCandidate({ ...centroid, name: 'Centroide Simple', type: 'centroid' });
-                scored.razon_seleccion = 'Pocos clientes: ubicación central simple';
-
-                const validations = this.validateLocation(scored);
-
-                const result = {
-                    ubicacion_optima: scored,
-                    ubicaciones_alternativas: [],
-                    validaciones: validations
-                };
-                console.log("OLT Optimizer Results (Simple):", JSON.stringify(result, null, 2));
-                return result;
-            }
-
-            // Normal flow
-            const result = await this.selectOptimalLocation();
-            const validations = this.validateLocation(result.ubicacion_optima);
-
-            const finalResult = {
-                ubicacion_optima: result.ubicacion_optima,
-                ubicaciones_alternativas: result.ubicaciones_alternativas,
-                validaciones: validations
-            };
-
-            console.log("OLT Optimizer Results:", JSON.stringify(finalResult, null, 2));
-            return finalResult;
-
-        } catch (error) {
-            console.error("Critical OLT Optimizer Error:", error);
-            return {
-                error: error.message || "Error interno en optimizador",
-                ubicacion_optima: null,
-                ubicaciones_alternativas: [],
-                validaciones: { todos_clientes_en_rango: false, advertencias: ["Error crítico de cálculo"] }
-            };
-        }
-    }
-
-    // New: Recalculate based on manual drag/drop
-    async recalculateWithManualOLT(manualLat, manualLng, originalOptimalResult) {
-        const manualCandidate = {
-            name: "Ubicación Manual",
-            lat: manualLat,
-            lng: manualLng,
-            type: 'manual'
-        };
-
-        const scoredManual = await this.scoreCandidate(manualCandidate);
-        const validations = this.validateLocation(scoredManual);
-
-        let comparison = null;
-        if (originalOptimalResult) {
-            const opt = originalOptimalResult.ubicacion_optima;
-            comparison = {
-                score_diff: scoredManual.score_total - opt.score_total,
-                dist_diff: scoredManual.distancia_promedio_clientes_km - opt.distancia_promedio_clientes_km,
-                better_score: scoredManual.score_total > opt.score_total
-            };
-        }
-
-        return {
-            ubicacion_manual: scoredManual,
-            validaciones: validations,
-            comparacion_con_optima: comparison
         };
     }
 
-    // Backward compatibility
     findOptimalOLT() {
-        const result = this.findOptimalOLTAdvanced();
+        const weightedCenter = this.calculateWeightedCentroid();
+        if (!weightedCenter) return null;
+
+        const candidates = this.generateCandidates(weightedCenter);
+        const scoredCandidates = candidates.map(c => this.scoreCandidate(c));
+
+        scoredCandidates.sort((a, b) => b.scoreTotal - a.scoreTotal);
+
         return {
-            optimal: {
-                lat: result.ubicacion_optima?.lat || 0,
-                lng: result.ubicacion_optima?.lng || 0,
-                scoreTotal: result.ubicacion_optima?.score_total || 0
-            },
-            alternatives: result.ubicaciones_alternativas || [],
-            validations: result.validaciones
+            optimal: scoredCandidates[0],
+            alternatives: scoredCandidates.slice(1, 4),
+            allScored: scoredCandidates
         };
     }
 }
 
-
-// ============================================
-// CLASE OPTIMIZADOR DE NAPs (ADVANCED CLUSTERING 2.0)
-// ============================================
+// ==========================================
+// NAP OPTIMIZER ALGORITHM
+// ==========================================
 class NAP_Optimizer {
-    constructor(clients, oltLocation, options = {}) {
-        if (!clients || clients.length === 0) throw new Error("NAP_Optimizer: Se requiere un array de clientes no vacío.");
-        if (!oltLocation || typeof oltLocation.lat !== 'number') throw new Error("NAP_Optimizer: Ubicación de OLT inválida.");
-
-        this.clients = clients;
-        this.oltLocation = oltLocation;
-
-        // Configuración por defecto adaptada a Netso
-        this.options = {
-            maxDistanceOLTtoNAP: options.maxDistanceOLTtoNAP || 20.0, // km (GPON limit)
-            maxDistanceNAPtoClient: options.maxDistanceNAPtoClient || 0.5, // km (Drop limit)
-            optimizationMode: options.optimizationMode || 'costo', // 'costo' o 'calidad'
-            allowMixedCapacities: options.allowMixedCapacities !== undefined ? options.allowMixedCapacities : true,
-            napCapacitySmall: 16,
-            napCapacityLarge: 48,
-            costSmall: 180, // USD
-            costLarge: 420  // USD
-        };
-
-        this.boundingBox = this._calculateBoundingBox();
+    constructor(clients, capacity = 16) {
+        this.clients = clients || [];
+        this.capacity = capacity;
     }
 
-    _calculateBoundingBox() {
-        if (this.clients.length === 0) return { minLat: 0, maxLat: 0, minLng: 0, maxLng: 0 };
-        const lats = this.clients.map(c => c.lat);
-        const lngs = this.clients.map(c => c.lng);
-        return {
-            minLat: Math.min(...lats),
-            maxLat: Math.max(...lats),
-            minLng: Math.min(...lngs),
-            maxLng: Math.max(...lngs)
-        };
-    }
+    clusterClients() {
+        if (this.clients.length === 0) return [];
 
-    async calculateOptimalNAPs() {
-        console.time("NAP_Optimization");
-        console.log(`Starting NAP Optimization for ${this.clients.length} clients...`);
+        const clusters = [];
+        const unassigned = [...this.clients];
 
-        try {
-            // Paso 1: Configuración
-            const config = this._determineOptimalConfiguration();
+        while (unassigned.length > 0) {
+            // Pick a seed (greedy)
+            const seed = unassigned.shift();
+            const currentCluster = [seed];
 
-            // Paso 2: K-Means++
-            let centroids = this._initializeCentroidsKMeansPlusPlus(config.total_naps_estimadas);
-            console.log(`Initialized ${centroids.length} centroids with K-Means++`);
+            // Find nearest neighbors within ~150m (typical NAP range)
+            for (let i = 0; i < unassigned.length; i++) {
+                if (currentCluster.length >= this.capacity) break;
 
-            // Paso 3: Constrained K-Means
-            let { naps, unassigned } = this._runConstrainedKMeans(centroids, config);
-
-            // Paso 4: Unassigned handling
-            if (unassigned.length > 0) {
-                console.warn(`${unassigned.length} unassigned clients. Creating micro-clusters...`);
-                const extraNaps = this._handleUnassignedClients(unassigned);
-                naps = [...naps, ...extraNaps];
-            }
-
-            // Paso 5: Optimization
-            const optimizedNaps = this._optimizeByMerging(naps);
-
-            // Paso 6: Metrics
-            const finalNaps = this._calculateRouteMetrics(optimizedNaps);
-
-            // Paso 7: Coverage
-            const coverageAnalysis = this._analyzeCoverage(finalNaps);
-
-            // Paso 8: Validation
-            const validaciones = this._validateConfiguration(finalNaps);
-
-            console.timeEnd("NAP_Optimization");
-
-            return {
-                naps: finalNaps,
-                configuracion: config,
-                analisis_cobertura: coverageAnalysis,
-                validaciones: validaciones,
-                metricas: {
-                    total_naps: finalNaps.length,
-                    clientes_cubiertos: finalNaps.reduce((acc, nap) => acc + nap.cantidad_clientes, 0),
-                    costo_estimado: finalNaps.reduce((sum, n) => sum + n.precio_unitario, 0)
-                },
-                optimizaciones_aplicadas: ["K-Means++", "Constraints", "Merge"]
-            };
-
-        } catch (error) {
-            console.error("NAP Optimization Failed:", error);
-            throw error;
-        }
-    }
-
-    _determineOptimalConfiguration() {
-        // Simple density check for now
-        const widthKm = OLT_Optimizer.haversineDistance(
-            this.boundingBox.minLat, this.boundingBox.minLng,
-            this.boundingBox.minLat, this.boundingBox.maxLng
-        );
-        const heightKm = OLT_Optimizer.haversineDistance(
-            this.boundingBox.minLat, this.boundingBox.minLng,
-            this.boundingBox.maxLat, this.boundingBox.minLng
-        );
-        // Avoid zero area
-        const areaKm2 = Math.max(0.01, widthKm * heightKm);
-        const density = this.clients.length / areaKm2;
-
-        console.log(`Density: ${density.toFixed(2)} clients/km2`);
-
-        let useHighDensity = (density > 200 || this.options.optimizationMode === 'calidad');
-
-        // Estimate NAPs needed
-        const cap = useHighDensity ? 48 : 16;
-        const total = Math.ceil(this.clients.length / cap);
-
-        return {
-            strategy: useHighDensity ? 'High Density' : 'Standard',
-            default_capacity: cap,
-            total_naps_estimadas: total
-        };
-    }
-
-    _initializeCentroidsKMeansPlusPlus(k) {
-        if (k <= 0) return [];
-        const centroids = [];
-
-        // 1. First centroid: client closest to OLT
-        let first = this.clients[0];
-        let minDist = Infinity;
-        for (const c of this.clients) {
-            const d = OLT_Optimizer.haversineDistance(c.lat, c.lng, this.oltLocation.lat, this.oltLocation.lng);
-            if (d < minDist) { minDist = d; first = c; }
-        }
-        centroids.push({ lat: first.lat, lng: first.lng });
-
-        // 2. Next centroids
-        for (let i = 1; i < k; i++) {
-            let maxDistSq = -1;
-            let nextCentroid = null;
-
-            for (const c of this.clients) {
-                let distToClosest = Infinity;
-                for (const cent of centroids) {
-                    const d = OLT_Optimizer.haversineDistance(c.lat, c.lng, cent.lat, cent.lng);
-                    if (d < distToClosest) distToClosest = d;
-                }
-
-                if (distToClosest > maxDistSq) {
-                    maxDistSq = distToClosest;
-                    nextCentroid = c;
+                const d = OLT_Optimizer.getDistanceKm(seed.lat, seed.lng, unassigned[i].lat, unassigned[i].lng);
+                if (d <= 0.15) { // 150 meters
+                    currentCluster.push(unassigned[i]);
+                    unassigned.splice(i, 1);
+                    i--;
                 }
             }
 
-            if (nextCentroid) centroids.push({ lat: nextCentroid.lat, lng: nextCentroid.lng });
-        }
-        return centroids;
-    }
-
-    _runConstrainedKMeans(centroids, config) {
-        // Initial clusters
-        let clusters = centroids.map((c, i) => ({
-            id: `TEMP-${i}`,
-            lat: c.lat,
-            lng: c.lng,
-            capacity: config.default_capacity,
-            clients: []
-        }));
-
-        let unassigned = [];
-        const MAX_ITER = 20;
-
-        for (let iter = 0; iter < MAX_ITER; iter++) {
-            // Clear assignments
-            clusters.forEach(c => c.clients = []);
-            unassigned = [];
-
-            // Randomize client order to avoid bias
-            const shuffled = [...this.clients].sort(() => Math.random() - 0.5);
-
-            for (const client of shuffled) {
-                let bestCluster = null;
-                let minDist = Infinity;
-
-                for (const cluster of clusters) {
-                    // Capacity constraint
-                    if (cluster.clients.length >= cluster.capacity) continue;
-
-                    // OLT-NAP Distance constraint
-                    const distToOLT = OLT_Optimizer.haversineDistance(this.oltLocation.lat, this.oltLocation.lng, cluster.lat, cluster.lng);
-                    if (distToOLT > this.options.maxDistanceOLTtoNAP) continue;
-
-                    // NAP-Client Distance constraint
-                    const dist = OLT_Optimizer.haversineDistance(client.lat, client.lng, cluster.lat, cluster.lng);
-                    if (dist > this.options.maxDistanceNAPtoClient) continue;
-
-                    if (dist < minDist) {
-                        minDist = dist;
-                        bestCluster = cluster;
-                    }
-                }
-
-                if (bestCluster) {
-                    bestCluster.clients.push(client);
-                } else {
-                    unassigned.push(client);
-                }
-            }
-
-            // Recalculate centroids
-            let maxShift = 0;
-            for (const cluster of clusters) {
-                if (cluster.clients.length === 0) continue;
-
-                let sumLat = 0, sumLng = 0;
-                for (const c of cluster.clients) { sumLat += c.lat; sumLng += c.lng; }
-
-                const newLat = sumLat / cluster.clients.length;
-                const newLng = sumLng / cluster.clients.length;
-
-                const shift = OLT_Optimizer.haversineDistance(cluster.lat, cluster.lng, newLat, newLng);
-                if (shift > maxShift) maxShift = shift;
-
-                cluster.lat = newLat;
-                cluster.lng = newLng;
-            }
-
-            if (maxShift < 0.01) break; // Converged (<10m)
-        }
-
-        return { naps: clusters.filter(c => c.clients.length > 0), unassigned };
-    }
-
-    _handleUnassignedClients(clients) {
-        // Simple recursive fallback: treat them as a new problem
-        // For now, just create new clusters for them
-        // This is a simplified version of "mini-clustering"
-        const newClusters = [];
-        const cap = 16;
-
-        while (clients.length > 0) {
-            const chunk = clients.splice(0, cap);
-            // Centroid is average
+            // Calculate center of cluster
             let sumLat = 0, sumLng = 0;
-            chunk.forEach(c => { sumLat += c.lat; sumLng += c.lng; });
-            newClusters.push({
-                lat: sumLat / chunk.length,
-                lng: sumLng / chunk.length,
-                capacity: cap,
-                clients: chunk,
-                is_fallback: true
+            currentCluster.forEach(c => {
+                sumLat += c.lat;
+                sumLng += c.lng;
+            });
+
+            clusters.push({
+                lat: sumLat / currentCluster.length,
+                lng: sumLng / currentCluster.length,
+                clients: currentCluster,
+                clientCount: currentCluster.length
             });
         }
-        return newClusters;
+        return clusters;
     }
 
-    _optimizeByMerging(naps) {
-        if (!this.options.allowMixedCapacities) return naps;
+    clusterKMeans(k) {
+        if (this.clients.length === 0 || k <= 0) return [];
+        if (k >= this.clients.length) {
+            // If more NAPs than clients, each client is a NAP
+            return this.clients.map(c => ({
+                lat: c.lat,
+                lng: c.lng,
+                clients: [c],
+                clientCount: 1
+            }));
+        }
 
-        console.log("Starting NAP Merge Optimization...");
-        let optimized = [...naps];
-        let merged = true;
+        // 1. Initialize Centroids (Randomly pick k clients)
+        let centroids = [];
+        const indices = new Set();
+        while (indices.size < k) {
+            indices.add(Math.floor(Math.random() * this.clients.length));
+        }
+        indices.forEach(i => centroids.push({ ...this.clients[i] }));
+
+        let assignments = new Array(this.clients.length).fill(-1);
+        let changed = true;
         let iterations = 0;
 
-        while (merged && iterations < 10) {
-            merged = false;
-            iterations++;
+        while (changed && iterations < 20) { // Max 20 iterations
+            changed = false;
 
-            for (let i = 0; i < optimized.length; i++) {
-                if (merged) break; // Restart loop after a merge
+            // 2. Assign clients to nearest centroid
+            const newClusters = Array(k).fill(null).map(() => []);
 
-                for (let j = i + 1; j < optimized.length; j++) {
-                    const napA = optimized[i];
-                    const napB = optimized[j];
+            this.clients.forEach((client, idx) => {
+                let minDist = Infinity;
+                let bestK = 0;
 
-                    // 1. Distance check (< 300m)
-                    const dist = OLT_Optimizer.haversineDistance(napA.lat, napA.lng, napB.lat, napB.lng);
-                    if (dist > 0.3) continue;
-
-                    // 2. Capacity check
-                    const totalClients = napA.clients.length + napB.clients.length;
-                    let targetCap = 16;
-                    let targetCost = this.options.costSmall;
-
-                    if (totalClients > 16) {
-                        targetCap = 48;
-                        targetCost = this.options.costLarge;
+                centroids.forEach((c, cIdx) => {
+                    const d = OLT_Optimizer.getDistanceKm(client.lat, client.lng, c.lat, c.lng);
+                    if (d < minDist) {
+                        minDist = d;
+                        bestK = cIdx;
                     }
+                });
 
-                    if (totalClients > targetCap) continue; // Cannot merge
-
-                    // 3. Cost benefit check
-                    const currentCost = (napA.capacity === 48 ? this.options.costLarge : this.options.costSmall) +
-                        (napB.capacity === 48 ? this.options.costLarge : this.options.costSmall);
-
-                    if (targetCost >= currentCost) continue; // No savings
-
-                    // 4. Constraint Validation (New Centroid)
-                    const newLat = (napA.lat * napA.clients.length + napB.lat * napB.clients.length) / totalClients;
-                    const newLng = (napA.lng * napA.clients.length + napB.lng * napB.clients.length) / totalClients;
-
-                    // Check if all clients are still within 500m
-                    const allClientsObj = [...napA.clients, ...napB.clients];
-                    let rangeViolation = false;
-                    for (const c of allClientsObj) {
-                        if (OLT_Optimizer.haversineDistance(c.lat, c.lng, newLat, newLng) > this.options.maxDistanceNAPtoClient) {
-                            rangeViolation = true;
-                            break;
-                        }
-                    }
-                    if (rangeViolation) continue;
-
-                    // Execute Merge
-                    console.log(`Merging NAP-${i} and NAP-${j} into new ${targetCap}-port NAP. Savings: $${currentCost - targetCost}`);
-
-                    const newNAP = {
-                        id: `MERGED-${iterations}-${i}`,
-                        lat: newLat,
-                        lng: newLng,
-                        capacity: targetCap,
-                        clients: allClientsObj
-                    };
-
-                    optimized.splice(j, 1); // Remove B first (higher index)
-                    optimized.splice(i, 1); // Remove A
-                    optimized.push(newNAP);
-
-                    merged = true;
-                    break;
+                if (assignments[idx] !== bestK) {
+                    assignments[idx] = bestK;
+                    changed = true;
                 }
+                newClusters[bestK].push(client);
+            });
+
+            // 3. Recompute Centroids
+            if (changed) {
+                centroids = centroids.map((c, cIdx) => {
+                    const cluster = newClusters[cIdx];
+                    if (cluster.length === 0) return c; // Keep old pos if empty
+
+                    let sumLat = 0, sumLng = 0;
+                    cluster.forEach(cl => { sumLat += cl.lat; sumLng += cl.lng; });
+                    return {
+                        lat: sumLat / cluster.length,
+                        lng: sumLng / cluster.length
+                    };
+                });
             }
+            iterations++;
         }
-        return optimized;
-    }
 
-    _calculateRouteMetrics(naps) {
-        return naps.map((nap, idx) => {
-            const distStraight = OLT_Optimizer.haversineDistance(this.oltLocation.lat, this.oltLocation.lng, nap.lat, nap.lng);
-
-            // Slack factor 1.12 for fiber route
-            const distReal = distStraight * 1.12;
-
-            // Loss Calculation
-            // Fiber: 0.35 dB/km
-            // Splices: 1 every 2km (0.1 dB each)
-            // Connectors: 1.0 dB (0.5 x 2)
-            const fiberLoss = distReal * 0.35;
-            const splices = Math.ceil(distReal / 2);
-            const spliceLoss = splices * 0.1;
-            const connectorLoss = 1.0;
-            const routeLoss = fiberLoss + spliceLoss + connectorLoss;
-
+        // Return formatted clusters
+        return centroids.map((c, idx) => {
+            const clusterClients = this.clients.filter((_, pid) => assignments[pid] === idx);
             return {
-                ...nap,
-                id: `NAP-${String(idx + 1).padStart(3, '0')}`,
-                distancia_olt_km: Number(distStraight.toFixed(3)),
-                distancia_fibra_real_km: Number(distReal.toFixed(3)),
-                empalmes_estimados: splices,
-                perdida_ruta_db: Number(routeLoss.toFixed(2)),
-                clientes_asignados: nap.clients.map(c => c.id),
-                cantidad_clientes: nap.clients.length,
-                tipo_nap: nap.capacity === 48 ? 'NAP_48P_HD' : 'NAP_16P_IP68',
-                precio_unitario: nap.capacity === 48 ? this.options.costLarge : this.options.costSmall,
-                ocupacion_porcentaje: Number(((nap.clients.length / nap.capacity) * 100).toFixed(1)),
-                // Optical budget placeholders (filled later if needed)
-                splitter_nivel1_asignado: null,
-                perdida_splitter_nivel1_db: null
+                lat: c.lat,
+                lng: c.lng,
+                clients: clusterClients,
+                clientCount: clusterClients.length
             };
         });
     }
+}
 
-    _analyzeCoverage(naps) {
-        // Grid analysis for dead zones
-        const GRID_SIZE_KM = 0.1; // 100m grid
-        const widthKm = OLT_Optimizer.haversineDistance(this.boundingBox.minLat, this.boundingBox.minLng, this.boundingBox.minLat, this.boundingBox.maxLng);
-        const heightKm = OLT_Optimizer.haversineDistance(this.boundingBox.minLat, this.boundingBox.minLng, this.boundingBox.maxLat, this.boundingBox.minLng);
-
-        const cols = Math.ceil(widthKm / GRID_SIZE_KM);
-        const rows = Math.ceil(heightKm / GRID_SIZE_KM);
-
-        let coveredPoints = 0;
-        let totalPoints = 0;
-        let deadZones = [];
-
-        // Simple check: iterate grid points within bounding box
-        // Warning: O(rows*cols * naps). Keep grid course.
-        // Limit max grid points to avoid performance hit
-        const stepLat = (this.boundingBox.maxLat - this.boundingBox.minLat) / rows;
-        const stepLng = (this.boundingBox.maxLng - this.boundingBox.minLng) / cols;
-
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                const lat = this.boundingBox.minLat + r * stepLat;
-                const lng = this.boundingBox.minLng + c * stepLng;
-                totalPoints++;
-
-                // Check distance to nearest NAP
-                let minDist = Infinity;
-                for (const nap of naps) {
-                    const d = OLT_Optimizer.haversineDistance(lat, lng, nap.lat, nap.lng);
-                    if (d < minDist) minDist = d;
-                }
-
-                if (minDist <= this.options.maxDistanceNAPtoClient) {
-                    coveredPoints++;
-                } else {
-                    // Potential dead zone
-                    // Only track if it's "significant" (not just edge)
-                    // Simplified: just store point
-                    // deadZones.push({lat, lng});
-                }
-            }
-        }
-
-        const coveragePct = totalPoints > 0 ? (coveredPoints / totalPoints) * 100 : 0;
-
-        return {
-            total_area_km2: (widthKm * heightKm).toFixed(2),
-            porcentaje_cobertura: coveragePct.toFixed(1),
-            zonas_sin_servicio: [] // Populate via clustering logic if needed, skipping for performace now
-        };
+// ==========================================
+// POLE MANAGER (DATA FROM OSM)
+// ==========================================
+class PoleManager {
+    constructor() {
+        // Global storage for routing usage later
+        window.postes = window.postes || [];
     }
 
-    _validateConfiguration(naps) {
-        const errors = [];
-        const warnings = [];
-        let occupiedPorts = 0;
-        let totalPorts = 0;
-        let occupancies = [];
+    async fetchPoles(lat, lng, radiusMeters) {
+        console.log(`__PHASE 3__: Fetching infrastructure around ${lat}, ${lng}...`);
+        const radius = radiusMeters / 1000;
 
-        naps.forEach(nap => {
-            occupiedPorts += nap.cantidad_clientes;
-            totalPorts += nap.capacity;
-            occupancies.push(nap.ocupacion_porcentaje);
+        // Overpass QL to get poles AND roads
+        const query = `
+            [out:json][timeout:25];
+            (
+              node["man_made"="utility_pole"](around:${radiusMeters},${lat},${lng});
+              node["power"="pole"](around:${radiusMeters},${lat},${lng});
+              node["highway"="lighting"](around:${radiusMeters},${lat},${lng});
+              node["telecom"="pole"](around:${radiusMeters},${lat},${lng});
+              way["highway"](around:${radiusMeters},${lat},${lng});
+            );
+            out body;
+            >;
+            out skel qt;
+        `;
 
-            if (nap.cantidad_clientes > nap.capacity) {
-                errors.push(`NAP ${nap.id} exceeds capacity (${nap.cantidad_clientes}/${nap.capacity})`);
+        try {
+            const response = await fetch("https://overpass-api.de/api/interpreter", {
+                method: "POST",
+                body: query
+            });
+            const data = await response.json();
+
+            const realPoles = [];
+            const ways = [];
+            const nodes = {};
+
+            data.elements.forEach(el => {
+                if (el.type === 'node') {
+                    nodes[el.id] = { lat: el.lat, lng: el.lon };
+
+                    let type = null;
+                    if (el.tags) {
+                        if (el.tags.power === 'pole') type = 'electric';
+                        else if (el.tags.man_made === 'utility_pole') type = 'utility';
+                        else if (el.tags.highway === 'lighting') type = 'light';
+                        else if (el.tags.telecom === 'pole') type = 'telecom';
+                    }
+
+                    if (type) {
+                        realPoles.push({
+                            id: el.id,
+                            lat: el.lat,
+                            lng: el.lon,
+                            type: type,
+                            source: 'osm'
+                        });
+                    }
+                } else if (el.type === 'way') {
+                    ways.push(el);
+                }
+            });
+
+            // Interpolate Virtual Poles on ways
+            const virtualPoles = this.generateVirtualPoles(ways, nodes);
+
+            // Update Global State
+            window.postes = [...realPoles, ...virtualPoles];
+
+            console.log(`Infrastructure updated: ${realPoles.length} real, ${virtualPoles.length} virtual.`);
+            return window.postes;
+        } catch (e) {
+            console.error("Overpass error:", e);
+            return [];
+        }
+    }
+
+    generateVirtualPoles(ways, nodes) {
+        const virtual = [];
+        const intervalKm = 0.04; // 40 meters
+        let vId = 0;
+
+        ways.forEach(way => {
+            if (!way.nodes) return;
+            for (let i = 0; i < way.nodes.length - 1; i++) {
+                const n1 = nodes[way.nodes[i]];
+                const n2 = nodes[way.nodes[i + 1]];
+                if (!n1 || !n2) continue;
+
+                const dist = OLT_Optimizer.getDistanceKm(n1.lat, n1.lng, n2.lat, n2.lng);
+                const steps = Math.floor(dist / intervalKm);
+
+                for (let j = 1; j <= steps; j++) {
+                    const ratio = j / (steps + 1);
+                    virtual.push({
+                        id: `v_${vId++}`,
+                        lat: n1.lat + (n2.lat - n1.lat) * ratio,
+                        lng: n1.lng + (n2.lng - n1.lng) * ratio,
+                        type: 'virtual',
+                        source: 'generated'
+                    });
+                }
             }
-            if (nap.distancia_olt_km > this.options.maxDistanceOLTtoNAP) {
-                errors.push(`NAP ${nap.id} too far from OLT (${nap.distancia_olt_km}km)`);
-            }
-            if (nap.ocupacion_porcentaje > 90) {
-                warnings.push(`NAP ${nap.id} saturated (${nap.ocupacion_porcentaje}%)`);
-            }
-            if (nap.ocupacion_porcentaje < 40) {
-                warnings.push(`NAP ${nap.id} underutilized (${nap.ocupacion_porcentaje}%)`);
+        });
+        return virtual;
+    }
+
+    snapToNearestPole(coords) {
+        if (window.postes.length === 0) return coords;
+
+        let nearest = window.postes[0];
+        let minDist = OLT_Optimizer.getDistanceKm(coords.lat, coords.lng, nearest.lat, nearest.lng);
+
+        window.postes.forEach(p => {
+            const d = OLT_Optimizer.getDistanceKm(coords.lat, coords.lng, p.lat, p.lng);
+            if (d < minDist) {
+                minDist = d;
+                nearest = p;
             }
         });
 
-        // Std Dev of occupancy
-        const avgOcc = occupancies.reduce((a, b) => a + b, 0) / occupancies.length;
-        const variance = occupancies.reduce((a, b) => a + Math.pow(b - avgOcc, 2), 0) / occupancies.length;
-        const stdDev = Math.sqrt(variance);
+        return { lat: nearest.lat, lng: nearest.lng, type: nearest.type, snappedId: nearest.id };
+    }
+}
 
-        if (stdDev > 30) warnings.push("Unbalanced NAP distribution detected");
+// ==========================================
+// MAPLIBRE IMPLEMENTATION (PHASE 1.5)
+// ==========================================
 
-        return {
-            valid: errors.length === 0,
-            errores_criticos: errors,
-            advertencias: warnings,
-            metricas: {
-                ocupacion_promedio: avgOcc.toFixed(1),
-                desviacion_estandar: stdDev.toFixed(1)
+// Global map variable
+let map = null;
+let currentOLTMarker = null;
+let napMarkers = [];
+let poleMarkers = [];
+let poleManager = new PoleManager();
+
+// Override or define showArchitecture
+window.showArchitecture = function () {
+    console.log("Iniciando Fase 1.5: Cálculo de OLT y Visualización");
+
+    // Inject CSS for custom pins if not present
+    if (!document.getElementById('pin-styles')) {
+        const style = document.createElement('style');
+        style.id = 'pin-styles';
+        style.innerHTML = `
+            .custom-pin {
+                width: 20px;
+                height: 20px;
+                border-radius: 50% 50% 50% 0;
+                transform: rotate(-45deg);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                border: 2px solid white;
+                cursor: pointer;
+                transition: transform 0.2s;
+                position: relative; /* For z-index context */
             }
-        };
+            .custom-pin:hover {
+                transform: rotate(-45deg) scale(1.1);
+                z-index: 10;
+            }
+            .custom-pin::after {
+                content: '';
+                width: 6px;
+                height: 6px;
+                background: #1e1e1e; /* Black dot */
+                border-radius: 50%;
+                transform: rotate(45deg); /* Counter-rotate if needed, but circle is circle */
+            }
+            .pin-label {
+                background: white; /* Clean background for text */
+                padding: 1px 4px;
+                border-radius: 3px;
+                font-size: 10px;
+                font-weight: bold;
+                color: #333;
+                margin-top: 4px; /* Space below pin */
+                box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+                white-space: nowrap;
+                border: 1px solid #ccc;
+                pointer-events: none; /* Let clicks pass to marker */
+            }
+            .pin-wrapper {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-end; /* Pin at top? No, anchor is usually bottom. */
+                /* MapLibre anchors the element's 'anchor' point (e.g. bottom) to the coord. */
+                /* If we return a wrapper, we need to ensure the "pin tip" is at the anchor. */
+                /* The pin tip is the bottom-left corner of the rotated square. */
+                /* This is tricky with a wrapper because the rotation messes up the bounding box. */
+            }
+            .pin-olt { background-color: #ef4444; } /* Red */
+            .pin-nap-16 { background-color: #f97316; } /* Orange */
+            .pin-nap-48 { background-color: #3b82f6; } /* Blue */
+            
+            /* Logic for wrapper centering:
+               The wrapper will be the Marker element. 
+               MapLibre centers the 'anchor' point of this element on the lat/lng.
+               If usage anchor='bottom', the bottom-center of the wrapper is the lat/lng.
+               We want the PIN TIP to be at the bottom-center.
+               
+               Structure:
+               Wrapper (Flex Col)
+                 [Pin]
+                 [Label]
+               
+               If we anchor 'bottom', the bottom of the "Label" will be at the coordinate. WRONG.
+               We want the Label BELOW the coordinate (or above?), and the PIN TIP at the coordinate.
+               
+               Easier approach:
+               Label inside the pin element but absolute positioned?
+               Or just offset the label in CSS.
+               
+               Let's try:
+               Wrapper contains Pin.
+               Label is absolute positioned relative to wrapper.
+            */
+        `;
+        document.head.appendChild(style);
     }
-}
 
-// ==========================================
-// NAP CLUSTERING (K-means)
-// ==========================================
-async function calculateNAPs(clients, oltLocation = null) {
-    if (!clients || clients.length === 0) return [];
+    // 1. Gather User Inputs
+    const censoInput = document.getElementById('censo');
+    const radiusInput = document.getElementById('coverageRadius');
 
-    // Backward compatibility: calculate centroid if no OLT provided
-    if (!oltLocation) {
-        console.warn("calculateNAPs called without OLT location. Using simple centroid.");
-        let sumLat = 0, sumLng = 0;
-        clients.forEach(c => { sumLat += c.lat; sumLng += c.lng; });
-        oltLocation = { lat: sumLat / clients.length, lng: sumLng / clients.length };
+    // Default to 20 clients/500m if inputs missing or invalid
+    const clientCount = (censoInput && censoInput.value) ? parseInt(censoInput.value) : 20;
+    const radiusMeters = (radiusInput && radiusInput.value) ? parseInt(radiusInput.value) : 500;
+
+    console.log(`Inputs: Clientes=${clientCount}, Radio=${radiusMeters}m`);
+
+    // 2. Generate Synthetic Clients (around Caracas default for now)
+    const centerLat = 10.4806;
+    const centerLng = -66.9036;
+    const syntheticClients = [];
+
+    // Store globally for search access
+    window.currentSyntheticClients = syntheticClients;
+    window.currentRadiusMeters = radiusMeters;
+
+    for (let i = 0; i < clientCount; i++) {
+        // Random point within radius
+        const r = (radiusMeters / 1000) * Math.sqrt(Math.random()); // sqrt for uniform distribution
+        const theta = Math.random() * 2 * Math.PI;
+
+        // Approx conversion (1deg lat = 111km)
+        const dLat = (r * Math.cos(theta)) / 111;
+        const dLng = (r * Math.sin(theta)) / (111 * Math.cos(centerLat * Math.PI / 180));
+
+        syntheticClients.push({
+            lat: centerLat + dLat,
+            lng: centerLng + dLng,
+            planWeight: 1
+        });
     }
 
-    const optimizer = new NAP_Optimizer(clients, oltLocation);
-    const result = await optimizer.calculateOptimalNAPs();
-    return result.naps;
-}
+    // 3. Run OLT Optimizer
+    const optimizer = new OLT_Optimizer(syntheticClients);
+    const result = optimizer.findOptimalOLT();
+    const oltOptimal = result ? result.optimal : { lat: centerLat, lng: centerLng };
 
-// ==========================================
-// GOOGLE MAPS LOADER
-// ==========================================
-function loadGoogleMapsScript(callback) {
-    if (window.google && window.google.maps) {
-        if (callback) callback();
-        return;
-    }
+    // 3.1. Run NAP Optimizer
+    const napOptim = new NAP_Optimizer(syntheticClients, 16);
 
-    if (window.isGoogleMapsLoading) {
-        if (callback) {
-            const check = setInterval(() => {
-                if (window.google && window.google.maps) {
-                    clearInterval(check);
-                    callback();
-                }
-            }, 100);
+    // Try to get suggested NAP count from Phase 1 calculation
+    const suggestedNapsEl = document.getElementById('res-naps-total');
+    let rawNaps = [];
+
+    if (suggestedNapsEl && suggestedNapsEl.innerText !== '--') {
+        const k = parseInt(suggestedNapsEl.innerText);
+        if (!isNaN(k) && k > 0) {
+            console.log(`Using suggested NAP count: ${k}`);
+            rawNaps = napOptim.clusterKMeans(k);
+        } else {
+            rawNaps = napOptim.clusterClients();
         }
-        return;
+    } else {
+        // Fallback if no calculation was run (direct access)
+        rawNaps = napOptim.clusterClients();
     }
 
-    if (!googleApiKey) {
-        alert("⚠️ Falta la API Key de Google Maps. Configúrala en el menú de usuario.");
-        toggleSettings();
-        return;
+    // 4. Update UI
+    const mapContainer = document.getElementById('map-container');
+    const detailsDiv = document.getElementById('architecture-details');
+
+    // Hide the button, reveal the title
+    const btnWrapper = document.getElementById('show-arch-btn-wrapper');
+    if (btnWrapper) btnWrapper.style.display = 'none';
+    const archTitle = document.getElementById('arch-title');
+    if (archTitle) archTitle.style.display = 'block';
+
+    // Reveal search container
+    const searchContainer = document.getElementById('olt-search-container');
+    if (searchContainer) {
+        searchContainer.style.display = 'block';
     }
 
-    window.isGoogleMapsLoading = true;
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places,geometry`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-        window.isGoogleMapsLoading = false;
-        if (callback) callback();
-    };
-    script.onerror = () => {
-        window.isGoogleMapsLoading = false;
-        alert("❌ Error al cargar Google Maps. Verifica tu conexión o API Key.");
-    };
-    document.head.appendChild(script);
+    if (mapContainer) {
+        mapContainer.style.display = 'block';
+        mapContainer.offsetHeight; // force refresh
+    }
+
+    if (detailsDiv) {
+        detailsDiv.style.display = 'block';
+        detailsDiv.innerHTML = `
+            <div style="background: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 10px; margin-bottom: 10px;">
+                <p style="margin:0; font-weight:bold; color: #0284c7;">✅ OLT Calculada (Fase 1.5)</p>
+                <p style="margin:5px 0 0; font-size:13px; color: #0369a1;">
+                    Ubicación óptima encontrada para ${clientCount} clientes simulados.
+                    <br>Coordenadas: ${oltOptimal.lat.toFixed(5)}, ${oltOptimal.lng.toFixed(5)}
+                </p>
+            </div>
+        `;
+    }
+
+    // 5. Initialize/Update Map (fullRefresh=true: recalculate NAPs)
+    if (!map) {
+        initMap(oltOptimal, rawNaps, radiusMeters);
+    } else {
+        map.resize();
+        // fullRefresh=true: always recalculate on showArchitecture
+        updateMap(oltOptimal, rawNaps, radiusMeters, true);
+    }
+
+    // Scroll to map
+    setTimeout(() => {
+        if (mapContainer) mapContainer.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+};
+
+// Functions to handle map updates
+// fullRefresh=true means regenerate NAPs from rawNaps (first load / showArchitecture)
+// fullRefresh=false (default) means just re-render existing window.naps (OLT drag, address search)
+async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false) {
+    if (!map) return;
+
+    // Clear old markers only (NOT window.naps, unless fullRefresh)
+    if (currentOLTMarker) currentOLTMarker.remove();
+    napMarkers.forEach(m => m.remove());
+    napMarkers = [];
+    poleMarkers.forEach(m => m.remove());
+    poleMarkers = [];
+
+    // 1. Fetch poles + Reset NAPs ONLY on fullRefresh
+    if (fullRefresh && radiusMeters) {
+        await poleManager.fetchPoles(oltLocation.lat, oltLocation.lng, radiusMeters + 200);
+
+        // Snap auto-generated NAPs to poles and reset window.naps
+        if (rawNaps && rawNaps.length > 0) {
+            // Sort by clientCount descending to assign 48p to the busiest clusters
+            const sortedByLoad = [...rawNaps].sort((a, b) => (b.clientCount || 0) - (a.clientCount || 0));
+            const naps48count = window.suggestedNapMix ? window.suggestedNapMix.naps48 : 0;
+            const ids48 = new Set(sortedByLoad.slice(0, naps48count).map((_, i) => i));
+
+            window.naps = sortedByLoad.map((n, i) => {
+                const snapped = poleManager.snapToNearestPole(n);
+                const capacidad = ids48.has(i) ? 48 : 16;
+                return {
+                    id: `nap_${i + 1}`,
+                    lat: snapped.lat,
+                    lng: snapped.lng,
+                    capacidad,
+                    clientesCubiertos: n.clientCount,
+                    distanciaOLT: OLT_Optimizer.getDistanceKm(oltLocation.lat, oltLocation.lng, snapped.lat, snapped.lng) * 1000,
+                    type: snapped.type
+                };
+            });
+        } else {
+            window.naps = []; // Reset to empty if no rawNaps
+        }
+    }
+    // If NOT fullRefresh: window.naps stays as-is (user's manually placed/moved NAPs are preserved)
+
+    // 2. Render Poles (from global state)
+    console.log(`Rendering ${window.postes.length} poles...`);
+    window.postes.forEach(p => {
+        const color = p.type === 'electric' ? '#eab308' : // Yellow
+            p.type === 'light' ? '#f97316' :    // Orange
+                p.type === 'telecom' ? '#3b82f6' :  // Blue
+                    p.type === 'virtual' ? '#cbd5e1' : '#64748b'; // Gray/DarkGray
+
+        const marker = new maplibregl.Marker({
+            element: createSmallDot(color)
+        })
+            .setLngLat([p.lng, p.lat])
+            .setPopup(new maplibregl.Popup({ closeButton: false }).setHTML(`<span style="font-size:10px">${p.type}</span>`))
+            .addTo(map);
+        poleMarkers.push(marker);
+    });
+
+    // 3. Render NAPs (from global state)
+    // Recalculate OLT dist for all (in case OLT moved)
+    window.naps.forEach((nap, i) => {
+        nap.distanciaOLT = OLT_Optimizer.getDistanceKm(oltLocation.lat, oltLocation.lng, nap.lat, nap.lng) * 1000;
+        renderNapMarker(nap, i + 1); // Pass index + 1 for numbering
+    });
+
+    // Update Optimization Label
+    updateOptimizationLabel(window.naps, radiusMeters || window.currentRadiusMeters || 500);
+
+    // 4. Create Draggable OLT Marker with Custom Pin
+    const oltPin = createCustomPin('olt');
+    currentOLTMarker = new maplibregl.Marker({
+        element: oltPin,
+        draggable: true,
+        anchor: 'bottom'
+    })
+        .setLngLat([oltLocation.lng, oltLocation.lat])
+        .setPopup(new maplibregl.Popup({ offset: 35 }).setHTML("<b>📍 OLT Central</b><br>Radio: 10km"))
+        .addTo(map);
+
+    // Listen for drag end to update coordinates
+    currentOLTMarker.on('dragend', async () => {
+        const lngLat = currentOLTMarker.getLngLat();
+        console.log(`OLT Moved to: ${lngLat.lat}, ${lngLat.lng}`);
+
+        // Re-render only (fullRefresh=false): preserves user's NAPs
+        updateMap({ lat: lngLat.lat, lng: lngLat.lng }, null, null, false);
+
+        // Update UI details
+        const detailsDiv = document.getElementById('architecture-details');
+        if (detailsDiv) {
+            detailsDiv.innerHTML = `
+                <div style="background: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 10px; margin-bottom: 10px;">
+                    <p style="margin:0; font-weight:bold; color: #0284c7;">✅ OLT Reubicada</p>
+                    <p style="margin:5px 0 0; font-size:13px; color: #0369a1;">
+                        Nuevas Coordenadas: ${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}
+                    </p>
+                </div>
+            `;
+        }
+    });
+
+    // 5. Draw Connection Lines — Real street routing via OSRM (Phase 4)
+    await drawNetworkLines(oltLocation, window.naps);
+
+    // 6. Draw Coverage Circles (Phase 3.5)
+    drawCoverageCircles(oltLocation, window.naps);
 }
 
-// ==========================================
-// API KEY MANAGEMENT
-// ==========================================
-window.resetGoogleMapsKey = function () {
-    const newKey = prompt("🔑 Ingresa tu nueva Google Maps API Key:");
-    if (newKey && newKey.trim().length > 10) {
-        localStorage.setItem('googleApiKey', newKey.trim());
-        googleApiKey = newKey.trim();
-        alert("✅ API Key actualizada. La página se recargará.");
-        location.reload();
-    } else if (newKey !== null) {
-        alert("❌ API Key inválida o cancelada.");
+function renderNapMarker(nap, index) {
+    const typeClass = nap.capacidad === 48 ? 'nap-48' : 'nap-16';
+    const label = `NAP ${index}`;
+    const pin = createCustomPin(typeClass, label);
+
+    // Create marker with custom element
+    const marker = new maplibregl.Marker({
+        element: pin,
+        draggable: true,
+        anchor: 'bottom', // Anchors the bottom of the wrapper (label bottom) to the point.
+        offset: [0, 25]   // Shift down by ~25px so the Pin's tip (above label) is at the point, and label is below.
+    })
+        .setLngLat([nap.lng, nap.lat])
+        .setPopup(new maplibregl.Popup({ offset: 35 }).setHTML(`
+            <div style="text-align:center;">
+                <b>${nap.tipo || 'NAP'}</b><br>
+                <span style="font-size:12px; color:#64748b;">${nap.capacidad} Puertos</span><br>
+                Dist: ${nap.distanciaOLT.toFixed(0)}m<br>
+                <div style="background:#f1f5f9; border-radius:4px; padding:2px; margin:5px 0; font-size:11px;">
+                   <i>Radio Cob: 300m</i>
+                </div>
+                <button onclick="removeNap('${nap.id}')" style="color:white; background:#ef4444; border:none; border-radius:4px; padding:2px 6px; margin-top:5px; cursor:pointer;">Eliminar</button>
+            </div>
+        `))
+        .addTo(map);
+
+    marker.on('dragend', () => {
+        const pos = marker.getLngLat();
+        nap.lat = pos.lat;
+        nap.lng = pos.lng;
+
+        // Snap to nearest pole
+        const snapped = poleManager.snapToNearestPole({ lat: pos.lat, lng: pos.lng });
+        marker.setLngLat([snapped.lng, snapped.lat]);
+        nap.lat = snapped.lat;
+        nap.lng = snapped.lng;
+
+        // Refresh system (no fullRefresh: preserve other NAPs)
+        const oltPos = currentOLTMarker.getLngLat();
+        updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
+    });
+
+    napMarkers.push(marker);
+}
+
+// Function to draw coverage circles
+function drawCoverageCircles(olt, naps) {
+    // A. OLT 10km Radius
+    const oltPoly = generateCirclePolygon({ lat: olt.lat, lng: olt.lng }, 10);
+
+    // Source Data for OLT
+    const oltSource = {
+        'type': 'FeatureCollection',
+        'features': [{
+            'type': 'Feature',
+            'properties': {},
+            'geometry': {
+                'type': 'Polygon',
+                'coordinates': [oltPoly]
+            }
+        }]
+    };
+
+    // Update/Add OLT Source
+    if (map.getSource('olt-coverage')) {
+        map.getSource('olt-coverage').setData(oltSource);
+    } else {
+        map.addSource('olt-coverage', { 'type': 'geojson', 'data': oltSource });
+        map.addLayer({
+            'id': 'olt-coverage-layer',
+            'type': 'fill',
+            'source': 'olt-coverage',
+            'paint': {
+                'fill-color': '#ef4444',
+                'fill-opacity': 0.1,
+                'fill-outline-color': '#ef4444'
+            }
+        });
+    }
+
+    // NAP Coverage Circles REMOVED per user request (too saturated)
+    if (map.getLayer('nap-coverage-layer')) map.removeLayer('nap-coverage-layer');
+    if (map.getSource('nap-coverage')) map.removeSource('nap-coverage');
+}
+
+// ============================================================
+// FIBER TREE ROUTING — OSRM Table API + MST (Prim)
+// 1) OSRM Table: real road distances entre todos los nodos (1 llamada)
+// 2) Prim's MST sobre distancias reales → topología mínima sin redundancia
+// 3) OSRM Route por cada arista MST → geometría de calle exacta (N-1 llamadas)
+// ============================================================
+
+function haversineM(a, b) {
+    const R = 6371000;
+    const φ1 = a.lat * Math.PI / 180, φ2 = b.lat * Math.PI / 180;
+    const Δφ = (b.lat - a.lat) * Math.PI / 180;
+    const Δλ = (b.lng - a.lng) * Math.PI / 180;
+    const x = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+// Prim's MST sobre una matriz de distancias. nodes[0] = raíz (OLT)
+function primMST(distMatrix) {
+    const n = distMatrix.length;
+    const inMST = new Array(n).fill(false);
+    const key = new Array(n).fill(Infinity);
+    const parent = new Array(n).fill(-1);
+    key[0] = 0;
+    for (let iter = 0; iter < n; iter++) {
+        let u = -1;
+        for (let i = 0; i < n; i++) if (!inMST[i] && (u === -1 || key[i] < key[u])) u = i;
+        if (u === -1) break;
+        inMST[u] = true;
+        for (let v = 0; v < n; v++) {
+            if (!inMST[v] && distMatrix[u][v] < key[v]) {
+                key[v] = distMatrix[u][v];
+                parent[v] = u;
+            }
+        }
+    }
+    const edges = [];
+    for (let i = 1; i < n; i++) if (parent[i] !== -1) edges.push({ fromIdx: parent[i], toIdx: i });
+    return edges;
+}
+
+async function drawNetworkLines(olt, naps) {
+    if (!naps || naps.length === 0) return;
+
+    // ─── Loading indicator ────────────────────────────────────────────────────
+    let loadingEl = document.getElementById('route-loading');
+    if (!loadingEl) {
+        loadingEl = document.createElement('div');
+        loadingEl.id = 'route-loading';
+        loadingEl.style.cssText = `
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(30,64,175,0.92); color: white;
+            padding: 6px 14px; border-radius: 20px; font-size: 12px;
+            font-weight: 600; z-index: 999; pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        `;
+        document.getElementById('map-container').appendChild(loadingEl);
+    }
+    loadingEl.innerText = '📡 Calculando árbol de fibra óptimo...';
+    loadingEl.style.display = 'block';
+
+    const nodes = [olt, ...naps]; // nodes[0] = OLT
+    const n = nodes.length;
+
+    // ─── PASO 1: OSRM Table API → matriz de distancias reales por calle ───────
+    let distMatrix = null;
+    try {
+        const coords = nodes.map(nd => `${nd.lng},${nd.lat}`).join(';');
+        const tableUrl = `https://router.project-osrm.org/table/v1/foot/${coords}?annotations=distance`;
+        const res = await fetch(tableUrl);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.code === 'Ok' && data.distances) {
+                distMatrix = data.distances; // N×N en metros
+                console.log(`✅ OSRM Table: matriz ${n}×${n} de distancias reales obtenida`);
+            }
+        }
+    } catch (e) {
+        console.warn('OSRM Table falló, usando Haversine como fallback:', e.message);
+    }
+
+    // Fallback: Haversine si Table API falla
+    if (!distMatrix) {
+        distMatrix = nodes.map(a => nodes.map(b => haversineM(a, b)));
+    }
+
+    // ─── PASO 2: MST sobre distancias reales ──────────────────────────────────
+    const mstEdges = primMST(distMatrix);
+    console.log(`🌳 MST: ${mstEdges.length} enlaces para ${n} nodos`);
+
+    // ─── PASO 3: Tipo de enlace para colorear ─────────────────────────────────
+    // TRUNK (azul): arista cuyo origen es OLT (idx 0) o NAP×48
+    // DIST (naranja): arista cuyo origen es NAP×16
+    const edgeType = (fromIdx) => {
+        if (fromIdx === 0) return 'trunk';
+        return nodes[fromIdx].capacidad === 48 ? 'trunk' : 'dist';
+    };
+
+    // ─── PASO 4: OSRM Route solo para los N-1 enlaces MST ────────────────────
+    const fetchRoute = async (from, to) => {
+        const url = `https://router.project-osrm.org/route/v1/foot/` +
+            `${from.lng},${from.lat};${to.lng},${to.lat}` +
+            `?overview=full&geometries=geojson&alternatives=false`;
+        try {
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.code === 'Ok' && data.routes?.[0]) return data.routes[0].geometry.coordinates;
+            }
+        } catch (e) { /* fallback below */ }
+        return [[from.lng, from.lat], [to.lng, to.lat]];
+    };
+
+    loadingEl.innerText = `🛣️ Trazando rutas por calle (${mstEdges.length} enlaces)...`;
+    const routeCoords = await Promise.all(
+        mstEdges.map(e => fetchRoute(nodes[e.fromIdx], nodes[e.toIdx]))
+    );
+
+    // ─── PASO 5: Construir GeoJSON y dibujar ─────────────────────────────────
+    const features = mstEdges.map((e, i) => ({
+        type: 'Feature',
+        properties: { type: edgeType(e.fromIdx) },
+        geometry: { type: 'LineString', coordinates: routeCoords[i] }
+    }));
+
+    const sourceData = { type: 'FeatureCollection', features };
+
+    if (map.getSource('network-lines')) {
+        map.getSource('network-lines').setData(sourceData);
+    } else {
+        map.addSource('network-lines', { type: 'geojson', data: sourceData });
+
+        // TRONCAL — azul sólido
+        map.addLayer({
+            id: 'network-lines-trunk', type: 'line', source: 'network-lines',
+            filter: ['==', ['get', 'type'], 'trunk'],
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#2563eb', 'line-width': 3.5, 'line-opacity': 0.95 }
+        });
+
+        // DISTRIBUCIÓN — naranja punteado
+        map.addLayer({
+            id: 'network-lines-dist', type: 'line', source: 'network-lines',
+            filter: ['==', ['get', 'type'], 'dist'],
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#22c55e', 'line-width': 2.2, 'line-dasharray': [4, 2], 'line-opacity': 0.9 }
+        });
+    }
+
+    const trunkN = mstEdges.filter(e => edgeType(e.fromIdx) === 'trunk').length;
+    console.log(`✅ Red dibujada: ${trunkN} troncales (azul) + ${mstEdges.length - trunkN} distribución (verde)`);
+    loadingEl.style.display = 'none';
+}
+
+
+// Global helper to remove NAP
+window.removeNap = function (id) {
+    if (!confirm("¿Eliminar esta NAP?")) return;
+    window.naps = window.naps.filter(n => n.id !== id);
+    if (currentOLTMarker) {
+        const oltPos = currentOLTMarker.getLngLat();
+        updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
     }
 };
 
-// ==========================================
-// ADDRESS SEARCH & GEOCODING
-// ==========================================
-async function handleAddressSearch(map, oltMarker) {
-    const input = document.getElementById('address-search');
-    if (!input || !input.value.trim()) return;
+// Map Click to Add NAP
+function enableMapInteractions() {
+    map.on('click', (e) => {
+        // Prevent if clicking on existing marker handled by bubbling?
+        // MapLibre events are separate.
+        const features = map.queryRenderedFeatures(e.point);
+        // If clicked on a marker logic check... (skipped for MVP simplicity)
 
-    const geocoder = new google.maps.Geocoder();
+        if (e.originalEvent.target.closest('.maplibregl-popup')) return;
+        if (e.originalEvent.target.tagName === 'BUTTON') return;
 
-    // Mostramos feedback de carga
-    const originalPlaceholder = input.placeholder;
-    input.placeholder = "🔍 Buscando...";
-    input.disabled = true;
+        // Custom Logic: Click map -> Ask Capacity -> Add NAP
+        // Simple native interaction for now
+        // Only trigger if modifier key held? OR just always?
+        // Always triggering might be annoying if dragging map.
+        // 'click' only fires on release without drag.
+
+        // Let's add a small check: "Shift+Click" to add?
+        // Or just Confirm?
+
+        // For user friendly: Just confirm.
+        // "Deseas agregar una NAP aquí?"
+
+        // Actually, let's use a non-blocking UI or just do it.
+        // Let's ASK via prompt for capacity to kill two birds with one stone.
+        // If cancel, nothing happens.
+    });
+
+    // Better: Add a custom control or just Right Click? 
+    // MapLibre 'contextmenu'
+    map.on('contextmenu', (e) => {
+        const cap = prompt("📝 Añadir NAP en este punto.\n\nIngresa capacidad (16 o 48):", "16");
+        if (cap !== "16" && cap !== "48") return;
+
+        const newNap = {
+            id: `nap_man_${Date.now()}`,
+            lat: e.lngLat.lat,
+            lng: e.lngLat.lng,
+            capacidad: parseInt(cap),
+            tipo: `NAP ${cap}`,
+            clientesCubiertos: 0,
+            distanciaOLT: 0
+        };
+
+        // Snap
+        const snapped = poleManager.snapToNearestPole(newNap);
+        newNap.lat = snapped.lat;
+        newNap.lng = snapped.lng;
+        newNap.type = snapped.type;
+
+        window.naps.push(newNap);
+
+        const oltPos = currentOLTMarker.getLngLat();
+        // Re-draw NAPs only, no full reset
+        updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
+    });
+}
+
+function createSmallDot(color) {
+    const el = document.createElement('div');
+    el.style.width = '6px';
+    el.style.height = '6px';
+    el.style.backgroundColor = color;
+    el.style.borderRadius = '50%';
+    el.style.cursor = 'pointer';
+    return el;
+}
+
+function initMap(initialLoc, rawNaps, radiusMeters) {
+    const mapContainer = document.getElementById('map-container');
+    if (!mapContainer) return;
+
+    // Use passed location or default
+    const startPos = initialLoc ? [initialLoc.lng, initialLoc.lat] : [-66.9036, 10.4806];
 
     try {
-        const result = await new Promise((resolve, reject) => {
-            geocoder.geocode({ address: input.value }, (results, status) => {
-                if (status === 'OK' && results[0]) {
-                    resolve(results[0]);
-                } else {
-                    reject(status);
-                }
-            });
+        console.log("Intializing MapLibre on map-container...");
+        map = new maplibregl.Map({
+            container: 'map-container',
+            style: 'https://api.maptiler.com/maps/streets-v4/style.json?key=tLt9XVNR31ZloWQqtsMO',
+            center: startPos,
+            zoom: 14 // Higher zoom to see clients better (if visualized later)
         });
 
-        const location = result.geometry.location;
-        const newLat = location.lat();
-        const newLng = location.lng();
+        map.addControl(new maplibregl.NavigationControl());
 
-        console.log(`📍 Dirección encontrada: ${result.formatted_address} (${newLat}, ${newLng})`);
+        map.on('load', () => {
+            console.log("✅ MapLibre cargado - Fase 2.5");
+            if (initialLoc) {
+                updateMap(initialLoc, rawNaps, radiusMeters, true); // fullRefresh on first load
+            } else {
+                // Default marker fallback
+                currentOLTMarker = new maplibregl.Marker({ color: 'red', draggable: true })
+                    .setLngLat(startPos)
+                    .setPopup(new maplibregl.Popup().setHTML("<b>Ubicación Inicial</b>"))
+                    .addTo(map);
+            }
 
-        // 1. Mover Mapa
-        map.setCenter(location);
-        map.setZoom(16);
+            // Enable Address Search (Nominatim)
+            enableAddressSearch();
 
-        // 2. Mover OLT
-        if (oltMarker) {
-            oltMarker.setPosition(location);
-            // Disparar evento de dragend manualmente para recalcular todo
-            google.maps.event.trigger(oltMarker, 'dragend', { latLng: location });
-        }
+            // Enable Interactive NAPs (Click/Context Menu)
+            enableMapInteractions();
+        });
 
-        // Feedback visual
-        input.value = result.formatted_address;
-
-    } catch (error) {
-        console.error("Geocoding error:", error);
-        alert("❌ No se encontró la dirección: " + input.value);
-    } finally {
-        input.placeholder = originalPlaceholder;
-        input.disabled = false;
+    } catch (e) {
+        console.error("Error inicializando MapLibre:", e);
+        alert("Error al cargar el mapa: " + e.message);
     }
 }
-window.showArchitecture = showArchitecture;
 
-async function showArchitecture(oltOverride = null) {
-    loadGoogleMapsScript(async () => {
-        console.log("🗺️ Calculando Arquitectura...");
-        let mstResult = null;
+// Function to handle Nominatim Search
+function enableAddressSearch() {
+    const addrInput = document.getElementById('address-search');
+    if (!addrInput) return;
 
-        // La sección de presupuesto se muestra ahora a través de renderOLTResults
+    // Clone to remove old listeners
+    const newInput = addrInput.cloneNode(true);
+    addrInput.parentNode.replaceChild(newInput, addrInput);
 
-        const btn = event?.target;
-        if (btn) btn.innerHTML = "⏳ Procesando...";
+    newInput.placeholder = "Buscar dirección (Nominatim)...";
 
-        try {
-            // 2. Get User's Current Location (Geolocation API)
-            let mapCenter = { lat: -10.9843, lng: -74.7460 }; // Default: Huánuco, Perú
+    newInput.addEventListener('keypress', async (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const query = newInput.value;
+            if (!query) return;
 
-            // Try to get user's current location with timeout
+            newInput.disabled = true;
+            newInput.style.opacity = "0.6";
+
             try {
-                if (navigator.geolocation) {
-                    btn.innerHTML = "⏳ Buscando ubicación...";
-                    // Request user's location with 5s timeout race
-                    const position = await Promise.race([
-                        new Promise((resolve, reject) => {
-                            navigator.geolocation.getCurrentPosition(resolve, reject, {
-                                enableHighAccuracy: true,
-                                timeout: 5000,
-                                maximumAge: 0
-                            });
-                        }),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout obteniendo ubicación")), 5000))
-                    ]);
+                console.log(`Searching Nominatim for: ${query}`);
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+                const data = await response.json();
 
-                    mapCenter = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
+                if (data && data.length > 0) {
+                    const result = data[0];
+                    const lat = parseFloat(result.lat);
+                    const lng = parseFloat(result.lon);
 
-                    console.log("📍 Ubicación detectada:", mapCenter);
-                    localStorage.setItem('projectLocation', JSON.stringify(mapCenter));
+                    console.log(`Found: ${lat}, ${lng}`);
+
+                    // Move OLT to new address — preserve existing NAPs (fullRefresh=false)
+                    updateMap({ lat, lng }, null, null, false);
+
+                    // Update UI text
+                    const detailsDiv = document.getElementById('architecture-details');
+                    if (detailsDiv) {
+                        detailsDiv.style.display = 'block';
+                        detailsDiv.innerHTML = `
+                            <div style="background: #dcfce7; border-left: 4px solid #22c55e; padding: 10px; margin-bottom: 10px;">
+                                <p style="margin:0; font-weight:bold; color: #15803d;">📍 Dirección Encontrada</p>
+                                <p style="margin:5px 0 0; font-size:13px; color: #166534;">
+                                    ${result.display_name}
+                                    <br>Coordenadas: ${lat.toFixed(5)}, ${lng.toFixed(5)}
+                                </p>
+                            </div>
+                        `;
+                    }
+
                 } else {
-                    console.warn("Geolocation no disponible, usando ubicación por defecto");
+                    alert("No se encontraron resultados para esa dirección.");
                 }
-            } catch (geoError) {
-                console.warn("No se pudo obtener ubicación (usando default):", geoError.message);
-                // Check if there's a stored location
-                const storedLocation = localStorage.getItem('projectLocation');
-                if (storedLocation) {
-                    try {
-                        mapCenter = JSON.parse(storedLocation);
-                        console.log("📍 Usando ubicación guardada:", mapCenter);
-                    } catch (e) {
-                        console.warn("No se pudo parsear ubicación guardada, usando default");
-                    }
-                }
+            } catch (err) {
+                console.error("Nominatim error:", err);
+                alert("Error al buscar dirección.");
+            } finally {
+                newInput.disabled = false;
+                newInput.style.opacity = "1";
+                // Keep focus
+                newInput.focus();
             }
-
-            if (btn) btn.innerHTML = "⏳ Aplicando algoritmo...";
-
-            // 1. Get Real Client Data from Wizard
-            const censoInput = document.getElementById('censo');
-            const radiusInput = document.getElementById('coverageRadius');
-
-            const clientCount = censoInput ? parseInt(censoInput.value) || 20 : 20;
-            const coverageRadiusMeters = radiusInput ? parseInt(radiusInput.value) || 500 : 500;
-            const coverageRadiusKm = coverageRadiusMeters / 1000;
-
-
-            // 3. Generate Client Distribution
-            let clients = [];
-            for (let i = 0; i < clientCount; i++) {
-                // Distribute clients within coverage radius
-                const angle = Math.random() * 2 * Math.PI;
-                const distance = Math.random() * coverageRadiusKm;
-
-                // Convert polar to cartesian (approximate for small distances)
-                const latOffset = (distance * Math.cos(angle)) / 111; // 1 degree lat ≈ 111 km
-                const lngOffset = (distance * Math.sin(angle)) / (111 * Math.cos(mapCenter.lat * Math.PI / 180));
-
-                clients.push({
-                    id: `CLI_${i + 1}`,
-                    lat: mapCenter.lat + latOffset,
-                    lng: mapCenter.lng + lngOffset
-                });
-            }
-
-
-            // 4. Advanced OLT Optimization
-            const optimizer = new OLT_Optimizer(clients, { country: 'CO' }); // Default to Colombia
-            const result = await optimizer.findOptimalOLTAdvanced();
-
-            if (result.error) {
-                alert(result.error);
-                if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida";
-                return;
-            }
-
-            const oltOptimal = result.ubicacion_optima;
-            const validations = result.validaciones;
-
-            // Save result to Firestore (if project context exists)
-            if (typeof currentProjectDocId !== 'undefined' && currentProjectDocId) {
-                try {
-                    console.log("Saving OLT calculation to Firestore...");
-                    await db.collection('proyectos').doc(currentProjectDocId).update({
-                        olt_calculation: {
-                            ...result,
-                            fecha_calculo: new Date().toISOString(),
-                            version_algoritmo: '2.0'
-                        }
-                    });
-                    console.log("OLT calculation saved successfully.");
-                } catch (err) {
-                    console.warn("Failed to save OLT calculation to Firestore:", err);
-                    // Don't block UI
-                }
-            }
-
-            // 5. Advanced NAP Clustering (v2.0)
-            const napOptimizer = new NAP_Optimizer(clients, oltOptimal);
-            const napResult = await napOptimizer.calculateOptimalNAPs();
-            const naps = napResult.naps;
-
-            console.log("✅ NAP Optimization Complete:", JSON.stringify(napResult, null, 2));
-
-            // Store clients globally for recalculation
-            window.currentProjectClients = clients;
-
-            // 6. Render Map
-            const mapDiv = document.getElementById('map-container');
-            if (mapDiv) {
-                mapDiv.style.display = 'block';
-                // 5. Initialize Map with optimal center
-                const map = new google.maps.Map(mapDiv, {
-                    zoom: 15,
-                    center: { lat: oltOptimal.lat, lng: oltOptimal.lng },
-                    mapTypeId: google.maps.MapTypeId.HYBRID,
-                    mapTypeControl: true,
-                    streetViewControl: true,
-                    fullscreenControl: true
-                });
-
-                // 🔥 AGREGAR LEYENDA PREMIUM
-                FibraDespliegue.createMapLegend(map);
-
-                // OLT Marker (Red) - DRAGGABLE
-                const oltMarker = new google.maps.Marker({
-                    position: { lat: oltOptimal.lat, lng: oltOptimal.lng },
-                    map: map,
-                    label: "OLT",
-                    title: `OLT Óptima - Score: ${oltOptimal.score_total}/100`,
-                    draggable: true, // ENABLE DRAG
-                    icon: {
-                        url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
-                    }
-                });
-
-                // Address Search Handler
-                const searchInput = document.getElementById('address-search');
-                if (searchInput) {
-                    // Remove old listeners to avoid duplicates
-                    const newInput = searchInput.cloneNode(true);
-                    searchInput.parentNode.replaceChild(newInput, searchInput);
-
-                    newInput.addEventListener('keypress', (e) => {
-                        if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddressSearch(map, oltMarker);
-                        }
-                    });
-                }
-
-                // Real-time InfoWindow
-                const infoWindow = new google.maps.InfoWindow({
-                    content: `<div style="padding:5px;"><strong>Arrastra para recalcular...</strong></div>`,
-                    disableAutoPan: true // Prevent map jumping while dragging
-                });
-
-                // Optimization instance for drag events (reuse existing clients)
-                let dragOptimizer = null;
-                let lastUpdate = 0; // Throttling timestamp
-
-                oltMarker.addListener('dragstart', () => {
-                    infoWindow.open(map, oltMarker);
-                    if (window.currentProjectClients) {
-                        dragOptimizer = new OLT_Optimizer(window.currentProjectClients, { country: 'CO' });
-                    }
-                });
-
-                oltMarker.addListener('drag', (event) => {
-                    if (!dragOptimizer) return;
-
-                    // Throttling: Update max every 50ms
-                    const now = Date.now();
-                    if (now - lastUpdate < 50) return;
-                    lastUpdate = now;
-
-                    const lat = event.latLng.lat();
-                    const lng = event.latLng.lng();
-
-                    // Fast Scoring (Synchronous)
-                    const tempCandidate = { lat, lng, type: 'manual' };
-                    // Use the new SYNC method to avoid Promise issues
-                    const tempResult = dragOptimizer.scoreCandidateSync(tempCandidate);
-
-                    // Quick optical check
-                    const validations = dragOptimizer.validateLocation(tempResult);
-                    const loss = parseFloat(validations.perdida_estimada_db || 0);
-                    const power = (4.0 - loss).toFixed(2);
-
-                    // Determine status color
-                    let color = '#ef4444'; // Red (Critical)
-                    let statusText = 'CRÍTICO';
-                    if (power >= -22) { color = '#f59e0b'; statusText = 'AL LÍMITE'; } // Orange
-                    if (power >= -18) { color = '#10b981'; statusText = 'IDEAL'; } // Green
-
-                    // Premium UI for Info Window
-                    infoWindow.setContent(`
-                        <div style="font-family: 'Inter', sans-serif; text-align: center; min-width: 180px; padding: 4px;">
-                            <div style="font-size: 10px; color: #64748b; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 4px;">EN TIEMPO REAL</div>
-                            
-                            <div style="display: flex; justify-content: center; align-items: baseline; gap: 4px; margin-bottom: 8px;">
-                                <span style="font-size: 28px; font-weight: 800; color: #1e293b;">${tempResult.score_total}</span>
-                                <span style="font-size: 13px; color: #94a3b8; font-weight: 600;">/ 100</span>
-                            </div>
-
-                            <div style="background: #f8fafc; border-radius: 8px; padding: 6px; border: 1px solid #e2e8f0;">
-                                <div style="font-size: 11px; color: #64748b; margin-bottom: 2px;">Potencia Est.</div>
-                                <div style="font-size: 16px; font-weight: 800; color: ${color};">
-                                    ${power} dBm
-                                </div>
-                                <div style="font-size: 9px; font-weight: 700; color: ${color}; margin-top: 2px;">${statusText}</div>
-                            </div>
-                        </div>
-                    `);
-                });
-
-                // DRAG END EVENT LISTENER
-                oltMarker.addListener('dragend', async (event) => {
-                    const newLat = event.latLng.lat();
-                    const newLng = event.latLng.lng();
-                    console.log("📍 OLT arrastrada a:", newLat, newLng);
-
-                    // Close InfoWindow
-                    infoWindow.close();
-
-                    // Show loading indicator
-                    const btn = document.getElementById('btn-architecture');
-                    if (btn) btn.innerHTML = "🔄 Recalculando NAPs...";
-
-                    try {
-                        if (window.currentProjectClients) {
-                            const optimizer = new OLT_Optimizer(window.currentProjectClients, { country: 'CO' });
-
-                            // Create candidate from new location
-                            const manualCandidate = {
-                                lat: newLat,
-                                lng: newLng,
-                                type: 'manual',
-                                name: 'Ubicación Manual'
-                            };
-
-                            // Score the new location
-                            const newResult = await optimizer.scoreCandidate(manualCandidate);
-                            newResult.razon_seleccion = "📍 Ubicación ajustada manualmente por el usuario.";
-
-                            // Validate new location
-                            const newVal = optimizer.validateLocation(newResult);
-
-                            // 🔥 RECALCULATE NAPs with new OLT location
-                            const napOptimizer = new NAP_Optimizer(window.currentProjectClients, { lat: newLat, lng: newLng });
-                            const napResult = await napOptimizer.calculateOptimalNAPs();
-                            const newNaps = napResult.naps;
-
-                            console.log("✅ NAPs recalculadas:", newNaps.length);
-
-                            // Clear ALL existing markers and polylines from map
-                            // We need to store references to clear them
-                            // For now, we'll just recreate the entire map view
-
-                            // Update marker position (already done by drag)
-                            oltMarker.setTitle(`OLT Manual - Score: ${newResult.score_total}/100`);
-
-                            // Clear old NAP markers and polylines by removing them from map
-                            // Store markers globally for cleanup
-                            if (window.currentNAPMarkers) {
-                                window.currentNAPMarkers.forEach(marker => marker.setMap(null));
-                            }
-                            if (window.currentPolylines) {
-                                window.currentPolylines.forEach(line => line.setMap(null));
-                            }
-
-                            // Initialize storage arrays
-                            window.currentNAPMarkers = [];
-                            window.currentPolylines = [];
-
-                            // Redraw NAP markers
-                            newNaps.forEach(nap => {
-                                // Diferenciar por capacidad para la leyenda
-                                let iconColor = (nap.capacity === 48) ? 'blue' : 'orange';
-
-                                const napMarker = new google.maps.Marker({
-                                    position: { lat: nap.lat, lng: nap.lng },
-                                    map: map,
-                                    icon: `http://maps.google.com/mapfiles/ms/icons/${iconColor}-dot.png`,
-                                    title: `${nap.id} - ${nap.cantidad_clientes}/${nap.capacity} clientes (${nap.ocupacion_porcentaje.toFixed(1)}%)`
-                                });
-                                window.currentNAPMarkers.push(napMarker);
-                            });
-
-                            // 🔥 DIBUJAR MST CON RUTAS REALES
-                            let mstResult = null;
-                            try {
-                                mstResult = await FibraDespliegue.calcularMSTConRutas(map, { lat: newLat, lng: newLng }, newNaps);
-                                console.log("✅ MST con rutas reales completado:", mstResult);
-                            } catch (mstErr) {
-                                console.warn("Fallo al calcular MST en drag:", mstErr);
-                            }
-
-                            // Update UI with new results
-                            renderOLTResults(newResult, window.currentProjectClients.length, newNaps, newVal, result, mstResult);
-
-                            console.log("✅ Mapa actualizado con nueva configuración OLT-NAPs");
-                        }
-                    } catch (error) {
-                        console.error("Error recalculando NAPs:", error);
-                        alert("Error al recalcular NAPs: " + error.message);
-                    } finally {
-                        if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida";
-                    }
-                });
-
-                // Alternative OLT Locations (Yellow) - DISABLED
-                // User can now drag OLT freely, so alternative locations are not needed
-                /*
-                if (result.ubicaciones_alternativas && result.ubicaciones_alternativas.length > 0) {
-                    result.ubicaciones_alternativas.forEach((alt, idx) => {
-                        new google.maps.Marker({
-                            position: { lat: alt.lat, lng: alt.lng },
-                            map: map,
-                            label: `${idx + 2}`,
-                            title: `${alt.name} - Score: ${alt.score_total}/100`,
-                            icon: {
-                                url: 'http://maps.google.com/mapfiles/ms/icons/yellow-dot.png'
-                            }
-                        });
-                    });
-                }
-                */
-
-                // NAP Markers (Status-based colors) + Fiber Routes
-                // Initialize global storage for cleanup on OLT drag
-                window.currentNAPMarkers = [];
-                window.currentPolylines = [];
-
-                // Redraw NAP markers
-                naps.forEach(nap => {
-                    // Diferenciar por capacidad para la leyenda
-                    let iconColor = (nap.capacity === 48) ? 'blue' : 'orange';
-
-                    const napMarker = new google.maps.Marker({
-                        position: { lat: nap.lat, lng: nap.lng },
-                        map: map,
-                        icon: `http://maps.google.com/mapfiles/ms/icons/${iconColor}-dot.png`,
-                        title: `${nap.id} - ${nap.cantidad_clientes}/${nap.capacity} clientes (${nap.ocupacion_porcentaje.toFixed(1)}%)`
-                    });
-                    window.currentNAPMarkers.push(napMarker);
-
-                    // InfoWindow with detailed NAP info
-                    const napInfoContent = `
-                        <div style="font-family: 'Inter', sans-serif; padding: 8px; min-width: 200px;">
-                            <div style="font-weight: 700; font-size: 14px; margin-bottom: 6px;">${nap.id}</div>
-                            <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">
-                                <strong>Tipo:</strong> ${nap.tipo_nap}<br>
-                                <strong>Clientes:</strong> ${nap.cantidad_clientes} / ${nap.capacity}<br>
-                                <strong>Ocupación:</strong> ${nap.ocupacion_porcentaje.toFixed(1)}%<br>
-                                <strong>Distancia OLT:</strong> ${nap.distancia_olt_km.toFixed(2)} km<br>
-                                <strong>Pérdida Ruta:</strong> ${nap.perdida_ruta_db.toFixed(2)} dB
-                            </div>
-                        </div>
-                    `;
-                    const napInfoWindow = new google.maps.InfoWindow({ content: napInfoContent });
-                    napMarker.addListener('click', () => {
-                        napInfoWindow.open(map, napMarker);
-                    });
-                });
-
-                // 🔥 DIBUJAR MST CON RUTAS REALES (RENDER INICIAL)
-                try {
-                    mstResult = await FibraDespliegue.calcularMSTConRutas(map, { lat: oltOptimal.lat, lng: oltOptimal.lng }, naps);
-                    console.log("✅ MST Inicial completado:", mstResult);
-                } catch (mstErr) {
-                    console.warn("⚠️ Fallo en cálculo MST inicial (usando fallback):", mstErr);
-                }
-            }
-
-            // 7. Initial UI Render
-            renderOLTResults(oltOptimal, window.currentProjectClients.length, naps, validations, result, mstResult);
-
-        } catch (err) {
-            console.error("❌ Error en showArchitecture:", err);
-            // Solo mostramos alerta si es error crítico, no de MST
-            if (!err.message.includes('mstResult')) {
-                alert("Ocurrió un error al calcular la arquitectura: " + err.message);
-            }
-        } finally {
-            if (btn) btn.innerHTML = "🗺️ Ver Arquitectura Sugerida";
-            console.log("🏁 Proceso de arquitectura finalizado");
-            // Reset loading state just in case
-            window.isGoogleMapsLoading = false;
         }
     });
 }
 
-function renderOLTResults(oltOptimal, clientCount, naps, validations, result, mstData = null) {
-    const detailsDiv = document.getElementById('architecture-details');
-    if (!detailsDiv) return;
+function updateOptimizationLabel(naps, radiusMeters) {
+    const labelId = 'opt-label-badge';
+    let badge = document.getElementById(labelId);
 
-    detailsDiv.style.display = 'block';
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.id = labelId;
+        badge.style.position = 'absolute';
+        badge.style.top = '10px';
+        badge.style.left = '50%';
+        badge.style.transform = 'translateX(-50%)';
+        badge.style.padding = '8px 15px';
+        badge.style.borderRadius = '20px';
+        badge.style.fontWeight = 'bold';
+        badge.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+        badge.style.zIndex = '1000';
+        badge.style.fontSize = '14px';
+        badge.style.transition = 'all 0.3s ease';
 
-    // 1. Calculate Optical Metrics with REAL fiber distance if available
-    const txPower = FibraDespliegue.config.P_TX; // 7.0 dBm
-
-    // Si tenemos datos del MST, usamos la distancia real. Si no, usamos la validación estimada.
-    const realDistKm = mstData ? parseFloat(mstData.total_km) : parseFloat(validations.distancia_maxima_km || 0);
-    const lossFiber = realDistKm * FibraDespliegue.config.ALPHA;
-
-    // Splitter loss según capacidad (asumimos predominante)
-    const napCap = naps[0]?.capacity || 16;
-    const splitterLoss = napCap === 48 ? FibraDespliegue.config.SPLITTER_NAP48 : FibraDespliegue.config.SPLITTER_NAP16;
-
-    const totalLoss = lossFiber + splitterLoss + FibraDespliegue.config.PERDIDA_CONECTOR + FibraDespliegue.config.MARGEN_SEGURIDAD;
-    const rxPower = (txPower - totalLoss).toFixed(2);
-
-    // Determine Status
-    let statusText = "IDEAL";
-    let statusClass = "";
-    if (rxPower < -28) {
-        statusText = "CRÍTICO";
-        statusClass = "danger";
-    } else if (rxPower < -25) {
-        statusText = "AL LÍMITE";
-        statusClass = "warning";
+        const mapContainer = document.getElementById('map-container');
+        if (mapContainer) mapContainer.appendChild(badge);
     }
 
-    let html = `
-        <div class="olt-result-card">
-            
-            <!-- 1. Main Premium Card (Dark) -->
-            <div class="premium-main-card">
-                <div class="premium-main-value">${rxPower} dBm</div>
-                <div class="premium-main-label">Potencia Estimada Recibida</div>
-                <div class="premium-status-pill ${statusClass}">
-                    ✓ ${statusText}
-                </div>
-            </div>
-
-            <!-- 2. Light Stats Grid -->
-            <div class="premium-stats-grid">
-                <div class="premium-stat-card">
-                    <span class="premium-stat-label">PÉRDIDA EN MST</span>
-                    <span class="premium-stat-value">-${totalLoss.toFixed(2)} <small class="premium-stat-unit">dB</small></span>
-                </div>
-                <div class="premium-stat-card">
-                    <span class="premium-stat-label">DISTANCIA REAL</span>
-                    <span class="premium-stat-value">${realDistKm.toFixed(2)} <small class="premium-stat-unit">km</small></span>
-                </div>
-                <div class="premium-stat-card">
-                    <span class="premium-stat-label">NAPS REQUERIDOS</span>
-                    <span class="premium-stat-value">${naps.length}</span>
-                </div>
-                <div class="premium-stat-card">
-                    <span class="premium-stat-label">MARGEN SEGURIDAD</span>
-                    <span class="premium-stat-value">${FibraDespliegue.config.MARGEN_SEGURIDAD} <small class="premium-stat-unit">dB</small></span>
-                </div>
-            </div>
-
-            <div class="olt-body" style="padding-top: 0;">
-                <div class="olt-section-title">
-                    <i class="fas fa-chart-bar"></i> Detalles de Scoring
-                </div>
-                <!-- ... existing score breakdown ... -->
-    `;
-
-    // Add back the detailed score bars for context (optional but good to keep)
-    // Helpers for progress bars
-    const getBarWidth = (score) => Math.max(5, Math.min(100, score));
-
-    html += `
-        <div class="scores-grid">
-            <div class="score-item">
-                <div class="score-label">
-                    <span>Distancia</span>
-                    <span>${oltOptimal.score_distancia}/100</span>
-                </div>
-                <div class="score-bar-bg">
-                    <div class="score-bar-fill" style="width: ${getBarWidth(oltOptimal.score_distancia)}%;"></div>
-                </div>
-            </div>
-            <div class="score-item">
-                <div class="score-label">
-                    <span>Costo</span>
-                    <span>${oltOptimal.score_costo}/100</span>
-                </div>
-                <div class="score-bar-bg">
-                    <div class="score-bar-fill" style="width: ${getBarWidth(oltOptimal.score_costo)}%;"></div>
-                </div>
-            </div>
-            <div class="score-item">
-                <div class="score-label">
-                    <span>Accesibilidad</span>
-                    <span>${oltOptimal.score_accesibilidad}/100</span>
-                </div>
-                <div class="score-bar-bg">
-                    <div class="score-bar-fill" style="width: ${getBarWidth(oltOptimal.score_accesibilidad)}%;"></div>
-                </div>
-            </div>
-            <div class="score-item">
-                <div class="score-label">
-                    <span>Escalabilidad</span>
-                    <span>${oltOptimal.score_escalabilidad}/100</span>
-                </div>
-                <div class="score-bar-bg">
-                    <div class="score-bar-fill" style="width: ${getBarWidth(oltOptimal.score_escalabilidad)}%;"></div>
-                </div>
-            </div>
-        </div>
-
-    `;
-
-    // Add validation warnings if any
-    if (validations.advertencias && validations.advertencias.length > 0) {
-        html += `
-            <div class="notice-card" style="border-color: #f59e0b; background: #fffbeb;">
-                <strong style="color: #b45309; display: block; margin-bottom: 8px;">⚠️ Advertencias:</strong>
-        `;
-        validations.advertencias.forEach(warning => {
-            html += `<div style="color: #92400e; margin-bottom: 4px;">• ${warning}</div>`;
-        });
-        html += `</div>`;
-    }
-
-
-    html += `</div></div>`; // Close body and card
-
-    detailsDiv.innerHTML = html;
-
-    // --- SINCRONIZACIÓN DINÁMICA CON LISTA DE MATERIALES ---
-    try {
-        console.log("Sincronizando lista de materiales con resultados del Optimizador...");
-
-        const capCounts = naps.reduce((acc, n) => {
-            const cap = n.capacity || 16;
-            acc[cap] = (acc[cap] || 0) + 1;
-            return acc;
-        }, {});
-
-        const mainCap = parseInt(Object.keys(capCounts).sort((a, b) => capCounts[b] - capCounts[a])[0] || 16);
-        const radioKm = parseFloat(document.getElementById('coverageRadius')?.value || 500) / 1000;
-
-        // Regenerar lista con los datos precisos del mapa
-        generarListaCotizacion(clientCount, naps.length, radioKm, mainCap);
-
-        // Actualizar el resumen rápido
-        const resNapsTotal = document.getElementById('res-naps-total');
-        if (resNapsTotal) {
-            resNapsTotal.innerText = naps.length;
-            const napLabel = resNapsTotal.parentElement.querySelector('span');
-            if (napLabel) napLabel.innerText = `NAPs (${mainCap})`;
-        }
-    } catch (syncErr) {
-        console.warn("Error en sincronización dinámica:", syncErr);
-    }
-}
-
-
-
-// Global Assignments
-window.renderOLTResults = renderOLTResults;
-window.selectProjectType = selectProjectType;
-window.startSelectedFlow = startSelectedFlow;
-
-
-// ==========================================
-// RESTORED NAVIGATION LOGIC
-// ==========================================
-// Removed duplicate declaration of selectedProjectType to avoid SyntaxError
-// let selectedProjectType = null; 
-
-function selectProjectType(type) {
-    selectedProjectType = type;
-    document.querySelectorAll('.project-card').forEach(c => c.classList.remove('selected'));
-    const card = document.getElementById(`card - ${type} `);
-    if (card) card.classList.add('selected');
-
-    // Enable button
-    const btn = document.getElementById('btn-start-project');
-    if (btn) {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
-    }
-    console.log("Proyecto seleccionado:", type);
-}
-
-function startSelectedFlow() {
-    console.log("Iniciando flujo:", selectedProjectType);
-    // Safe check if selectedProjectType is defined
-    if (typeof selectedProjectType !== 'undefined' && !selectedProjectType) {
-        alert("⚠️ Por favor selecciona una opción para continuar (Asistente AI o Manual).");
-        return;
-    } else if (typeof selectedProjectType === 'undefined') {
-        console.error("selectedProjectType is undefined!");
+    if (!naps || naps.length === 0) {
+        badge.style.display = 'none';
         return;
     }
+    badge.style.display = 'block';
 
-    // Hide dashboard / selection
-    const dash = document.getElementById('netso-dashboard');
-    if (dash) dash.style.display = 'none';
+    // Metrics Calculation
+    let withinRadius = 0;
+    // Fix: Use 10km (10000m) as the OLT connectivity limit, consistent with the visual red circle.
+    // previously it was using 'radiusMeters' which is the NAP service radius (e.g. 500m).
+    const OLT_LIMIT_METERS = 10000;
 
-    // Show Page 1
-    const p1 = document.getElementById('page1');
-    if (p1) p1.style.display = 'block';
+    naps.forEach(n => {
+        if (n.distanciaOLT <= OLT_LIMIT_METERS) withinRadius++;
+    });
 
-    // Update step indicator
-    if (typeof updateStepIndicator === 'function') {
-        updateStepIndicator(1);
+    const coveragePct = (withinRadius / naps.length) * 100;
+
+    // Simple logic for MVP
+    let status = '';
+    let color = '';
+    let bg = '';
+
+    if (coveragePct >= 80) {
+        status = '🟢 ÓPTIMO';
+        color = '#14532d';
+        bg = '#dcfce7';
+    } else if (coveragePct >= 50) {
+        status = '🟡 ACEPTABLE';
+        color = '#713f12';
+        bg = '#fef9c3';
     } else {
-        // Fallback implementation if global function missing
-        const steps = document.querySelectorAll('.step-item');
-        steps.forEach((s, idx) => {
-            if (idx + 1 === 1) s.classList.add('active');
-            else s.classList.remove('active');
-        });
+        status = '🔴 DEFICIENTE';
+        color = '#7f1d1d';
+        bg = '#fee2e2';
     }
 
-    window.scrollTo(0, 0);
+    badge.innerHTML = `${status} (${coveragePct.toFixed(0)}% Conectividad OLT)`;
+    badge.style.color = color;
+    badge.style.backgroundColor = bg;
+    badge.style.border = `2px solid ${color}`;
 }
 
-// Ensure updateStepIndicator is available globally if not already
-if (typeof window.updateStepIndicator === 'undefined') {
-    window.updateStepIndicator = function (step) {
-        const steps = document.querySelectorAll('.step-item');
-        steps.forEach((s, idx) => {
-            if (idx + 1 === step) s.classList.add('active');
-            else if (idx + 1 < step) s.classList.add('completed'); // Optional style
-            else s.classList.remove('active');
-        });
+// ==========================================
+// PHASE 3.5: VISUAL REFINEMENT HELPERS
+// ==========================================
+
+function createCustomPin(type, label) {
+    // Wrapper for both Pin and Label
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pin-wrapper';
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.alignItems = 'center';
+    // Pointer handling: We want the pin itself to be the click target mostly, but label is fine too.
+
+    // The Pin
+    const el = document.createElement('div');
+    el.className = 'custom-pin';
+
+    if (type === 'olt') el.classList.add('pin-olt');
+    else if (type === 'nap-16') el.classList.add('pin-nap-16');
+    else if (type === 'nap-48') el.classList.add('pin-nap-48');
+
+    wrapper.appendChild(el);
+
+    // The Label (Optional)
+    if (label) {
+        const lbl = document.createElement('div');
+        lbl.className = 'pin-label';
+        lbl.innerText = label;
+        // Transform the label to counteract any potential parent rotation? No, parent isn't rotated.
+        // But since pin is rotated -45deg, let's keep label separate in flow.
+        wrapper.appendChild(lbl);
+    }
+
+    return wrapper;
+}
+
+function generateCirclePolygon(center, radiusKm, points = 64) {
+    const coords = {
+        latitude: center.lat,
+        longitude: center.lng
     };
+
+    const km = radiusKm;
+    const ret = [];
+    const distanceX = km / (111.320 * Math.cos(coords.latitude * Math.PI / 180));
+    const distanceY = km / 110.574;
+
+    let theta, x, y;
+    for (let i = 0; i < points; i++) {
+        theta = (i / points) * (2 * Math.PI);
+        x = distanceX * Math.cos(theta);
+        y = distanceY * Math.sin(theta);
+        ret.push([coords.longitude + x, coords.latitude + y]);
+    }
+    ret.push(ret[0]); // Close polygon
+    return ret;
 }
 
+// Placeholder for Phase 4
+async function calculateRouteOSRM(start, end) {
+    console.log("Future: Calculating Walking Route via OSRM...");
+    // Will return GeoJSON LineString
+    return null;
+}
 
