@@ -6299,6 +6299,13 @@ window.showArchitecture = function () {
     // 4. Update UI
     const mapContainer = document.getElementById('map-container');
     const detailsDiv = document.getElementById('architecture-details');
+
+    // Hide the button, reveal the title
+    const btnWrapper = document.getElementById('show-arch-btn-wrapper');
+    if (btnWrapper) btnWrapper.style.display = 'none';
+    const archTitle = document.getElementById('arch-title');
+    if (archTitle) archTitle.style.display = 'block';
+
     // Reveal search container
     const searchContainer = document.getElementById('olt-search-container');
     if (searchContainer) {
@@ -6441,8 +6448,8 @@ async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false
         }
     });
 
-    // 5. Draw Connection Lines (Simple Polyline for now - Phase 4 will accept routing)
-    drawNetworkLines(oltLocation, window.naps);
+    // 5. Draw Connection Lines — Real street routing via OSRM (Phase 4)
+    await drawNetworkLines(oltLocation, window.naps);
 
     // 6. Draw Coverage Circles (Phase 3.5)
     drawCoverageCircles(oltLocation, window.naps);
@@ -6533,46 +6540,159 @@ function drawCoverageCircles(olt, naps) {
     if (map.getSource('nap-coverage')) map.removeSource('nap-coverage');
 }
 
-function drawNetworkLines(olt, naps) {
-    const features = naps.map(nap => ({
-        'type': 'Feature',
-        'geometry': {
-            'type': 'LineString',
-            'coordinates': [
-                [olt.lng, olt.lat],
-                [nap.lng, nap.lat]
-            ]
+// ============================================================
+// FIBER TREE ROUTING — OSRM Table API + MST (Prim)
+// 1) OSRM Table: real road distances entre todos los nodos (1 llamada)
+// 2) Prim's MST sobre distancias reales → topología mínima sin redundancia
+// 3) OSRM Route por cada arista MST → geometría de calle exacta (N-1 llamadas)
+// ============================================================
+
+function haversineM(a, b) {
+    const R = 6371000;
+    const φ1 = a.lat * Math.PI / 180, φ2 = b.lat * Math.PI / 180;
+    const Δφ = (b.lat - a.lat) * Math.PI / 180;
+    const Δλ = (b.lng - a.lng) * Math.PI / 180;
+    const x = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+// Prim's MST sobre una matriz de distancias. nodes[0] = raíz (OLT)
+function primMST(distMatrix) {
+    const n = distMatrix.length;
+    const inMST = new Array(n).fill(false);
+    const key = new Array(n).fill(Infinity);
+    const parent = new Array(n).fill(-1);
+    key[0] = 0;
+    for (let iter = 0; iter < n; iter++) {
+        let u = -1;
+        for (let i = 0; i < n; i++) if (!inMST[i] && (u === -1 || key[i] < key[u])) u = i;
+        if (u === -1) break;
+        inMST[u] = true;
+        for (let v = 0; v < n; v++) {
+            if (!inMST[v] && distMatrix[u][v] < key[v]) {
+                key[v] = distMatrix[u][v];
+                parent[v] = u;
+            }
         }
+    }
+    const edges = [];
+    for (let i = 1; i < n; i++) if (parent[i] !== -1) edges.push({ fromIdx: parent[i], toIdx: i });
+    return edges;
+}
+
+async function drawNetworkLines(olt, naps) {
+    if (!naps || naps.length === 0) return;
+
+    // ─── Loading indicator ────────────────────────────────────────────────────
+    let loadingEl = document.getElementById('route-loading');
+    if (!loadingEl) {
+        loadingEl = document.createElement('div');
+        loadingEl.id = 'route-loading';
+        loadingEl.style.cssText = `
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(30,64,175,0.92); color: white;
+            padding: 6px 14px; border-radius: 20px; font-size: 12px;
+            font-weight: 600; z-index: 999; pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        `;
+        document.getElementById('map-container').appendChild(loadingEl);
+    }
+    loadingEl.innerText = '📡 Calculando árbol de fibra óptimo...';
+    loadingEl.style.display = 'block';
+
+    const nodes = [olt, ...naps]; // nodes[0] = OLT
+    const n = nodes.length;
+
+    // ─── PASO 1: OSRM Table API → matriz de distancias reales por calle ───────
+    let distMatrix = null;
+    try {
+        const coords = nodes.map(nd => `${nd.lng},${nd.lat}`).join(';');
+        const tableUrl = `https://router.project-osrm.org/table/v1/foot/${coords}?annotations=distance`;
+        const res = await fetch(tableUrl);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.code === 'Ok' && data.distances) {
+                distMatrix = data.distances; // N×N en metros
+                console.log(`✅ OSRM Table: matriz ${n}×${n} de distancias reales obtenida`);
+            }
+        }
+    } catch (e) {
+        console.warn('OSRM Table falló, usando Haversine como fallback:', e.message);
+    }
+
+    // Fallback: Haversine si Table API falla
+    if (!distMatrix) {
+        distMatrix = nodes.map(a => nodes.map(b => haversineM(a, b)));
+    }
+
+    // ─── PASO 2: MST sobre distancias reales ──────────────────────────────────
+    const mstEdges = primMST(distMatrix);
+    console.log(`🌳 MST: ${mstEdges.length} enlaces para ${n} nodos`);
+
+    // ─── PASO 3: Tipo de enlace para colorear ─────────────────────────────────
+    // TRUNK (azul): arista cuyo origen es OLT (idx 0) o NAP×48
+    // DIST (naranja): arista cuyo origen es NAP×16
+    const edgeType = (fromIdx) => {
+        if (fromIdx === 0) return 'trunk';
+        return nodes[fromIdx].capacidad === 48 ? 'trunk' : 'dist';
+    };
+
+    // ─── PASO 4: OSRM Route solo para los N-1 enlaces MST ────────────────────
+    const fetchRoute = async (from, to) => {
+        const url = `https://router.project-osrm.org/route/v1/foot/` +
+            `${from.lng},${from.lat};${to.lng},${to.lat}` +
+            `?overview=full&geometries=geojson&alternatives=false`;
+        try {
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.code === 'Ok' && data.routes?.[0]) return data.routes[0].geometry.coordinates;
+            }
+        } catch (e) { /* fallback below */ }
+        return [[from.lng, from.lat], [to.lng, to.lat]];
+    };
+
+    loadingEl.innerText = `🛣️ Trazando rutas por calle (${mstEdges.length} enlaces)...`;
+    const routeCoords = await Promise.all(
+        mstEdges.map(e => fetchRoute(nodes[e.fromIdx], nodes[e.toIdx]))
+    );
+
+    // ─── PASO 5: Construir GeoJSON y dibujar ─────────────────────────────────
+    const features = mstEdges.map((e, i) => ({
+        type: 'Feature',
+        properties: { type: edgeType(e.fromIdx) },
+        geometry: { type: 'LineString', coordinates: routeCoords[i] }
     }));
 
-    const sourceData = {
-        'type': 'FeatureCollection',
-        'features': features
-    };
+    const sourceData = { type: 'FeatureCollection', features };
 
     if (map.getSource('network-lines')) {
         map.getSource('network-lines').setData(sourceData);
     } else {
-        map.addSource('network-lines', {
-            'type': 'geojson',
-            'data': sourceData
-        });
+        map.addSource('network-lines', { type: 'geojson', data: sourceData });
+
+        // TRONCAL — azul sólido
         map.addLayer({
-            'id': 'network-lines-layer',
-            'type': 'line',
-            'source': 'network-lines',
-            'layout': {
-                'line-join': 'round',
-                'line-cap': 'round'
-            },
-            'paint': {
-                'line-color': '#3b82f6',
-                'line-width': 2,
-                'line-dasharray': [2, 2] // Dashed line for logical connection
-            }
+            id: 'network-lines-trunk', type: 'line', source: 'network-lines',
+            filter: ['==', ['get', 'type'], 'trunk'],
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#2563eb', 'line-width': 3.5, 'line-opacity': 0.95 }
+        });
+
+        // DISTRIBUCIÓN — naranja punteado
+        map.addLayer({
+            id: 'network-lines-dist', type: 'line', source: 'network-lines',
+            filter: ['==', ['get', 'type'], 'dist'],
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#22c55e', 'line-width': 2.2, 'line-dasharray': [4, 2], 'line-opacity': 0.9 }
         });
     }
+
+    const trunkN = mstEdges.filter(e => edgeType(e.fromIdx) === 'trunk').length;
+    console.log(`✅ Red dibujada: ${trunkN} troncales (azul) + ${mstEdges.length - trunkN} distribución (verde)`);
+    loadingEl.style.display = 'none';
 }
+
 
 // Global helper to remove NAP
 window.removeNap = function (id) {

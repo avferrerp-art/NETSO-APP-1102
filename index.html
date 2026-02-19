@@ -595,7 +595,27 @@
 
             <!-- GOOGLE MAPS & ARCHITECTURE SECTION -->
             <div class="section" style="margin-top: 30px;">
-                <!-- Updated Header/Label per user request -->
+
+                <!-- Button (hidden after click) -->
+                <div id="show-arch-btn-wrapper" style="text-align:center; margin-bottom: 20px;">
+                    <button id="show-arch-btn" class="btn-primary" onclick="showArchitecture()"
+                        style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); width: 100%; max-width: 400px; margin: 0 auto; display: block;">
+                        🗺️ Ver Arquitectura Sugerida
+                    </button>
+                </div>
+
+                <!-- Title shown after click (hidden by default) -->
+                <div id="arch-title" style="display:none; margin-bottom: 16px;">
+                    <h3
+                        style="margin:0; font-size:18px; font-weight:700; color:#1e40af; display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:22px;">🗺️</span> Arquitectura de Red Sugerida
+                    </h3>
+                    <div
+                        style="height:2px; background:linear-gradient(90deg,#3b82f6,transparent); margin-top:6px; border-radius:2px;">
+                    </div>
+                </div>
+
+                <!-- OLT Search (visible after click) -->
                 <div id="olt-search-container" style="display: none; margin-bottom: 20px;">
                     <label class="field-label" style="display: block; margin-bottom: 8px;">📍 Ingresar Ubicación de
                         OLT</label>
@@ -606,11 +626,6 @@
                         💡 Escribe una dirección o deja en blanco para usar tu ubicación actual
                     </p>
                 </div>
-
-                <button class="btn-primary" onclick="showArchitecture()"
-                    style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); width: 100%; max-width: 400px; margin: 0 auto; display: block; margin-bottom: 20px;">
-                    🗺️ Ver Arquitectura Sugerida
-                </button>
 
                 <div id="architecture-details"
                     style="display:none; text-align: left; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px dashed #94a3b8; margin-bottom: 20px;">
