@@ -595,18 +595,10 @@
 
             <!-- GOOGLE MAPS & ARCHITECTURE SECTION -->
             <div class="section" style="margin-top: 30px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h3 style="font-size: 16px; color: #1e293b; margin: 0;">🗺️ Ubicación del Proyecto</h3>
-                    <a href="#" onclick="resetGoogleMapsKey(); return false;"
-                        style="font-size: 12px; color: #64748b; text-decoration: none; border-bottom: 1px dashed #94a3b8;"
-                        title="Cambiar API Key de Google Maps">
-                        🔑 Cambiar API Key
-                    </a>
-                </div>
-
-                <!-- Address Search -->
+                <!-- Updated Header/Label per user request -->
                 <div style="margin-bottom: 20px;">
-                    <label class="field-label" style="display: block; margin-bottom: 8px;">📍 Buscar Dirección</label>
+                    <label class="field-label" style="display: block; margin-bottom: 8px;">📍 Ingresar Ubicación de
+                        OLT</label>
                     <input type="text" id="address-search" placeholder="Ej: Caracas, Venezuela o Calle Principal 123"
                         style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px;"
                         onkeypress="if(event.key === 'Enter') event.preventDefault();">
@@ -617,7 +609,7 @@
 
                 <button class="btn-primary" onclick="showArchitecture()"
                     style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); width: 100%; max-width: 400px; margin: 0 auto; display: block; margin-bottom: 20px;">
-                    🗺️ Ver Arquitectura Sugerida
+                    🗺️ Ingresar Ubicación de OLT y Ver Arquitectura
                 </button>
 
                 <div id="architecture-details"
