@@ -2371,8 +2371,10 @@ function finalizar() {
     const pF = (sfpP - lossC - 13.8 - 3.5).toFixed(2);
 
     // Actualizar resultados
-    document.getElementById('res-potencia').innerText = pF + " dBm";
-    document.getElementById('res-hp').innerText = hp;
+    const resPotencia = document.getElementById('res-potencia');
+    if (resPotencia) resPotencia.innerText = pF + " dBm";
+    const resHp = document.getElementById('res-hp');
+    if (resHp) resHp.innerText = hp;
 
     // Cálculo optimizado de mezcla NAPs 16+48
     const napMix = calcularMixNAPs(hp);
@@ -2397,19 +2399,22 @@ function finalizar() {
         desglose.innerText = partes.length > 0 ? '(' + partes.join(' + ') + ')' : '';
     }
 
-    document.getElementById('res-loss-cable').innerText = "-" + lossC.toFixed(2) + " dB";
+    const resLoss = document.getElementById('res-loss-cable');
+    if (resLoss) resLoss.innerText = "-" + lossC.toFixed(2) + " dB";
 
     // Determinar estado
     const badge = document.getElementById('res-status');
-    if (pF > -27) {
-        badge.innerText = "✓ IDEAL";
-        badge.style.background = "linear-gradient(135deg, #10b981 0%, #059669 100%)";
-    } else if (pF > -28) {
-        badge.innerText = "⚠ ACEPTABLE";
-        badge.style.background = "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)";
-    } else {
-        badge.innerText = "✕ CRÍTICO";
-        badge.style.background = "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)";
+    if (badge) {
+        if (pF > -27) {
+            badge.innerText = "✓ IDEAL";
+            badge.style.background = "linear-gradient(135deg, #10b981 0%, #059669 100%)";
+        } else if (pF > -28) {
+            badge.innerText = "⚠ ACEPTABLE";
+            badge.style.background = "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)";
+        } else {
+            badge.innerText = "✕ CRÍTICO";
+            badge.style.background = "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)";
+        }
     }
 
     // Generar lista de cotización
