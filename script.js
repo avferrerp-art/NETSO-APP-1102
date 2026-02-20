@@ -3031,9 +3031,9 @@ function renderCotizacionTable() {
             return priorityOrder[a.prioridad] - priorityOrder[b.prioridad] || 0;
         });
 
-        items.forEach((item, index) => {
-            const isStock = item.type === 'stock';
-            const rowBg = isStock ? '#f0fdf4' : (index % 2 === 0 ? '#ffffff' : '#f8fafc');
+        items.filter(item => item.type !== 'stock').forEach((item, index) => {
+            const isStock = false;
+            const rowBg = index % 2 === 0 ? '#ffffff' : '#f8fafc';
 
             // Odoo Matching Logic (Live)
             let odooName = '<span style="color: #cbd5e1;">---</span>';
@@ -3354,13 +3354,55 @@ async function downloadComparisonReport() {
             return;
         }
 
-        // Mapear el estado editado a la estructura del reporte
-        const fullList = window.finalReportState.map(i => ({
-            ...i,
-            source: i.type,
-            buy: i.type === 'missing' ? i.cantidad : 0,
-            stockUser: i.type === 'stock' ? i.cantidad : 0
-        }));
+        // Mapear el estado editado a la estructura del reporte,
+        // CONSOLIDANDO los items de stock del cliente con sus contrapartes en la lista de compra.
+
+        // 1. Construir mapa de stock del cliente: nombre_base -> cantidad
+        const stockMap = {};
+        window.finalReportState.forEach(i => {
+            if (i.type === 'stock') {
+                // Extraer el nombre base quitando el sufijo " (Del Inventario)"
+                const baseName = i.item.replace(/\s*\(Del Inventario\)\s*$/i, '').trim();
+                stockMap[baseName] = (stockMap[baseName] || 0) + i.cantidad;
+            }
+        });
+
+        // 2. Construir la lista final: solo items 'missing', con stock del cliente inyectado.
+        //    También incluir items de stock que no tienen contraparte 'missing' (para mostrar que el cliente ya lo tiene).
+        const processedNames = new Set();
+        const fullList = [];
+
+        window.finalReportState.forEach(i => {
+            if (i.type === 'missing') {
+                const baseName = i.item.trim();
+                const stockUser = stockMap[baseName] || 0;
+                const toBuy = Math.max(i.cantidad - stockUser, 0);
+                fullList.push({
+                    ...i,
+                    source: 'missing',
+                    stockUser: stockUser,
+                    buy: toBuy
+                });
+                processedNames.add(baseName);
+            }
+        });
+
+        // Agregar items de inventario del cliente que no tienen contraparte 'missing'
+        window.finalReportState.forEach(i => {
+            if (i.type === 'stock') {
+                const baseName = i.item.replace(/\s*\(Del Inventario\)\s*$/i, '').trim();
+                if (!processedNames.has(baseName)) {
+                    fullList.push({
+                        ...i,
+                        item: baseName,
+                        source: 'stock',
+                        stockUser: i.cantidad,
+                        buy: 0
+                    });
+                    processedNames.add(baseName);
+                }
+            }
+        });
 
         // 2. Garantizar Datos de Odoo
         if (allOdooProducts.length === 0) {
@@ -6284,21 +6326,34 @@ window.showArchitecture = function () {
     // 3.1. Run NAP Optimizer
     const napOptim = new NAP_Optimizer(syntheticClients, 16);
 
-    // Try to get suggested NAP count from Phase 1 calculation
-    const suggestedNapsEl = document.getElementById('res-naps-total');
+    // Determine k: how many NAPs to place on the map.
+    // Priority: 1) window.suggestedNapMix (set by finalizar/calcularMixNAPs — most reliable)
+    //           2) res-naps-total DOM element (fallback)
+    //           3) clusterClients() geometric grouping (last resort, may over-generate)
+    let napK = 0;
     let rawNaps = [];
 
-    if (suggestedNapsEl && suggestedNapsEl.innerText !== '--') {
-        const k = parseInt(suggestedNapsEl.innerText);
-        if (!isNaN(k) && k > 0) {
-            console.log(`Using suggested NAP count: ${k}`);
-            rawNaps = napOptim.clusterKMeans(k);
-        } else {
-            rawNaps = napOptim.clusterClients();
-        }
+    if (window.suggestedNapMix && window.suggestedNapMix.total > 0) {
+        napK = window.suggestedNapMix.total;
+        console.log(`Using suggestedNapMix.total: ${napK} NAPs`);
     } else {
-        // Fallback if no calculation was run (direct access)
+        const suggestedNapsEl = document.getElementById('res-naps-total');
+        if (suggestedNapsEl && suggestedNapsEl.innerText !== '--') {
+            const parsed = parseInt(suggestedNapsEl.innerText);
+            if (!isNaN(parsed) && parsed > 0) {
+                napK = parsed;
+                console.log(`Using res-naps-total DOM: ${napK} NAPs`);
+            }
+        }
+    }
+
+    if (napK > 0) {
+        rawNaps = napOptim.clusterKMeans(napK);
+    } else {
+        // Fallback: auto-cluster by geographic proximity (150m radius)
+        // This may over-generate NAPs; only used if no calculation was run yet.
         rawNaps = napOptim.clusterClients();
+        console.warn(`No NAP count found — using clusterClients() fallback (${rawNaps.length} clusters)`);
     }
 
     // 4. Update UI
