@@ -6068,9 +6068,8 @@ class PoleManager {
 
     async fetchPoles(lat, lng, radiusMeters) {
         console.log(`__PHASE 3__: Fetching infrastructure around ${lat}, ${lng}...`);
-        const radius = radiusMeters / 1000;
+        MapProgress.start(`🗺️ Buscando infraestructura en OSM (radio ${Math.round(radiusMeters)}m)...`);
 
-        // Overpass QL to get poles AND roads
         const query = `
             [out:json][timeout:25];
             (
@@ -6086,6 +6085,7 @@ class PoleManager {
         `;
 
         try {
+            MapProgress.step(15, '🌐 Consultando Overpass API...');
             const response = await fetch("https://overpass-api.de/api/interpreter", {
                 method: "POST",
                 body: query
@@ -6122,16 +6122,17 @@ class PoleManager {
                 }
             });
 
-            // Interpolate Virtual Poles on ways
+            MapProgress.step(35, `📡 Procesando ${realPoles.length} postes reales + calles...`);
             const virtualPoles = this.generateVirtualPoles(ways, nodes);
 
-            // Update Global State
             window.postes = [...realPoles, ...virtualPoles];
+            MapProgress.step(45, `✅ ${realPoles.length} postes + ${virtualPoles.length} puntos virtuales listos`);
 
             console.log(`Infrastructure updated: ${realPoles.length} real, ${virtualPoles.length} virtual.`);
             return window.postes;
         } catch (e) {
             console.error("Overpass error:", e);
+            MapProgress.error('⚠️ Error al obtener infraestructura — usando posiciones libres');
             return [];
         }
     }
@@ -6193,7 +6194,119 @@ let map = null;
 let currentOLTMarker = null;
 let napMarkers = [];
 let poleMarkers = [];
+// ══════════════════════════════════════════════════════════════════════════════
+// MAP PROGRESS BAR — muestra progreso de carga de postes, MST y rutas de fibra
+// ══════════════════════════════════════════════════════════════════════════════
+const MapProgress = (() => {
+    let _el = null;   // container div
+    let _bar = null;  // inner fill bar
+    let _label = null; // status text
+    let _pct = 0;
+    let _hideTimer = null;
+
+    function _ensure() {
+        if (_el) return;
+        _el = document.createElement('div');
+        _el.id = 'map-progress-bar-wrap';
+        _el.style.cssText = `
+            display: none;
+            position: relative;
+            margin: 6px 0 0 0;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 8px 12px 10px;
+            font-family: Inter, sans-serif;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        `;
+
+        _label = document.createElement('div');
+        _label.style.cssText = `
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        `;
+        _label.textContent = 'Cargando...';
+
+        const track = document.createElement('div');
+        track.style.cssText = `
+            background: #e2e8f0;
+            border-radius: 999px;
+            height: 7px;
+            overflow: hidden;
+        `;
+
+        _bar = document.createElement('div');
+        _bar.style.cssText = `
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #3b82f6, #6366f1);
+            border-radius: 999px;
+            transition: width 0.35s cubic-bezier(.4,0,.2,1);
+        `;
+
+        track.appendChild(_bar);
+        _el.appendChild(_label);
+        _el.appendChild(track);
+
+        // Insert just below map-container
+        const mapContainer = document.getElementById('map-container');
+        if (mapContainer && mapContainer.parentNode) {
+            mapContainer.parentNode.insertBefore(_el, mapContainer.nextSibling);
+        } else {
+            // Fallback: append to body if map not yet in DOM
+            document.body.appendChild(_el);
+        }
+    }
+
+    function _setProgress(pct, text) {
+        _ensure();
+        if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; }
+        _el.style.display = 'block';
+        _pct = Math.min(100, Math.max(0, pct));
+        _bar.style.width = _pct + '%';
+        if (text) {
+            _label.innerHTML = `<span style="color:#3b82f6">⬤</span>&nbsp;&nbsp;${text}`;
+        }
+    }
+
+    return {
+        // start(text) — muestra la barra en 5%
+        start(text = 'Inicializando...') {
+            _setProgress(5, text);
+        },
+        // step(pct, text) — avanza la barra al porcentaje indicado
+        step(pct, text) {
+            _setProgress(pct, text);
+        },
+        // done(text?) — lleva al 100% y oculta después de 1.2s
+        done(text = '✅ Listo') {
+            _setProgress(100, text);
+            _hideTimer = setTimeout(() => {
+                if (_el) _el.style.display = 'none';
+            }, 1400);
+        },
+        // error(text) — muestra barra en rojo
+        error(text = 'Error') {
+            _ensure();
+            if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; }
+            _el.style.display = 'block';
+            _bar.style.background = '#ef4444';
+            _bar.style.width = '100%';
+            _label.innerHTML = `<span style="color:#ef4444">✖</span>&nbsp;&nbsp;${text}`;
+            _hideTimer = setTimeout(() => {
+                if (_el) { _el.style.display = 'none'; _bar.style.background = 'linear-gradient(90deg,#3b82f6,#6366f1)'; }
+            }, 3000);
+        }
+    };
+})();
+
 let poleManager = new PoleManager();
+
 
 // Override or define showArchitecture
 window.showArchitecture = async function () {
@@ -6382,6 +6495,10 @@ window.showArchitecture = async function () {
         console.warn(`No NAP count found — using clusterClients() fallback (${rawNaps.length} clusters)`);
     }
 
+    // Persist rawNaps and radiusMeters so address search can re-use them for fullRefresh
+    window.rawNaps = rawNaps;
+    window.currentRadiusMeters = radiusMeters;
+
     // 4. Update UI
     const mapContainer = document.getElementById('map-container');
     const detailsDiv = document.getElementById('architecture-details');
@@ -6447,8 +6564,9 @@ async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false
 
     // 1. Fetch poles + Reset NAPs ONLY on fullRefresh
     if (fullRefresh && radiusMeters) {
+        MapProgress.step(10, '📍 Calculando posición óptima de OLT...');
         await poleManager.fetchPoles(oltLocation.lat, oltLocation.lng, radiusMeters + 200);
-
+        MapProgress.step(50, '📌 Posicionando NAPs en postes...');
         // Snap auto-generated NAPs to poles and reset window.naps
         if (rawNaps && rawNaps.length > 0) {
             // Sort by clientCount descending to assign 48p to the busiest clusters
@@ -6676,81 +6794,92 @@ async function drawNetworkLines(olt, naps) {
     });
     if (map.getSource('network-lines')) map.removeSource('network-lines');
 
-    // ─── Loading indicator ────────────────────────────────────────────────────
-    let loadingEl = document.getElementById('route-loading');
-    if (!loadingEl) {
-        loadingEl = document.createElement('div');
-        loadingEl.id = 'route-loading';
-        loadingEl.style.cssText = `
-            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-            background: rgba(30,64,175,0.92); color: white;
-            padding: 6px 14px; border-radius: 20px; font-size: 12px;
-            font-weight: 600; z-index: 999; pointer-events: none;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        `;
-        document.getElementById('map-container').appendChild(loadingEl);
-    }
-    loadingEl.innerText = '📡 Calculando árbol de fibra óptimo...';
-    loadingEl.style.display = 'block';
+    // Hide old floating toast (replaced by MapProgress bar below the map)
+    const oldToast = document.getElementById('route-loading');
+    if (oldToast) oldToast.style.display = 'none';
+
+    MapProgress.step(55, `📡 Calculando árbol de fibra óptimo (${naps.length} NAPs)...`);
 
     const nodes = [olt, ...naps]; // nodes[0] = OLT
     const n = nodes.length;
 
-    // ─── PASO 1: OSRM Table API → matriz de distancias reales por calle ───────
+    // Cross-browser fetch with timeout (AbortSignal.timeout no es soportado en todos los browsers)
+    const fetchWithTimeout = (url, ms = 6000) => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), ms);
+        return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+    };
+
+    // ─── PASO 1: OSRM Table API (driving) → matriz de distancias reales por calle ──
     let distMatrix = null;
-    try {
-        const coords = nodes.map(nd => `${nd.lng},${nd.lat}`).join(';');
-        const tableUrl = `https://router.project-osrm.org/table/v1/foot/${coords}?annotations=distance`;
-        const res = await fetch(tableUrl);
-        if (res.ok) {
-            const data = await res.json();
-            if (data.code === 'Ok' && data.distances) {
-                distMatrix = data.distances; // N×N en metros
-                console.log(`✅ OSRM Table: matriz ${n}×${n} de distancias reales obtenida`);
+    // Skip Table API for large sets (> 20 nodos) — demasiado lento en OSRM público
+    if (n <= 20) {
+        try {
+            const coords = nodes.map(nd => `${nd.lng},${nd.lat}`).join(';');
+            const tableUrl = `https://router.project-osrm.org/table/v1/driving/${coords}?annotations=distance`;
+            MapProgress.step(58, '🗺️ Consultando matriz de distancias OSRM...');
+            const res = await fetchWithTimeout(tableUrl, 7000);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.code === 'Ok' && data.distances) {
+                    distMatrix = data.distances;
+                    console.log(`✅ OSRM Table (driving): matriz ${n}×${n} lista`);
+                    MapProgress.step(65, `🗺️ Matriz de distancias vehiculares ${n}×${n} lista`);
+                }
             }
+        } catch (e) {
+            console.warn('OSRM Table falló o timeout, usando Haversine:', e.message);
         }
-    } catch (e) {
-        console.warn('OSRM Table falló, usando Haversine como fallback:', e.message);
+    } else {
+        console.log(`Saltando OSRM Table (${n} nodos > 20) — usando Haversine`);
     }
 
-    // Fallback: Haversine si Table API falla
+    // Fallback: Haversine si Table API falla o hay muchos nodos
     if (!distMatrix) {
         distMatrix = nodes.map(a => nodes.map(b => haversineM(a, b)));
+        MapProgress.step(65, `🔵 Usando distancias directas Haversine (${n} nodos)`);
     }
 
     // ─── PASO 2: MST sobre distancias reales ──────────────────────────────────
     const mstEdges = primMST(distMatrix);
+    MapProgress.step(72, `🌳 MST calculado: ${mstEdges.length} enlaces óptimos`);
     console.log(`🌳 MST: ${mstEdges.length} enlaces para ${n} nodos`);
 
     // ─── PASO 3: Tipo de enlace para colorear ─────────────────────────────────
-    // TRUNK (azul): arista cuyo origen es OLT (idx 0) o NAP×48
-    // DIST (naranja): arista cuyo origen es NAP×16
     const edgeType = (fromIdx) => {
         if (fromIdx === 0) return 'trunk';
         return nodes[fromIdx].capacidad === 48 ? 'trunk' : 'dist';
     };
 
-    // ─── PASO 4: OSRM Route solo para los N-1 enlaces MST ────────────────────
+    // ─── PASO 4: OSRM Route (driving) para los N-1 enlaces MST ────────────────────
     const fetchRoute = async (from, to) => {
-        const url = `https://router.project-osrm.org/route/v1/foot/` +
+        const url = `https://router.project-osrm.org/route/v1/driving/` +
             `${from.lng},${from.lat};${to.lng},${to.lat}` +
             `?overview=full&geometries=geojson&alternatives=false`;
         try {
-            const res = await fetch(url);
+            const res = await fetchWithTimeout(url, 4000);
             if (res.ok) {
                 const data = await res.json();
                 if (data.code === 'Ok' && data.routes?.[0]) return data.routes[0].geometry.coordinates;
             }
-        } catch (e) { /* fallback below */ }
+        } catch (e) { /* timeout o error — fallback línea recta */ }
         return [[from.lng, from.lat], [to.lng, to.lat]];
     };
 
-    loadingEl.innerText = `🛣️ Trazando rutas por calle (${mstEdges.length} enlaces)...`;
-    const routeCoords = await Promise.all(
-        mstEdges.map(e => fetchRoute(nodes[e.fromIdx], nodes[e.toIdx]))
-    );
+    // Fetch en lotes de 4 con delay de 80ms entre lotes para no saturar OSRM público
+    const BATCH = 4;
+    const routeCoords = [];
+    for (let i = 0; i < mstEdges.length; i += BATCH) {
+        const batch = mstEdges.slice(i, i + BATCH);
+        const pct = 75 + Math.round(15 * (i / mstEdges.length));
+        MapProgress.step(pct, `🛣️ Trazando enlaces ${i + 1}-${Math.min(i + BATCH, mstEdges.length)} de ${mstEdges.length}...`);
+        const results = await Promise.all(batch.map(e => fetchRoute(nodes[e.fromIdx], nodes[e.toIdx])));
+        routeCoords.push(...results);
+        if (i + BATCH < mstEdges.length) await new Promise(r => setTimeout(r, 80));
+    }
 
     // ─── PASO 5: Construir GeoJSON y dibujar ─────────────────────────────────
+    MapProgress.step(92, '📹 Dibujando red de fibra en el mapa...');
     const features = mstEdges.map((e, i) => ({
         type: 'Feature',
         properties: { type: edgeType(e.fromIdx) },
@@ -6772,7 +6901,7 @@ async function drawNetworkLines(olt, naps) {
             paint: { 'line-color': '#2563eb', 'line-width': 3.5, 'line-opacity': 0.95 }
         });
 
-        // DISTRIBUCIÓN — naranja punteado
+        // DISTRIBUCIÓN — verde punteado
         map.addLayer({
             id: 'network-lines-dist', type: 'line', source: 'network-lines',
             filter: ['==', ['get', 'type'], 'dist'],
@@ -6783,7 +6912,7 @@ async function drawNetworkLines(olt, naps) {
 
     const trunkN = mstEdges.filter(e => edgeType(e.fromIdx) === 'trunk').length;
     console.log(`✅ Red dibujada: ${trunkN} troncales (azul) + ${mstEdges.length - trunkN} distribución (verde)`);
-    loadingEl.style.display = 'none';
+    MapProgress.done(`✅ Red dibujada: ${trunkN} troncales + ${mstEdges.length - trunkN} distribuciones`);
 }
 
 
@@ -7101,7 +7230,16 @@ function enableAddressSearch() {
 
                     // fullRefresh=true: regenerate NAPs and snap to real poles around the new location
                     const radiusM = window.currentRadiusMeters || 500;
-                    updateMap({ lat, lng }, null, radiusM, true);
+                    const rawNaps = window.rawNaps || null;
+
+                    if (rawNaps && rawNaps.length > 0) {
+                        // Re-run full map update with existing raw NAP geometry at the new location
+                        await updateMap({ lat, lng }, rawNaps, radiusM, true);
+                    } else {
+                        // No prior NAPs — just move OLT marker and let the user recalculate manually,
+                        // or trigger showArchitecture if it was already called
+                        await updateMap({ lat, lng }, null, radiusM, false);
+                    }
 
                     // Update UI text
                     const detailsDiv = document.getElementById('architecture-details');
