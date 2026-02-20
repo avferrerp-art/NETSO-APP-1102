@@ -6196,8 +6196,9 @@ let poleMarkers = [];
 let poleManager = new PoleManager();
 
 // Override or define showArchitecture
-window.showArchitecture = function () {
+window.showArchitecture = async function () {
     console.log("Iniciando Fase 1.5: Cálculo de OLT y Visualización");
+
 
     // Inject CSS for custom pins if not present
     if (!document.getElementById('pin-styles')) {
@@ -6293,10 +6294,35 @@ window.showArchitecture = function () {
 
     console.log(`Inputs: Clientes=${clientCount}, Radio=${radiusMeters}m`);
 
-    // 2. Generate Synthetic Clients (around Caracas default for now)
-    const centerLat = 10.4806;
-    const centerLng = -66.9036;
+    // 2. Determine map center (use real OLT position if available, else geolocation, else Caracas default)
+    let centerLat = 10.4806; // Caracas fallback
+    let centerLng = -66.9036;
+
+    // If OLT marker is already on the map, use its current position
+    if (currentOLTMarker) {
+        const pos = currentOLTMarker.getLngLat();
+        centerLat = pos.lat;
+        centerLng = pos.lng;
+        console.log(`Using existing OLT marker position: ${centerLat}, ${centerLng}`);
+    } else {
+        // Try to get user geolocation (quick, non-blocking attempt)
+        const geoResult = await new Promise(resolve => {
+            if (!navigator.geolocation) return resolve(null);
+            navigator.geolocation.getCurrentPosition(
+                pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                () => resolve(null),
+                { timeout: 3000, maximumAge: 60000 }
+            );
+        });
+        if (geoResult) {
+            centerLat = geoResult.lat;
+            centerLng = geoResult.lng;
+            console.log(`Using geolocation: ${centerLat}, ${centerLng}`);
+        }
+    }
+
     const syntheticClients = [];
+
 
     // Store globally for search access
     window.currentSyntheticClients = syntheticClients;
@@ -6411,12 +6437,19 @@ window.showArchitecture = function () {
 async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false) {
     if (!map) return;
 
+    // Clear fiber lines (always: routes must be re-drawn because OLT or NAPs may have moved)
+    ['network-lines-trunk', 'network-lines-dist'].forEach(id => {
+        if (map.getLayer(id)) map.removeLayer(id);
+    });
+    if (map.getSource('network-lines')) map.removeSource('network-lines');
+
     // Clear old markers only (NOT window.naps, unless fullRefresh)
     if (currentOLTMarker) currentOLTMarker.remove();
     napMarkers.forEach(m => m.remove());
     napMarkers = [];
     poleMarkers.forEach(m => m.remove());
     poleMarkers = [];
+
 
     // 1. Fetch poles + Reset NAPs ONLY on fullRefresh
     if (fullRefresh && radiusMeters) {
@@ -6907,8 +6940,12 @@ function enableAddressSearch() {
 
                     console.log(`Found: ${lat}, ${lng}`);
 
-                    // Move OLT to new address — preserve existing NAPs (fullRefresh=false)
-                    updateMap({ lat, lng }, null, null, false);
+                    // Save searched location as current map center
+                    window.currentMapCenter = { lat, lng };
+
+                    // fullRefresh=true: regenerate NAPs and snap to real poles around the new location
+                    const radiusM = window.currentRadiusMeters || 500;
+                    updateMap({ lat, lng }, null, radiusM, true);
 
                     // Update UI text
                     const detailsDiv = document.getElementById('architecture-details');
