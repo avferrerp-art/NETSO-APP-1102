@@ -6437,12 +6437,6 @@ window.showArchitecture = async function () {
 async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false) {
     if (!map) return;
 
-    // Clear fiber lines (always: routes must be re-drawn because OLT or NAPs may have moved)
-    ['network-lines-trunk', 'network-lines-dist'].forEach(id => {
-        if (map.getLayer(id)) map.removeLayer(id);
-    });
-    if (map.getSource('network-lines')) map.removeSource('network-lines');
-
     // Clear old markers only (NOT window.naps, unless fullRefresh)
     if (currentOLTMarker) currentOLTMarker.remove();
     napMarkers.forEach(m => m.remove());
@@ -6525,7 +6519,7 @@ async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false
         console.log(`OLT Moved to: ${lngLat.lat}, ${lngLat.lng}`);
 
         // Re-render only (fullRefresh=false): preserves user's NAPs
-        updateMap({ lat: lngLat.lat, lng: lngLat.lng }, null, null, false);
+        await updateMap({ lat: lngLat.lat, lng: lngLat.lng }, null, null, false);
 
         // Update UI details
         const detailsDiv = document.getElementById('architecture-details');
@@ -6574,7 +6568,7 @@ function renderNapMarker(nap, index) {
         `))
         .addTo(map);
 
-    marker.on('dragend', () => {
+    marker.on('dragend', async () => {
         const pos = marker.getLngLat();
         nap.lat = pos.lat;
         nap.lng = pos.lng;
@@ -6587,7 +6581,7 @@ function renderNapMarker(nap, index) {
 
         // Refresh system (no fullRefresh: preserve other NAPs)
         const oltPos = currentOLTMarker.getLngLat();
-        updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
+        await updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
     });
 
     napMarkers.push(marker);
@@ -6675,6 +6669,12 @@ function primMST(distMatrix) {
 
 async function drawNetworkLines(olt, naps) {
     if (!naps || naps.length === 0) return;
+
+    // ─── Always clean up old fiber layers first (atomic remove before re-add) ──
+    ['network-lines-trunk', 'network-lines-dist'].forEach(id => {
+        if (map.getLayer(id)) map.removeLayer(id);
+    });
+    if (map.getSource('network-lines')) map.removeSource('network-lines');
 
     // ─── Loading indicator ────────────────────────────────────────────────────
     let loadingEl = document.getElementById('route-loading');
@@ -6798,36 +6798,26 @@ window.removeNap = function (id) {
 };
 
 // Map Click to Add NAP
+// Global flag for topology move mode
+window.moveTopologyMode = false;
+
 function enableMapInteractions() {
     map.on('click', (e) => {
-        // Prevent if clicking on existing marker handled by bubbling?
-        // MapLibre events are separate.
-        const features = map.queryRenderedFeatures(e.point);
-        // If clicked on a marker logic check... (skipped for MVP simplicity)
-
         if (e.originalEvent.target.closest('.maplibregl-popup')) return;
         if (e.originalEvent.target.tagName === 'BUTTON') return;
 
-        // Custom Logic: Click map -> Ask Capacity -> Add NAP
-        // Simple native interaction for now
-        // Only trigger if modifier key held? OR just always?
-        // Always triggering might be annoying if dragging map.
-        // 'click' only fires on release without drag.
-
-        // Let's add a small check: "Shift+Click" to add?
-        // Or just Confirm?
-
-        // For user friendly: Just confirm.
-        // "Deseas agregar una NAP aquí?"
-
-        // Actually, let's use a non-blocking UI or just do it.
-        // Let's ASK via prompt for capacity to kill two birds with one stone.
-        // If cancel, nothing happens.
+        // ── TOPOLOGY MOVE MODE ──────────────────────────────────────────────
+        if (window.moveTopologyMode) {
+            const newCenter = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+            moveTopologyTo(newCenter);
+            return;
+        }
+        // ────────────────────────────────────────────────────────────────────
     });
 
-    // Better: Add a custom control or just Right Click? 
-    // MapLibre 'contextmenu'
+    // Right click → Add NAP manually
     map.on('contextmenu', (e) => {
+        if (window.moveTopologyMode) return; // Ignore in move mode
         const cap = prompt("📝 Añadir NAP en este punto.\n\nIngresa capacidad (16 o 48):", "16");
         if (cap !== "16" && cap !== "48") return;
 
@@ -6850,10 +6840,176 @@ function enableMapInteractions() {
         window.naps.push(newNap);
 
         const oltPos = currentOLTMarker.getLngLat();
-        // Re-draw NAPs only, no full reset
         updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
     });
+
+    // Inject the Move Topology button into the map
+    injectMoveTopologyButton();
 }
+
+// ── INJECT FLOATING TOOLBAR BUTTON ──────────────────────────────────────────
+function injectMoveTopologyButton() {
+    const mapContainer = document.getElementById('map-container');
+    if (!mapContainer || document.getElementById('move-topology-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'move-topology-btn';
+    btn.title = 'Mover toda la topología (OLT + NAPs) a otro punto del mapa';
+    btn.innerHTML = '✥ Mover Topología';
+    btn.style.cssText = `
+        position: absolute;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: #1e40af;
+        color: white;
+        border: none;
+        border-radius: 20px;
+        padding: 9px 18px;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background 0.2s, transform 0.15s;
+        letter-spacing: 0.3px;
+    `;
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleMoveTopologyMode(btn);
+    });
+
+    mapContainer.appendChild(btn);
+}
+
+// ── TOGGLE MOVE TOPOLOGY MODE ────────────────────────────────────────────────
+function toggleMoveTopologyMode(btn) {
+    window.moveTopologyMode = !window.moveTopologyMode;
+
+    if (window.moveTopologyMode) {
+        btn.innerHTML = '❌ Cancelar Movimiento';
+        btn.style.background = '#dc2626';
+        map.getCanvas().style.cursor = 'crosshair';
+
+        // Show instruction toast
+        let toast = document.getElementById('move-mode-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'move-mode-toast';
+            toast.style.cssText = `
+                position: absolute;
+                top: 12px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(30, 64, 175, 0.93);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: 600;
+                z-index: 1001;
+                pointer-events: none;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                white-space: nowrap;
+            `;
+            document.getElementById('map-container').appendChild(toast);
+        }
+        toast.innerText = '🎯 Haz clic en el punto donde deseas mover la topología';
+        toast.style.display = 'block';
+    } else {
+        btn.innerHTML = '✥ Mover Topología';
+        btn.style.background = '#1e40af';
+        map.getCanvas().style.cursor = '';
+        const toast = document.getElementById('move-mode-toast');
+        if (toast) toast.style.display = 'none';
+    }
+}
+
+// ── MOVE TOPOLOGY TO A NEW POINT (preserving relative positions) ─────────────
+async function moveTopologyTo(newCenter) {
+    if (!currentOLTMarker || !window.naps) return;
+
+    const btn = document.getElementById('move-topology-btn');
+
+    // Disable mode immediately
+    window.moveTopologyMode = false;
+    if (btn) {
+        btn.innerHTML = '⏳ Moviendo...';
+        btn.style.background = '#6b7280';
+        btn.disabled = true;
+    }
+    map.getCanvas().style.cursor = '';
+    const toast = document.getElementById('move-mode-toast');
+    if (toast) {
+        toast.innerText = '⏳ Trasladando red y buscando postes...';
+        toast.style.display = 'block';
+    }
+
+    // 1. Compute delta from current OLT position to new center
+    const oldOLT = currentOLTMarker.getLngLat();
+    const deltaLat = newCenter.lat - oldOLT.lat;
+    const deltaLng = newCenter.lng - oldOLT.lng;
+
+    // 2. Translate all NAPs by the same delta
+    const translatedNaps = window.naps.map(n => ({
+        ...n,
+        lat: n.lat + deltaLat,
+        lng: n.lng + deltaLng
+    }));
+
+    // 3. Compute the real bounding radius needed to cover ALL translated NAPs
+    //    (distancia máx desde el nuevo OLT al NAP traducido más lejano + 400m buffer)
+    let maxDistM = window.currentRadiusMeters || 500;
+    if (translatedNaps.length > 0) {
+        translatedNaps.forEach(n => {
+            const d = OLT_Optimizer.getDistanceKm(newCenter.lat, newCenter.lng, n.lat, n.lng) * 1000;
+            if (d > maxDistM) maxDistM = d;
+        });
+    }
+    const fetchRadius = Math.round(maxDistM + 400); // 400m extra buffer
+    console.log(`Fetching poles in ${fetchRadius}m radius around new OLT`);
+    // Clear old poles so snapToNearestPole only uses poles from the new location
+    window.postes = [];
+    await poleManager.fetchPoles(newCenter.lat, newCenter.lng, fetchRadius);
+
+    // 4. Snap each NAP to nearest real pole in the new area
+    //    If no poles exist nearby, keep the translated position (don't discard the NAP)
+    window.naps = translatedNaps.map((n) => {
+        const snapped = poleManager.snapToNearestPole(n);
+        return {
+            ...n,
+            lat: snapped.lat,
+            lng: snapped.lng,
+            type: snapped.type || 'virtual'
+        };
+    });
+
+    // 5. Redraw map (fullRefresh=false: keep window.naps as translated)
+    await updateMap(newCenter, null, null, false);
+
+    // 5b. Explicitly redraw fiber — MapLibre needs one frame to settle after source removal/addition
+    await new Promise(r => setTimeout(r, 120));
+    await drawNetworkLines(newCenter, window.naps);
+
+    // 6. Fly map to new location
+    map.flyTo({ center: [newCenter.lng, newCenter.lat], zoom: 14, duration: 1000 });
+
+
+    // Restore button
+    if (btn) {
+        btn.innerHTML = '✥ Mover Topología';
+        btn.style.background = '#1e40af';
+        btn.disabled = false;
+    }
+    if (toast) toast.style.display = 'none';
+
+    console.log(`✅ Topología movida a ${newCenter.lat.toFixed(5)}, ${newCenter.lng.toFixed(5)}`);
+}
+
 
 function createSmallDot(color) {
     const el = document.createElement('div');
