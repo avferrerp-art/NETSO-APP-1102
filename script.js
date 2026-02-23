@@ -1594,16 +1594,36 @@ async function analyzeImage() {
 
                 // Mostrar resultado parcial en UI
                 const resultBlock = document.createElement('div');
-                resultBlock.style.marginBottom = "20px";
-                resultBlock.style.borderBottom = "1px solid #e2e8f0";
-                resultBlock.style.paddingBottom = "15px";
+                resultBlock.style.marginBottom = "24px";
+                resultBlock.style.backgroundColor = "white";
+                resultBlock.style.borderRadius = "16px";
+                resultBlock.style.border = "1px solid #f1f5f9";
+                resultBlock.style.padding = "20px";
+                resultBlock.style.boxShadow = "0 1px 3px rgba(0,0,0,0.02)";
+                resultBlock.style.maxWidth = "800px";
+                resultBlock.style.marginLeft = "auto";
+                resultBlock.style.marginRight = "auto";
 
                 resultBlock.innerHTML = `
-                    <div style="font-weight:bold; color:#0f172a; margin-bottom:5px;">Imagen ${currentAnalysisImages.length}:</div>
-                    <img src="${base64Img}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; display: block;">
-                    <div>${formatMarkdown(markdownText)}</div>
+                    <div style="display:flex; gap:20px; align-items:flex-start;">
+                        <div style="flex-shrink:0;">
+                            <div style="font-size:11px; font-weight:800; color:#64748b; text-transform:uppercase; margin-bottom:8px; letter-spacing:0.05em;">Captura #${currentAnalysisImages.length}</div>
+                            <img src="${base64Img}" style="width: 140px; height: 140px; object-fit: cover; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                        </div>
+                        <div style="flex:1;">
+                            <div style="font-size:14px; line-height:1.7; color:#334155; font-weight:500;">
+                                ${formatMarkdown(markdownText)}
+                            </div>
+                        </div>
+                    </div>
                 `;
                 analysisTextContainer.appendChild(resultBlock);
+
+                // RENDERIZAR TARJETAS DE SUGERENCIAS INTERACTIVAS (igual que Cotizador Directo)
+                if (jsonSuggestions.length > 0) {
+                    renderAiSuggestionsForProject(jsonSuggestions, currentAnalysisImages.length - 1, analysisTextContainer);
+                }
+
                 successCount++;
 
             } catch (err) {
@@ -1631,8 +1651,128 @@ async function analyzeImage() {
 
 
 // ============================================
+// AI SUGGESTIONS FOR INTELLIGENT ANALYSIS (PAGE 3 -> PAGE 4)
+// ============================================
+
+/**
+ * Renders interactive suggestion cards inside the Page 3 analysis result area.
+ * When the user clicks "Aceptar", the suggestion is marked as accepted and
+ * will appear in the Page 4 shopping list via renderProjectAiSuggestions().
+ *
+ * @param {Array}  suggestions  - Array of { product, qty, reason } from Gemini
+ * @param {number} imgIndex     - Index into currentAnalysisImages array
+ * @param {HTMLElement} container - The analysisText container element
+ */
+function renderAiSuggestionsForProject(suggestions, imgIndex, container) {
+    const suggestionsDiv = document.createElement('div');
+    suggestionsDiv.style.backgroundColor = '#f8fafc';
+    suggestionsDiv.style.border = '1px solid #e2e8f0';
+    suggestionsDiv.style.borderRadius = '12px';
+    suggestionsDiv.style.padding = '20px';
+    suggestionsDiv.style.marginTop = '16px';
+    suggestionsDiv.style.marginBottom = '24px';
+    suggestionsDiv.style.maxWidth = '800px';
+    suggestionsDiv.style.marginLeft = 'auto';
+    suggestionsDiv.style.marginRight = 'auto';
+    suggestionsDiv.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+
+    suggestionsDiv.innerHTML = `
+        <div style="font-size:15px; font-weight:700; color:#0f172a; margin-bottom:15px; display:flex; align-items:center; gap:8px;">
+            <span style="color:#f59e0b;">✨</span> 
+            <span>Materiales Sugeridos (Haz clic para agregar)</span>
+        </div>
+    `;
+
+    suggestions.forEach((item, itemIdx) => {
+        const itemId = `p3sugg-${imgIndex}-${itemIdx}`;
+
+        const card = document.createElement('div');
+        card.id = itemId;
+        card.style.display = 'flex';
+        card.style.justifyContent = 'space-between';
+        card.style.alignItems = 'center';
+        card.style.backgroundColor = 'white';
+        card.style.padding = '12px 16px';
+        card.style.marginBottom = '8px';
+        card.style.borderRadius = '8px';
+        card.style.border = '1px solid #e2e8f0';
+        card.style.transition = 'all 0.2s ease';
+
+        card.innerHTML = `
+            <div style="flex: 1; padding-right:15px;">
+                <div style="font-size:14px; font-weight:700; color:#1e293b;">${item.product}</div>
+                <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                    <span style="background:#f1f5f9; color:#475569; font-size:10px; font-weight:800; padding:1px 6px; border-radius:4px; text-transform:uppercase;">Cant: ${item.qty}</span>
+                    <span style="font-size:12px; color:#64748b; line-height:1.4;">• ${item.reason}</span>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-shrink:0;">
+                <button onclick="acceptProjectSuggestionFromPage3('${itemId}', '${item.product.replace(/'/g, "\\'")}', ${item.qty}, ${imgIndex})"
+                    onmouseover="this.style.background='#059669';"
+                    onmouseout="this.style.background='#10b981';"
+                    style="background:#10b981; color:white; border:none; width:36px; height:36px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 2px 4px rgba(16,185,129,0.2);">
+                    <span style="font-size:16px;">✓</span>
+                </button>
+                <button onclick="dismissProjectSuggestionFromPage3('${itemId}')"
+                    onmouseover="this.style.background='#dc2626';"
+                    onmouseout="this.style.background='#ef4444';"
+                    title="Descartar"
+                    style="background:#ef4444; color:white; border:none; width:36px; height:36px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 2px 4px rgba(239,68,68,0.2);">
+                    <span style="font-size:16px;">✕</span>
+                </button>
+            </div>
+        `;
+        suggestionsDiv.appendChild(card);
+    });
+
+    container.appendChild(suggestionsDiv);
+}
+
+/**
+ * Called when user accepts a suggestion card in Page 3.
+ * Marks the suggestion as accepted in the global currentAnalysisImages array,
+ * so Page 4 can pick it up and add it to the shopping list via renderProjectAiSuggestions.
+ */
+function acceptProjectSuggestionFromPage3(elementId, productName, qty, imgIndex) {
+    const card = document.getElementById(elementId);
+
+    // Mark suggestion as accepted in the global data structure
+    if (currentAnalysisImages[imgIndex]) {
+        const img = currentAnalysisImages[imgIndex];
+        if (!img.acceptedProducts) img.acceptedProducts = [];
+        img.acceptedProducts.push({ product: productName, qty: qty, reason: 'Seleccionado en Análisis de Campo' });
+        console.log(`[Page3 Suggestion] Aceptado: ${productName} (x${qty}) -> imgIndex ${imgIndex}`);
+    }
+
+    // Visual feedback on the card
+    if (card) {
+        card.style.backgroundColor = '#dcfce7';
+        card.style.borderColor = '#86efac';
+        card.innerHTML = `
+            <div style="width:100%; display:flex; align-items:center; gap:8px; color:#166534; font-size:13px; font-weight:700; padding:4px;">
+                <span>✓</span>
+                <span>Agregado al presupuesto: ${productName} (x${qty})</span>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Dismisses (hides) a suggestion card from Page 3 without adding it.
+ */
+function dismissProjectSuggestionFromPage3(elementId) {
+    const card = document.getElementById(elementId);
+    if (card) {
+        card.style.opacity = '0';
+        card.style.transition = 'opacity 0.3s';
+        setTimeout(() => card.remove(), 300);
+    }
+}
+
+// ============================================
 // AI SUGGESTIONS FOR DIRECT QUOTER
 // ============================================
+
 
 let pendingDirectImages = [];
 let currentDirectAnalysisImages = [];
@@ -2008,6 +2148,9 @@ ${catalogContext}
             attempt++;
             console.log(`[Gemini API] Intento ${attempt}/${maxRetries}...`);
 
+            let abortController = new AbortController();
+            let timeoutId = setTimeout(() => abortController.abort(), 45000); // 45 segundos de timeout para evitar cuelgues
+
             let response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2019,8 +2162,11 @@ ${catalogContext}
                         ]
                     }],
                     generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }
-                })
+                }),
+                signal: abortController.signal
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
@@ -2064,6 +2210,12 @@ ${catalogContext}
 
         } catch (error) {
             console.error(`[Gemini API] Fallo en intento ${attempt}:`, error);
+
+            if (error.name === 'AbortError') {
+                error.message = "La conexión con la IA tardó demasiado (Timeout de 45s). Por favor reintenta.";
+                throw error; // No reintentar timeouts largos
+            }
+
             if (attempt >= maxRetries) {
                 // Si es el último intento, lanzamos el error para que la UI lo muestre
                 throw error;
@@ -2812,27 +2964,64 @@ function renderProjectAiSuggestions() {
 
     // Ensure access to global
     const images = window.currentAnalysisImages || [];
-    console.log("Rendering Project AI Suggestions. Images:", images.length);
 
+    // STEP 1: Auto-inject items accepted in Page 3
+    images.forEach((img) => {
+        if (img.acceptedProducts && Array.isArray(img.acceptedProducts)) {
+            img.acceptedProducts.forEach(accepted => {
+                // Avoid duplicates
+                const alreadyExists = (window.finalReportState || []).some(
+                    item => item.item === accepted.product && item.categoria === '✨ Sugerencia IA'
+                );
+                if (!alreadyExists) {
+                    if (!window.finalReportState) window.finalReportState = [];
+                    window.finalReportState.push({
+                        id: 'ai_p3_' + Math.random().toString(36).substr(2, 9),
+                        categoria: '✨ Sugerencia IA',
+                        item: accepted.product,
+                        cantidad: parseFloat(accepted.qty),
+                        unidad: 'u',
+                        type: 'ai-suggestion',
+                        prioridad: 'media'
+                    });
+                    console.log(`[renderProjectAiSuggestions] Auto-added from Page 3: ${accepted.product} (x${accepted.qty})`);
+                }
+            });
+            img.acceptedProducts = []; // Clear after processing
+        }
+    });
+
+    // Re-render the table to reflect newly added items
+    if (typeof renderCotizacionTable === 'function') renderCotizacionTable();
+
+    // STEP 2: Show remaining (unaccepted) suggestions as cards
     const allSuggestions = [];
-    if (images.length > 0) {
-        images.forEach((img, idx) => {
-            if (img.suggestions && Array.isArray(img.suggestions)) {
-                img.suggestions.forEach(sugg => {
-                    allSuggestions.push({ ...sugg, imgIndex: idx });
-                });
-            }
-        });
-    }
+    images.forEach((img, imgIdx) => {
+        if (img.suggestions && Array.isArray(img.suggestions)) {
+            img.suggestions.forEach(sugg => {
+                // Check if already in accepted list to avoid duplicates
+                const isAlreadyAccepted = (window.finalReportState || []).some(
+                    item => item.item === sugg.product && item.categoria === '✨ Sugerencia IA'
+                );
 
-    console.log("Found suggestions:", allSuggestions.length);
+                if (!isAlreadyAccepted) {
+                    allSuggestions.push({
+                        ...sugg,
+                        imgIndex: imgIdx
+                    });
+                }
+            });
+        }
+    });
+
+    console.log("Found unaccepted suggestions:", allSuggestions.length);
 
     if (allSuggestions.length === 0) {
         if (images.length > 0) {
             container.style.display = 'block';
             container.innerHTML = `
                 <div style="text-align:center; padding:15px; color:#94a3b8; font-size:12px; border:1px dashed #cbd5e1; border-radius:8px; margin-bottom:15px; background:#f8fafc;">
-                    ℹ️ Análisis completado. No se detectaron materiales sugeridos adicionales.
+                    ℹ️ Análisis completado. No hay materiales sugeridos pendientes de revisión.
                 </div>
              `;
         } else {
@@ -2841,15 +3030,13 @@ function renderProjectAiSuggestions() {
         return;
     }
 
+
     container.style.display = 'block';
     container.innerHTML = `
-        <div style="background: linear-gradient(to right, #f0fdf4, #fff); border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
-                <span style="font-size:24px;">✨</span>
-                <div>
-                    <h3 style="font-size:16px; font-weight:800; color:#166534; margin:0;">Sugerencias del Ingeniero AI</h3>
-                    <p style="font-size:12px; color:#15803d; margin:2px 0 0 0;">Basado en el análisis de tus fotos, te recomendamos agregar estos materiales.</p>
-                </div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); max-width: 800px; margin: 0 auto;">
+            <div style="font-size:15px; font-weight:700; color:#0f172a; margin-bottom:15px; display:flex; align-items:center; gap:8px;">
+                <span style="color:#f59e0b;">✨</span> 
+                <span>Materiales Sugeridos (Haz clic para agregar)</span>
             </div>
             <div id="project-suggestions-list" style="display:flex; flex-direction:column; gap:8px;"></div>
         </div>
@@ -2865,28 +3052,32 @@ function renderProjectAiSuggestions() {
         card.style.justifyContent = 'space-between';
         card.style.alignItems = 'center';
         card.style.backgroundColor = 'white';
-        card.style.padding = '12px 15px';
+        card.style.padding = '12px 16px';
         card.style.borderRadius = '8px';
-        card.style.border = '1px solid #dcfce7';
-        card.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)';
+        card.style.border = '1px solid #e2e8f0';
+        card.style.transition = 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
 
         card.innerHTML = `
-            <div style="flex: 1;">
-                <div style="font-size:13px; font-weight:700; color:#1e293b;">${item.product}</div>
-                <div style="font-size:11px; color:#64748b; margin-top:2px;">
-                    <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; margin-right:5px;">Cant: ${item.qty}</span>
-                    ${item.reason}
+            <div style="flex: 1; padding-right:15px;">
+                <div style="font-size:14px; font-weight:700; color:#1e293b;">${item.product}</div>
+                <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                    <span style="background:#f1f5f9; color:#475569; font-size:10px; font-weight:800; padding:1px 6px; border-radius:4px; text-transform:uppercase;">Cant: ${item.qty}</span>
+                    <span style="font-size:12px; color:#64748b; line-height:1.4;">• ${item.reason}</span>
                 </div>
             </div>
-            <div style="display:flex; gap:8px;">
+            <div style="display:flex; gap:8px; flex-shrink:0;">
                 <button onclick="acceptProjectSuggestion('${itemId}', '${item.product.replace(/'/g, "\\'")}', ${item.qty})" 
-                    style="background:#16a34a; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:4px; transition:all 0.2s;">
-                    <span>✓</span> Aceptar
+                    onmouseover="this.style.background='#059669';"
+                    onmouseout="this.style.background='#10b981';"
+                    style="background:#10b981; color:white; border:none; width:36px; height:36px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 2px 4px rgba(16,185,129,0.2);">
+                    <span style="font-size:16px;">✓</span>
                 </button>
                  <button onclick="dismissProjectSuggestion('${itemId}')" 
+                    onmouseover="this.style.background='#dc2626';"
+                    onmouseout="this.style.background='#ef4444';"
                     title="Descartar"
-                    style="background:white; border:1px solid #e2e8f0; color:#94a3b8; padding:6px 10px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; transition:all 0.2s;">
-                    ✕
+                    style="background:#ef4444; color:white; border:none; width:36px; height:36px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 2px 4px rgba(239,68,68,0.2);">
+                    <span style="font-size:16px;">✕</span>
                 </button>
             </div>
         `;
@@ -2943,7 +3134,7 @@ async function acceptProjectSuggestion(elementId, productName, qty) {
         item: finalName,
         cantidad: parseFloat(qty),
         unidad: 'u',
-        type: 'missing',
+        type: 'ai-suggestion',
         prioridad: 'media'
     });
 
@@ -3022,13 +3213,13 @@ function renderCotizacionTable() {
     if (items.length === 0) {
         html += `<tr><td colspan="7" style="padding: 30px; text-align: center; color: #94a3b8;">La lista está vacía. Agrega items manualmente.</td></tr>`;
     } else {
-        // Ordenar: Missing First, then Stock. Inside Missing: Priority.
-        const typeOrder = { 'missing': 0, 'stock': 1 };
+        // Ordenar: Missing First, then Stock, then AI Suggestions. Inside Missing: Priority.
+        const typeOrder = { 'missing': 0, 'stock': 1, 'ai-suggestion': 2 };
         const priorityOrder = { 'crítica': 0, 'alta': 1, 'media': 2, 'baja': 3 };
 
         items.sort((a, b) => {
             if (typeOrder[a.type] !== typeOrder[b.type]) return typeOrder[a.type] - typeOrder[b.type];
-            return priorityOrder[a.prioridad] - priorityOrder[b.prioridad] || 0;
+            return (priorityOrder[a.prioridad] || 99) - (priorityOrder[b.prioridad] || 99) || 0;
         });
 
         items.filter(item => item.type !== 'stock').forEach((item, index) => {
@@ -3542,7 +3733,8 @@ async function downloadComparisonReport() {
 
         excelContent += `</table></body></html>`;
 
-        const filename = `Plan_Compra_${projectName.replace(/\s+/g, '_')}.xls`;
+        const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
+        const filename = `Plan_Compra_${safeProjectName}.xls`;
         const blob = new Blob(['\uFEFF', excelContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -5537,7 +5729,8 @@ window.downloadDirectQuoteFromHistory = async function (id) {
 
     excelContent += `</table></body></html>`;
 
-    const filename = `${projectName.replace(/\s+/g, '_')}_Cotizacion.xls`;
+    const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
+    const filename = `${safeProjectName}_Cotizacion.xls`;
     const blob = new Blob(['\uFEFF', excelContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -5703,11 +5896,12 @@ window.downloadSavedReport = async function (id) {
 
     excelContent += `</table></body></html>`;
 
+    const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
     const blob = new Blob(['\uFEFF', excelContent], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${projectName.replace(/\s+/g, '_')}_Ingenieria.xls`;
+    link.download = `${safeProjectName}_Ingenieria.xls`;
     document.body.appendChild(link);
     link.click();
     setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
@@ -5766,7 +5960,8 @@ window.downloadPdfReport = function (id) {
         }
     });
 
-    doc.save(`${projectName.replace(/\s+/g, '_')}_Materiales.pdf`);
+    const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
+    doc.save(`${safeProjectName}_Materiales.pdf`);
 };
 
 // NUEVA FUNCIÓN: Denegar/Ocultar Sugerencia
@@ -6307,6 +6502,40 @@ const MapProgress = (() => {
 
 let poleManager = new PoleManager();
 
+// Sincronización de parámetros editables en la Página 4
+window.updateArchParams = function () {
+    console.log("Actualizando parámetros de arquitectura desde la UI del mapa...");
+    const newCenso = document.getElementById('arch-censo').value;
+    const newRadius = document.getElementById('arch-radius').value;
+
+    if (!newCenso || parseInt(newCenso) <= 0) return;
+
+    // Sincronizar hacia los inputs originales (Página 2/1)
+    const censoEl = document.getElementById('censo');
+    const radiusEl = document.getElementById('coverageRadius');
+    const radiusDisplayEl = document.getElementById('radiusValueDisplay');
+
+    if (censoEl) censoEl.value = newCenso;
+    if (radiusEl) {
+        radiusEl.value = newRadius;
+        if (radiusDisplayEl) radiusDisplayEl.innerText = newRadius + " m";
+    }
+
+    // Recalcular presupuesto y BOM (actualiza NAPs requeridos en UI y memoria)
+    try {
+        finalizar();
+    } catch (e) {
+        console.error("Error recalculando listado de materiales:", e);
+    }
+
+    // Limpiar clústers previos para forzar nueva distribución
+    window.rawNaps = [];
+
+    // Redibujar mapa
+    if (typeof showArchitecture === 'function') {
+        showArchitecture();
+    }
+};
 
 // Override or define showArchitecture
 window.showArchitecture = async function () {
@@ -6515,6 +6744,21 @@ window.showArchitecture = async function () {
         searchContainer.style.display = 'block';
     }
 
+    // Reveal params editable container
+    const paramsContainer = document.getElementById('architecture-params-container');
+    if (paramsContainer) {
+        paramsContainer.style.display = 'block';
+        if (!window.uiSyncedArchParams) {
+            const archCenso = document.getElementById('arch-censo');
+            const archRadius = document.getElementById('arch-radius');
+            const archRadiusDisp = document.getElementById('arch-radius-display');
+            if (archCenso) archCenso.value = clientCount;
+            if (archRadius) archRadius.value = radiusMeters;
+            if (archRadiusDisp) archRadiusDisp.innerText = radiusMeters;
+            window.uiSyncedArchParams = true;
+        }
+    }
+
     if (mapContainer) {
         mapContainer.style.display = 'block';
         mapContainer.offsetHeight; // force refresh
@@ -6564,9 +6808,9 @@ async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false
 
     // 1. Fetch poles + Reset NAPs ONLY on fullRefresh
     if (fullRefresh && radiusMeters) {
-        MapProgress.step(10, '📍 Calculando posición óptima de OLT...');
+        MapProgress.step(10, 'Calculando posición óptima de OLT...');
         await poleManager.fetchPoles(oltLocation.lat, oltLocation.lng, radiusMeters + 200);
-        MapProgress.step(50, '📌 Posicionando NAPs en postes...');
+        MapProgress.step(50, 'Posicionando NAPs en postes...');
         // Snap auto-generated NAPs to poles and reset window.naps
         if (rawNaps && rawNaps.length > 0) {
             // Sort by clientCount descending to assign 48p to the busiest clusters
@@ -6628,7 +6872,7 @@ async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false
         anchor: 'bottom'
     })
         .setLngLat([oltLocation.lng, oltLocation.lat])
-        .setPopup(new maplibregl.Popup({ offset: 35 }).setHTML("<b>📍 OLT Central</b><br>Radio: 10km"))
+        .setPopup(new maplibregl.Popup({ offset: 35 }).setHTML("<b>OLT Central</b><br>Radio: 10km"))
         .addTo(map);
 
     // Listen for drag end to update coordinates
@@ -6644,7 +6888,7 @@ async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false
         if (detailsDiv) {
             detailsDiv.innerHTML = `
                 <div style="background: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 10px; margin-bottom: 10px;">
-                    <p style="margin:0; font-weight:bold; color: #0284c7;">✅ OLT Reubicada</p>
+                    <p style="margin:0; font-weight:bold; color: #0284c7;">OLT Reubicada</p>
                     <p style="margin:5px 0 0; font-size:13px; color: #0369a1;">
                         Nuevas Coordenadas: ${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}
                     </p>
@@ -6798,7 +7042,7 @@ async function drawNetworkLines(olt, naps) {
     const oldToast = document.getElementById('route-loading');
     if (oldToast) oldToast.style.display = 'none';
 
-    MapProgress.step(55, `📡 Calculando árbol de fibra óptimo (${naps.length} NAPs)...`);
+    MapProgress.step(55, `Calculando árbol de fibra óptimo (${naps.length} NAPs)...`);
 
     const nodes = [olt, ...naps]; // nodes[0] = OLT
     const n = nodes.length;
@@ -6817,14 +7061,14 @@ async function drawNetworkLines(olt, naps) {
         try {
             const coords = nodes.map(nd => `${nd.lng},${nd.lat}`).join(';');
             const tableUrl = `https://router.project-osrm.org/table/v1/driving/${coords}?annotations=distance`;
-            MapProgress.step(58, '🗺️ Consultando matriz de distancias OSRM...');
+            MapProgress.step(58, 'Consultando matriz de distancias OSRM...');
             const res = await fetchWithTimeout(tableUrl, 7000);
             if (res.ok) {
                 const data = await res.json();
                 if (data.code === 'Ok' && data.distances) {
                     distMatrix = data.distances;
                     console.log(`✅ OSRM Table (driving): matriz ${n}×${n} lista`);
-                    MapProgress.step(65, `🗺️ Matriz de distancias vehiculares ${n}×${n} lista`);
+                    MapProgress.step(65, `Matriz de distancias vehiculares ${n}×${n} lista`);
                 }
             }
         } catch (e) {
@@ -6837,12 +7081,12 @@ async function drawNetworkLines(olt, naps) {
     // Fallback: Haversine si Table API falla o hay muchos nodos
     if (!distMatrix) {
         distMatrix = nodes.map(a => nodes.map(b => haversineM(a, b)));
-        MapProgress.step(65, `🔵 Usando distancias directas Haversine (${n} nodos)`);
+        MapProgress.step(65, `Usando distancias directas Haversine (${n} nodos)`);
     }
 
     // ─── PASO 2: MST sobre distancias reales ──────────────────────────────────
     const mstEdges = primMST(distMatrix);
-    MapProgress.step(72, `🌳 MST calculado: ${mstEdges.length} enlaces óptimos`);
+    MapProgress.step(72, `MST calculado: ${mstEdges.length} enlaces óptimos`);
     console.log(`🌳 MST: ${mstEdges.length} enlaces para ${n} nodos`);
 
     // ─── PASO 3: Tipo de enlace para colorear ─────────────────────────────────
@@ -6872,14 +7116,14 @@ async function drawNetworkLines(olt, naps) {
     for (let i = 0; i < mstEdges.length; i += BATCH) {
         const batch = mstEdges.slice(i, i + BATCH);
         const pct = 75 + Math.round(15 * (i / mstEdges.length));
-        MapProgress.step(pct, `🛣️ Trazando enlaces ${i + 1}-${Math.min(i + BATCH, mstEdges.length)} de ${mstEdges.length}...`);
+        MapProgress.step(pct, `Trazando enlaces ${i + 1}-${Math.min(i + BATCH, mstEdges.length)} de ${mstEdges.length}...`);
         const results = await Promise.all(batch.map(e => fetchRoute(nodes[e.fromIdx], nodes[e.toIdx])));
         routeCoords.push(...results);
         if (i + BATCH < mstEdges.length) await new Promise(r => setTimeout(r, 80));
     }
 
     // ─── PASO 5: Construir GeoJSON y dibujar ─────────────────────────────────
-    MapProgress.step(92, '📹 Dibujando red de fibra en el mapa...');
+    MapProgress.step(92, 'Dibujando red de fibra en el mapa...');
     const features = mstEdges.map((e, i) => ({
         type: 'Feature',
         properties: { type: edgeType(e.fromIdx) },
@@ -6912,7 +7156,7 @@ async function drawNetworkLines(olt, naps) {
 
     const trunkN = mstEdges.filter(e => edgeType(e.fromIdx) === 'trunk').length;
     console.log(`✅ Red dibujada: ${trunkN} troncales (azul) + ${mstEdges.length - trunkN} distribución (verde)`);
-    MapProgress.done(`✅ Red dibujada: ${trunkN} troncales + ${mstEdges.length - trunkN} distribuciones`);
+    MapProgress.done(`Red dibujada: ${trunkN} troncales + ${mstEdges.length - trunkN} distribuciones`);
 }
 
 
