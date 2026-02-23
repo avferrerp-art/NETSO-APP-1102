@@ -3269,9 +3269,9 @@ function renderCotizacionTable() {
 
             const stockColor = netsoStock > item.cantidad ? 'color: #15803d; background: #dcfce7;' : (netsoStock > 0 ? 'color: #ca8a04; background: #fef9c3;' : 'color: #b91c1c; background: #fee2e2;');
             const stockBadge = hasMatch ? `<span style="padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; ${stockColor}">${netsoStock}</span>` : '<span style="color:#cbd5e1;">-</span>';
-            const priceDisplay = hasMatch ? `$${price.toFixed(2)}` : '-';
+            const priceDisplay = hasMatch ? `$ ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-';
             const rowTotal = price * item.cantidad;
-            const rowTotalDisplay = hasMatch ? `$${rowTotal.toFixed(2)}` : '-';
+            const rowTotalDisplay = hasMatch ? `$ ${rowTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-';
 
             html += `
                 <tr style="background: ${rowBg}; border-bottom: 1px solid #f1f5f9; transition: background 0.2s;">
@@ -3698,7 +3698,7 @@ async function downloadComparisonReport() {
                     odooMatch = {
                         name: bestMatch.display_name || bestMatch.name,
                         qty: bestMatch.qty_available,
-                        price: bestMatch.list_price || 0
+                        price: bestMatch.list_price_usd || 0
                     };
                 }
             }
@@ -7080,8 +7080,23 @@ async function drawNetworkLines(olt, naps) {
 
     // Fallback: Haversine si Table API falla o hay muchos nodos
     if (!distMatrix) {
-        distMatrix = nodes.map(a => nodes.map(b => haversineM(a, b)));
+        distMatrix = [];
         MapProgress.step(65, `Usando distancias directas Haversine (${n} nodos)`);
+
+        // Asynchronous yielding to prevent main thread blocking on huge topologies
+        const YIELD_EVERY = 50;
+        for (let i = 0; i < n; i++) {
+            const row = [];
+            for (let j = 0; j < n; j++) {
+                row.push(haversineM(nodes[i], nodes[j]));
+            }
+            distMatrix.push(row);
+
+            if (i > 0 && i % YIELD_EVERY === 0) {
+                // Yield thread to let UI update Map Progress
+                await new Promise(r => setTimeout(r, 0));
+            }
+        }
     }
 
     // ─── PASO 2: MST sobre distancias reales ──────────────────────────────────
@@ -7110,16 +7125,43 @@ async function drawNetworkLines(olt, naps) {
         return [[from.lng, from.lat], [to.lng, to.lat]];
     };
 
-    // Fetch en lotes de 4 con delay de 80ms entre lotes para no saturar OSRM público
-    const BATCH = 4;
+    // ─── Lógica Adaptativa OSRM basada en tamaño ─────────────────
+    let shouldUseOSRM = (edge) => true; // Small topology (< 60): OSRM everything
+    let BATCH_SIZE = 3;
+    let DELAY_MS = 150;
+
+    if (n > 200) {
+        // Large Topologies: Skip OSRM to prioritize speed and prevent 429
+        shouldUseOSRM = (edge) => false;
+    } else if (n > 60) {
+        // Medium Topologies: Only OSRM the main Trunk lines
+        shouldUseOSRM = (edge) => edgeType(edge.fromIdx) === 'trunk';
+        BATCH_SIZE = 4;
+        DELAY_MS = 100;
+    }
+
+    // Fetch en lotes con limitador adaptativo para no saturar OSRM público
     const routeCoords = [];
-    for (let i = 0; i < mstEdges.length; i += BATCH) {
-        const batch = mstEdges.slice(i, i + BATCH);
+    for (let i = 0; i < mstEdges.length; i += BATCH_SIZE) {
+        const batch = mstEdges.slice(i, i + BATCH_SIZE);
         const pct = 75 + Math.round(15 * (i / mstEdges.length));
-        MapProgress.step(pct, `Trazando enlaces ${i + 1}-${Math.min(i + BATCH, mstEdges.length)} de ${mstEdges.length}...`);
-        const results = await Promise.all(batch.map(e => fetchRoute(nodes[e.fromIdx], nodes[e.toIdx])));
+        MapProgress.step(pct, `Trazando enlaces ${i + 1}-${Math.min(i + BATCH_SIZE, mstEdges.length)} de ${mstEdges.length}...`);
+
+        const results = await Promise.all(batch.map(e => {
+            if (shouldUseOSRM(e)) {
+                return fetchRoute(nodes[e.fromIdx], nodes[e.toIdx]);
+            } else {
+                return [[nodes[e.fromIdx].lng, nodes[e.fromIdx].lat], [nodes[e.toIdx].lng, nodes[e.toIdx].lat]];
+            }
+        }));
+
         routeCoords.push(...results);
-        if (i + BATCH < mstEdges.length) await new Promise(r => setTimeout(r, 80));
+
+        // Allow the UI to breathe and respect rate limits if we are actually making requests
+        if (i + BATCH_SIZE < mstEdges.length) {
+            const hasOSRMRequest = batch.some(shouldUseOSRM);
+            await new Promise(r => setTimeout(r, hasOSRMRequest ? DELAY_MS : 5));
+        }
     }
 
     // ─── PASO 5: Construir GeoJSON y dibujar ─────────────────────────────────
