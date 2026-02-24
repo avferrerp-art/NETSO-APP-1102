@@ -4,7 +4,7 @@
 
 // Estado global
 let catalogoNetso = null;
-let googleApiKey = localStorage.getItem('googleApiKey');
+let googleApiKey = window.NETSO_CONFIG ? window.NETSO_CONFIG.GEMINI_KEY : null;
 let currentUser = null; // { name, role, company? }
 
 // FIREBASE CONFIG
@@ -45,10 +45,10 @@ let pendingImages = []; // Cola de imágenes por analizar
 
 // Odoo Config
 const odooConfig = {
-    url: 'https://netso.odoo.com',
-    db: 'lixie-dev-netso-main-12510561', // Nombre real confirmado por consola
-    username: 'luismoreno.netso@gmail.com',
-    apiKey: '49c70a2c9f66b8561c858395d0a3d7b5f9568c4a',
+    url: window.NETSO_CONFIG?.ODOO_CONFIG?.URL || 'https://netso.odoo.com',
+    db: window.NETSO_CONFIG?.ODOO_CONFIG?.DB || '',
+    username: window.NETSO_CONFIG?.ODOO_CONFIG?.USERNAME || '',
+    apiKey: window.NETSO_CONFIG?.ODOO_CONFIG?.API_KEY || '',
     uid: null // Se obtendrá al autenticar
 };
 
@@ -88,9 +88,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Verificar API Key (solo si está logueado)
-    if (currentUser && !googleApiKey) {
-        toggleSettings();
+    // Verificar API Key (solo si es necesario en un flujo específico)
+    if (!googleApiKey) {
+        console.warn("⚠️ NETSO_CONFIG.GEMINI_KEY no encontrada. El análisis de campo IA no estará disponible.");
     }
 });
 
@@ -1122,35 +1122,7 @@ function generateSelectOptions(categoryKey, categoryNameId = null) {
 // GESTIÓN DE CONFIGURACIÓN Y PERSISTENCIA
 // ============================================
 
-function toggleSettings() {
-    const modal = document.getElementById('settingsModal');
-    const input = document.getElementById('apiKeyInput');
-
-    if (modal.style.display === 'flex') {
-        modal.style.display = 'none';
-    } else {
-        modal.style.display = 'flex';
-        input.value = googleApiKey || '';
-    }
-}
-
-function saveSettings() {
-    const input = document.getElementById('apiKeyInput');
-    const key = input.value.trim();
-
-    if (key) {
-        if (!key.startsWith('AIza')) {
-            alert('⚠️ Esa no parece una API Key de Google válida.\n\nLas API Keys de Google suelen empezar con "AIza".\n\nAsegúrate de estar copiando el texto correcto ("API key") y no el "Client ID" o "Project ID".');
-            return;
-        }
-        localStorage.setItem('googleApiKey', key);
-        googleApiKey = key;
-        alert('✅ Configuración guardada correctamente');
-        toggleSettings();
-    } else {
-        alert('⚠️ Por favor ingresa una API Key válida');
-    }
-}
+// La gestión de configuración se ha movido a config.js para mayor seguridad.
 
 function saveProjectState() {
     const state = {
@@ -1413,7 +1385,7 @@ function updateRadiusDisplay(v) {
 async function testAPIKey() {
     // Validar que se haya configurado la API key
     if (!googleApiKey) {
-        toggleSettings();
+        alert('⚠️ La inteligencia artificial no está configurada en este entorno.\n(Falta GEMINI_KEY en config.js)');
         return;
     }
 
@@ -1522,7 +1494,7 @@ async function analyzeImage() {
 
     // Validar API Key
     if (!googleApiKey) {
-        toggleSettings();
+        alert('⚠️ La inteligencia artificial no está configurada en este entorno.\n(Falta GEMINI_KEY en config.js)');
         return;
     }
 
@@ -1668,18 +1640,21 @@ function renderAiSuggestionsForProject(suggestions, imgIndex, container) {
     suggestionsDiv.style.backgroundColor = '#f8fafc';
     suggestionsDiv.style.border = '1px solid #e2e8f0';
     suggestionsDiv.style.borderRadius = '12px';
-    suggestionsDiv.style.padding = '20px';
-    suggestionsDiv.style.marginTop = '16px';
-    suggestionsDiv.style.marginBottom = '24px';
+    suggestionsDiv.style.padding = '8px';
+    suggestionsDiv.style.marginTop = '8px';
+    suggestionsDiv.style.marginBottom = '12px';
     suggestionsDiv.style.maxWidth = '800px';
     suggestionsDiv.style.marginLeft = 'auto';
     suggestionsDiv.style.marginRight = 'auto';
-    suggestionsDiv.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+    suggestionsDiv.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+    suggestionsDiv.style.lineHeight = '1.1';
 
     suggestionsDiv.innerHTML = `
         <div style="font-size:15px; font-weight:700; color:#0f172a; margin-bottom:15px; display:flex; align-items:center; gap:8px;">
             <span style="color:#f59e0b;">✨</span> 
             <span>Materiales Sugeridos (Haz clic para agregar)</span>
+        </div>
+        <div id="sugg-grid-${imgIndex}" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 8px;">
         </div>
     `;
 
@@ -1692,16 +1667,18 @@ function renderAiSuggestionsForProject(suggestions, imgIndex, container) {
         card.style.justifyContent = 'space-between';
         card.style.alignItems = 'center';
         card.style.backgroundColor = 'white';
-        card.style.padding = '12px 16px';
-        card.style.marginBottom = '8px';
+        card.style.padding = '4px 12px';
+        card.style.marginBottom = '4px';
+        card.style.minHeight = 'unset';
+        card.style.height = 'auto';
         card.style.borderRadius = '8px';
         card.style.border = '1px solid #e2e8f0';
         card.style.transition = 'all 0.2s ease';
 
         card.innerHTML = `
             <div style="flex: 1; padding-right:15px;">
-                <div style="font-size:14px; font-weight:700; color:#1e293b;">${item.product}</div>
-                <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                <div style="font-size:14px; font-weight:700; color:#1e293b; line-height: 1.2;">${item.product}</div>
+                <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
                     <span style="background:#f1f5f9; color:#475569; font-size:10px; font-weight:800; padding:1px 6px; border-radius:4px; text-transform:uppercase;">Cant: ${item.qty}</span>
                     <span style="font-size:12px; color:#64748b; line-height:1.4;">• ${item.reason}</span>
                 </div>
@@ -1710,19 +1687,21 @@ function renderAiSuggestionsForProject(suggestions, imgIndex, container) {
                 <button onclick="acceptProjectSuggestionFromPage3('${itemId}', '${item.product.replace(/'/g, "\\'")}', ${item.qty}, ${imgIndex})"
                     onmouseover="this.style.background='#059669';"
                     onmouseout="this.style.background='#10b981';"
-                    style="background:#10b981; color:white; border:none; width:36px; height:36px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 2px 4px rgba(16,185,129,0.2);">
-                    <span style="font-size:16px;">✓</span>
+                    style="background:#10b981; color:white; border:none; width:28px; height:28px; border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 1px 2px rgba(16,185,129,0.2);">
+                    <span style="font-size:12px;">✓</span>
                 </button>
                 <button onclick="dismissProjectSuggestionFromPage3('${itemId}')"
                     onmouseover="this.style.background='#dc2626';"
                     onmouseout="this.style.background='#ef4444';"
                     title="Descartar"
-                    style="background:#ef4444; color:white; border:none; width:36px; height:36px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 2px 4px rgba(239,68,68,0.2);">
-                    <span style="font-size:16px;">✕</span>
+                    style="background:#ef4444; color:white; border:none; width:28px; height:28px; border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 1px 2px rgba(239,68,68,0.2);">
+                    <span style="font-size:12px;">✕</span>
                 </button>
             </div>
         `;
-        suggestionsDiv.appendChild(card);
+
+        // Append to the grid container
+        suggestionsDiv.querySelector(`#sugg-grid-${imgIndex}`).appendChild(card);
     });
 
     container.appendChild(suggestionsDiv);
@@ -1847,7 +1826,7 @@ async function analyzeDirectImage() {
     }
 
     if (!googleApiKey) {
-        toggleSettings();
+        alert('⚠️ La inteligencia artificial no está configurada en este entorno.\n(Falta GEMINI_KEY en config.js)');
         return;
     }
 
@@ -2149,7 +2128,7 @@ ${catalogContext}
             console.log(`[Gemini API] Intento ${attempt}/${maxRetries}...`);
 
             let abortController = new AbortController();
-            let timeoutId = setTimeout(() => abortController.abort(), 45000); // 45 segundos de timeout para evitar cuelgues
+            let timeoutId = setTimeout(() => abortController.abort("TIMEOUT"), 75000); // 75 segundos - Las imágenes pueden ser pesadas
 
             let response = await fetch(apiUrl, {
                 method: 'POST',
@@ -2211,9 +2190,10 @@ ${catalogContext}
         } catch (error) {
             console.error(`[Gemini API] Fallo en intento ${attempt}:`, error);
 
-            if (error.name === 'AbortError') {
-                error.message = "La conexión con la IA tardó demasiado (Timeout de 45s). Por favor reintenta.";
-                throw error; // No reintentar timeouts largos
+            if (error.name === 'AbortError' || error === "TIMEOUT") {
+                const timeoutErr = new Error("⏳ El análisis está tomando demasiado tiempo (Timeout de 75s). Reintenta con una imagen más ligera.");
+                timeoutErr.name = 'AbortError';
+                throw timeoutErr;
             }
 
             if (attempt >= maxRetries) {
@@ -2865,13 +2845,19 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
     processReq("⚡ Equipos Activos", "ONT T21 Navigator Doble Banda", clientes, "unidades", "alta", stock.activos.ont === 'none' ? [] : null);
 
     // OLT Logic
-    const puertosPon = Math.ceil(clientes / 64);
+    const puertosPon = Math.ceil(clientes / 128);
     const sStock = stock.activos; // shortcut
 
     // Check OLT
     if (sStock.olt === 'buy') {
-        let modelo = puertosPon <= 4 ? "OLT Navigator 4 Puertos" : (puertosPon <= 8 ? "OLT Navigator 8 Puertos" : "OLT Navigator 16 Puertos");
-        processReq("⚡ Equipos Activos", modelo, 1, "unidad", "crítica", null);
+        let modelo;
+        let capacity;
+        if (puertosPon <= 4) { modelo = "OLT Navigator 4 Puertos"; capacity = 4; }
+        else if (puertosPon <= 8) { modelo = "OLT Navigator 8 Puertos"; capacity = 8; }
+        else { modelo = "OLT Navigator 16 Puertos"; capacity = 16; }
+
+        const qtyOlt = Math.ceil(puertosPon / capacity) || 1; // at least 1
+        processReq("⚡ Equipos Activos", modelo, qtyOlt, "unidades", "crítica", null);
         processReq("⚡ Equipos Activos", "Módulos SFP C++", puertosPon, "unidades", "crítica", null);
     } else {
         let cap = 0;
@@ -3033,12 +3019,12 @@ function renderProjectAiSuggestions() {
 
     container.style.display = 'block';
     container.innerHTML = `
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); max-width: 800px; margin: 0 auto;">
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); max-width: 800px; margin: 0 auto; line-height: 1.1;">
             <div style="font-size:15px; font-weight:700; color:#0f172a; margin-bottom:15px; display:flex; align-items:center; gap:8px;">
                 <span style="color:#f59e0b;">✨</span> 
                 <span>Materiales Sugeridos (Haz clic para agregar)</span>
             </div>
-            <div id="project-suggestions-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+            <div id="project-suggestions-list" style="display:flex; flex-direction:column; gap:4px;"></div>
         </div>
     `;
 
@@ -3052,32 +3038,34 @@ function renderProjectAiSuggestions() {
         card.style.justifyContent = 'space-between';
         card.style.alignItems = 'center';
         card.style.backgroundColor = 'white';
-        card.style.padding = '12px 16px';
+        card.style.padding = '4px 12px';
+        card.style.minHeight = 'unset';
+        card.style.height = 'auto';
         card.style.borderRadius = '8px';
         card.style.border = '1px solid #e2e8f0';
         card.style.transition = 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
 
         card.innerHTML = `
-            <div style="flex: 1; padding-right:15px;">
-                <div style="font-size:14px; font-weight:700; color:#1e293b;">${item.product}</div>
-                <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
-                    <span style="background:#f1f5f9; color:#475569; font-size:10px; font-weight:800; padding:1px 6px; border-radius:4px; text-transform:uppercase;">Cant: ${item.qty}</span>
-                    <span style="font-size:12px; color:#64748b; line-height:1.4;">• ${item.reason}</span>
+            <div style="flex: 1; padding-right:10px;">
+                <div style="font-size:13px; font-weight:700; color:#1e293b; line-height: 1.1; margin: 0;">${item.product}</div>
+                <div style="display:flex; align-items:center; gap:6px; margin-top:1px;">
+                    <span style="background:#f1f5f9; color:#475569; font-size:9px; font-weight:800; padding:0px 4px; border-radius:3px; text-transform:uppercase;">Cant: ${item.qty}</span>
+                    <span style="font-size:11px; color:#64748b; line-height:1.2;">${item.reason}</span>
                 </div>
             </div>
             <div style="display:flex; gap:8px; flex-shrink:0;">
                 <button onclick="acceptProjectSuggestion('${itemId}', '${item.product.replace(/'/g, "\\'")}', ${item.qty})" 
                     onmouseover="this.style.background='#059669';"
                     onmouseout="this.style.background='#10b981';"
-                    style="background:#10b981; color:white; border:none; width:36px; height:36px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 2px 4px rgba(16,185,129,0.2);">
-                    <span style="font-size:16px;">✓</span>
+                    style="background:#10b981; color:white; border:none; width:28px; height:28px; border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 1px 2px rgba(16,185,129,0.2);">
+                    <span style="font-size:12px;">✓</span>
                 </button>
                  <button onclick="dismissProjectSuggestion('${itemId}')" 
                     onmouseover="this.style.background='#dc2626';"
                     onmouseout="this.style.background='#ef4444';"
                     title="Descartar"
-                    style="background:#ef4444; color:white; border:none; width:36px; height:36px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 2px 4px rgba(239,68,68,0.2);">
-                    <span style="font-size:16px;">✕</span>
+                    style="background:#ef4444; color:white; border:none; width:28px; height:28px; border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 1px 2px rgba(239,68,68,0.2);">
+                    <span style="font-size:12px;">✕</span>
                 </button>
             </div>
         `;
