@@ -7737,69 +7737,95 @@ function enableAddressSearch() {
 }
 
 function updateOptimizationLabel(naps, radiusMeters) {
-    const labelId = 'opt-label-badge';
-    let badge = document.getElementById(labelId);
-
-    if (!badge) {
-        badge = document.createElement('div');
-        badge.id = labelId;
-        badge.style.position = 'absolute';
-        badge.style.top = '10px';
-        badge.style.left = '50%';
-        badge.style.transform = 'translateX(-50%)';
-        badge.style.padding = '8px 15px';
-        badge.style.borderRadius = '20px';
-        badge.style.fontWeight = 'bold';
-        badge.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-        badge.style.zIndex = '1000';
-        badge.style.fontSize = '14px';
-        badge.style.transition = 'all 0.3s ease';
-
-        const mapContainer = document.getElementById('map-container');
-        if (mapContainer) mapContainer.appendChild(badge);
-    }
+    const dashboard = document.getElementById('network-performance-dashboard');
+    if (!dashboard) return;
 
     if (!naps || naps.length === 0) {
-        badge.style.display = 'none';
+        dashboard.style.display = 'none';
         return;
     }
-    badge.style.display = 'block';
+    dashboard.style.display = 'block';
 
     // Metrics Calculation
     let withinRadius = 0;
-    // Fix: Use 10km (10000m) as the OLT connectivity limit, consistent with the visual red circle.
-    // previously it was using 'radiusMeters' which is the NAP service radius (e.g. 500m).
+    // Límite de conectividad OLT (10km) vs Radio Comercial (radiusMeters)
     const OLT_LIMIT_METERS = 10000;
+
+    // Check NAPs that are effectively within the commercial radius
+    let napsInCommercialZone = 0;
 
     naps.forEach(n => {
         if (n.distanciaOLT <= OLT_LIMIT_METERS) withinRadius++;
+        if (n.distanciaOLT <= radiusMeters) napsInCommercialZone++;
     });
 
-    const coveragePct = (withinRadius / naps.length) * 100;
+    const connectivityPct = (withinRadius / naps.length) * 100;
+    const commercialCoveragePct = (napsInCommercialZone / naps.length) * 100;
 
-    // Simple logic for MVP
-    let status = '';
-    let color = '';
-    let bg = '';
+    // Logic for Connectivity Status
+    let connStatus = '';
+    let connColor = '';
+    let connBg = '';
+    let connIcon = '';
 
-    if (coveragePct >= 80) {
-        status = '🟢 ÓPTIMO';
-        color = '#14532d';
-        bg = '#dcfce7';
-    } else if (coveragePct >= 50) {
-        status = '🟡 ACEPTABLE';
-        color = '#713f12';
-        bg = '#fef9c3';
+    if (connectivityPct >= 100) {
+        connStatus = 'ÓPTIMO';
+        connColor = '#15803d'; // Green
+        connBg = '#dcfce7';
+        connIcon = '🟢';
+    } else if (connectivityPct >= 80) {
+        connStatus = 'ACEPTABLE';
+        connColor = '#b45309'; // Yellow/Orange
+        connBg = '#fef9c3';
+        connIcon = '🟡';
     } else {
-        status = '🔴 DEFICIENTE';
-        color = '#7f1d1d';
-        bg = '#fee2e2';
+        connStatus = 'CRÍTICO';
+        connColor = '#b91c1c'; // Red
+        connBg = '#fee2e2';
+        connIcon = '🔴';
     }
 
-    badge.innerHTML = `${status} (${coveragePct.toFixed(0)}% Conectividad OLT)`;
-    badge.style.color = color;
-    badge.style.backgroundColor = bg;
-    badge.style.border = `2px solid ${color}`;
+    // Commercial Coverage metric (how efficiently the radius covers the network)
+    const coverageEfficiencyStatus = commercialCoveragePct >= 95 ?
+        `<span style="color: #15803d; font-weight: bold;">Alta Efectividad (${commercialCoveragePct.toFixed(0)}%)</span>` :
+        `<span style="color: #b45309; font-weight: bold;">Cobertura Parcial (${commercialCoveragePct.toFixed(0)}%)</span>`;
+
+    dashboard.innerHTML = `
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)); padding: 20px; font-family: var(--font-main); animation: slideUp 0.3s ease-out;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 20px;">📊</span> Rendimiento Global de la Red
+                </h3>
+                <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; background: #f8fafc; padding: 4px 10px; border-radius: 20px; border: 1px solid #e2e8f0;">
+                    Radio: ${radiusMeters}m
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <!-- Conectividad -->
+                <div style="background: ${connBg}; border: 1px solid ${connColor}30; padding: 12px 16px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 800; color: ${connColor}; margin-bottom: 4px; text-transform: uppercase;">Estado de Conectividad</div>
+                    <div style="font-size: 14px; font-weight: 700; color: #0f172a;">${connIcon} ${connStatus}</div>
+                    <div style="font-size: 12px; color: #475569; margin-top: 2px;">${connectivityPct.toFixed(0)}% de nodos alcanzan la OLT.</div>
+                </div>
+
+                <!-- Cobertura -->
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Eficiencia de Cobertura</div>
+                    <div style="font-size: 14px; color: #0f172a;">${coverageEfficiencyStatus}</div>
+                    <div style="font-size: 12px; color: #475569; margin-top: 2px;">Densidad dentro del radio.</div>
+                </div>
+
+                <!-- Uso de Nodos -->
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Aprovechamiento NAPs</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #3b82f6; display: flex; align-items: baseline; gap: 4px;">
+                        ${withinRadius} <span style="font-size: 12px; font-weight: 500; color: #64748b;">/ ${naps.length} Activos</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 // ==========================================
