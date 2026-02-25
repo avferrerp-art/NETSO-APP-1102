@@ -6541,6 +6541,193 @@ window.updateArchParams = function () {
 };
 
 // Override or define showArchitecture
+/**
+ * Actualiza el panel de detalles de arquitectura con información dinámica.
+ * @param {Object} oltOptimal - Coordenadas actuales de la OLT.
+ */
+window.updateArchitectureDetailsPanel = function (oltOptimal) {
+    const detailsDiv = document.getElementById('architecture-details');
+    if (!detailsDiv) return;
+
+    detailsDiv.style.display = 'block';
+
+    // --- FTTH Optical Budget Calculations ---
+    const uiCenso = document.getElementById('arch-censo');
+    const uiRadius = document.getElementById('arch-radius');
+
+    // Fallback a valores del proyecto actual si no están en la UI
+    const liveClientCount = (uiCenso && uiCenso.value) ? parseInt(uiCenso.value) : (window.lastClientCount || 20);
+    const liveRadiusMeters = (uiRadius && uiRadius.value) ? parseInt(uiRadius.value) : (window.lastRadiusMeters || 500);
+
+    // Guardar para futuros refrescos
+    window.lastClientCount = liveClientCount;
+    window.lastRadiusMeters = liveRadiusMeters;
+
+    // Lógica de Puertos (similar a finalizar)
+    const util = 0.9;
+    const cap16 = 16 * util;
+    const cap48 = 48 * util;
+    const naps48 = Math.floor(liveClientCount / cap48);
+    const rem = liveClientCount - (naps48 * cap48);
+    const naps16 = rem > 0 ? Math.ceil(rem / cap16) : 0;
+    const totalNaps = naps48 + naps16;
+
+    const totalPortsConfigured = (naps48 * 48) + (naps16 * 16);
+    const ponPortsNeeded = Math.ceil(totalPortsConfigured / 64);
+
+    // Sugerencia de Modelo OLT
+    let oltModel = "Desconocido";
+    if (ponPortsNeeded <= 4) oltModel = "1× OLT 4 Puertos";
+    else if (ponPortsNeeded <= 8) oltModel = "1× OLT 8 Puertos";
+    else if (ponPortsNeeded <= 16) oltModel = "1× OLT 16 Puertos";
+    else oltModel = `${Math.ceil(ponPortsNeeded / 16)}× OLT 16 Puertos`;
+
+    // Presupuesto Óptico (dB)
+    const maxFeederDistKm = (liveRadiusMeters / 1000) * 1.5;
+    const feederLoss = maxFeederDistKm * 0.35;
+    const primarySplitterLoss = 10.5;
+    const secondarySplitterLoss = 10.5;
+    const splicesLoss = 1.5;
+    const totalLoss = feederLoss + primarySplitterLoss + secondarySplitterLoss + splicesLoss;
+
+    let budgetIcon = "", budgetStatus = "", budgetColor = "", budgetBadgeStyle = "";
+    if (totalLoss <= 25) {
+        budgetIcon = "✅"; budgetStatus = "Dentro del presupuesto óptimo"; budgetColor = "#15803d"; budgetBadgeStyle = "background-color: #dcfce7; color: #166534;";
+    } else if (totalLoss <= 28) {
+        budgetIcon = "⚠️"; budgetStatus = "Cerca del límite (Clase B+)"; budgetColor = "#b45309"; budgetBadgeStyle = "background-color: #fef9c3; color: #854d0e;";
+    } else {
+        budgetIcon = "❌"; budgetStatus = "Fuera del presupuesto"; budgetColor = "#b91c1c"; budgetBadgeStyle = "background-color: #fee2e2; color: #991b1b;";
+    }
+
+    // Estimación de Fibra (metros)
+    const fiberFeeder = liveRadiusMeters * 1.5;
+    const fiberDist = totalNaps * 150;
+    const fiberDrop = liveClientCount * 80;
+
+    detailsDiv.innerHTML = `
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: var(--shadow-lg); margin-bottom: 24px; overflow: hidden; font-family: var(--font-main); animation: slideUp 0.4s ease-out;">
+            <!-- Main Header -->
+            <div style="background: linear-gradient(to bottom, #f8fafc, #ffffff); border-bottom: 1px solid #e2e8f0; padding: 20px 24px; display: flex; align-items: center; gap: 18px;">
+                <div style="background: #eff6ff; width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
+                    📍
+                </div>
+                <div style="flex: 1;">
+                    <h3 style="margin: 0; font-size: 18px; font-weight: 800; color: #0f172a; letter-spacing: -0.02em;">Arquitectura de Red Optimizada</h3>
+                    <p style="margin: 4px 0 0; font-size: 13px; color: #64748b;">Parámetros técnicos calculados para <b>${liveClientCount}</b> clientes.</p>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em; margin-bottom: 4px;">Ubicación OLT</div>
+                    <div style="font-size: 11px; color: #475569; font-family: monospace; background: #f1f5f9; padding: 4px 10px; border-radius: 8px; border: 1px solid #e2e8f0; display: inline-flex; align-items: center; gap: 5px;">
+                        <span style="color: #0ea5e9;">${oltOptimal.lat.toFixed(6)}</span>
+                        <span style="opacity: 0.2;">|</span>
+                        <span style="color: #0ea5e9;">${oltOptimal.lng.toFixed(6)}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metrics Grid -->
+            <div style="padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; background: #ffffff;">
+                
+                <!-- 1. OLT Summary -->
+                <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #f1f5f9; transition: transform 0.2s hover; cursor: default;">
+                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.05em;">
+                        <span style="color: #3b82f6; font-size: 14px;">🏢</span> Nodo Central OLT
+                    </div>
+                    <div style="padding-left: 2px;">
+                        <div style="font-size: 15px; color: #1e293b; font-weight: 700;">${oltModel}</div>
+                        <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
+                                <span>Puertos PON req.</span>
+                                <b style="color: #0f172a;">${ponPortsNeeded}</b>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
+                                <span>Capacidad Total</span>
+                                <b style="color: #0f172a;">${(totalPortsConfigured).toLocaleString()} p.</b>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. NAP Distribution -->
+                <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #f1f5f9;">
+                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.05em;">
+                        <span style="color: #8b5cf6; font-size: 14px;">🔀</span> Red de Distribución
+                    </div>
+                    <div style="padding-left: 2px;">
+                        <div style="font-size: 15px; color: #1e293b; font-weight: 700;">Total ${totalNaps} Cajas NAP</div>
+                        <div style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div style="background: white; padding: 6px 10px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center;">
+                                <div style="font-size: 16px; font-weight: 800; color: #3b82f6;">${naps48}</div>
+                                <div style="font-size: 9px; color: #94a3b8; font-weight: 700;">48 PUERTOS</div>
+                            </div>
+                            <div style="background: white; padding: 6px 10px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center;">
+                                <div style="font-size: 16px; font-weight: 800; color: #f97316;">${naps16}</div>
+                                <div style="font-size: 9px; color: #94a3b8; font-weight: 700;">16 PUERTOS</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Optical Budget -->
+                <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #f1f5f9;">
+                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.05em;">
+                        <span style="color: #f59e0b; font-size: 14px;">⚡</span> Balance de Potencia
+                    </div>
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-bottom: 4px;">
+                            <span>Pérdida por Distancia</span> <span>-${feederLoss.toFixed(2)} dB</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-bottom: 8px;">
+                            <span>Conectorización</span> <span>-${splicesLoss.toFixed(2)} dB</span>
+                        </div>
+                        <div style="padding-top: 8px; border-top: 1px dashed #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
+                            <div style="font-size: 16px; font-weight: 800; color: #0f172a;">-${totalLoss.toFixed(2)} dB</div>
+                            <div style="font-size: 10px; padding: 4px 10px; border-radius: 20px; font-weight: 800; ${budgetBadgeStyle} text-transform: uppercase; letter-spacing: 0.02em;">
+                                ${budgetStatus}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Fiber Estimation -->
+                <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #f1f5f9;">
+                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.05em;">
+                        <span style="color: #10b981; font-size: 14px;">🧵</span> Metraje Estimado
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                            <span style="font-size: 12px; color: #64748b;">Cable Troncal</span>
+                            <span style="font-size: 13px; font-weight: 700; color: #1e293b;">${(fiberFeeder).toLocaleString()}m</span>
+                        </div>
+                        <div style="height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden;">
+                            <div style="width: 30%; height: 100%; background: #3b82f6;"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 4px;">
+                            <span style="font-size: 12px; color: #64748b;">Distribución</span>
+                            <span style="font-size: 13px; font-weight: 700; color: #1e293b;">${(fiberDist).toLocaleString()}m</span>
+                        </div>
+                        <div style="height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden;">
+                            <div style="width: 70%; height: 100%; background: #8b5cf6;"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            
+            <!-- Footer Info -->
+            <div style="background: #f8fafc; padding: 12px 24px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 11px; color: #94a3b8; font-style: italic;">
+                    * Cálculos basados en topología radial y un margen de seguridad de 1.5x en distancias troncales.
+                </div>
+                <div style="font-size: 11px; font-weight: 700; color: #3b82f6; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    Ver detalles técnicos <span>→</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+};
+
 window.showArchitecture = async function () {
     console.log("Iniciando Fase 1.5: Cálculo de OLT y Visualización");
 
@@ -6767,158 +6954,8 @@ window.showArchitecture = async function () {
         mapContainer.offsetHeight; // force refresh
     }
 
-    if (detailsDiv) {
-        detailsDiv.style.display = 'block';
-
-        // --- FTTH Optical Budget Calculations ---
-        // Fetch live values from UI if available, else fallback to function args
-        const uiCenso = document.getElementById('arch-censo');
-        const uiRadius = document.getElementById('arch-radius');
-        const liveClientCount = (uiCenso && uiCenso.value) ? parseInt(uiCenso.value) : clientCount;
-        const liveRadiusMeters = (uiRadius && uiRadius.value) ? parseInt(uiRadius.value) : radiusMeters;
-
-        // Port logic (similar to calcularMixNAPs)
-        const util = 0.9;
-        const cap16 = 16 * util;
-        const cap48 = 48 * util;
-        const naps48 = Math.floor(liveClientCount / cap48);
-        const rem = liveClientCount - (naps48 * cap48);
-        const naps16 = rem > 0 ? Math.ceil(rem / cap16) : 0;
-        const totalNaps = naps48 + naps16;
-
-        const totalPortsConfigured = (naps48 * 48) + (naps16 * 16);
-        const ponPortsNeeded = Math.ceil(totalPortsConfigured / 64);
-
-        // OLT Model Suggestion
-        let oltModel = "Desconocido";
-        if (ponPortsNeeded <= 4) oltModel = "1× OLT 4 Puertos";
-        else if (ponPortsNeeded <= 8) oltModel = "1× OLT 8 Puertos";
-        else if (ponPortsNeeded <= 16) oltModel = "1× OLT 16 Puertos";
-        else oltModel = `${Math.ceil(ponPortsNeeded / 16)}× OLT 16 Puertos`;
-
-        // Optical Budget (dB)
-        const maxFeederDistKm = (liveRadiusMeters / 1000) * 1.5;
-        const feederLoss = maxFeederDistKm * 0.35;
-        const primarySplitterLoss = 10.5; // Assuming 1:8
-        const secondarySplitterLoss = 10.5; // Assuming 1:8
-        const splicesLoss = 1.5; // Connectors & splices
-        const totalLoss = feederLoss + primarySplitterLoss + secondarySplitterLoss + splicesLoss;
-
-        let budgetIcon = "";
-        let budgetStatus = "";
-        let budgetColor = "";
-        let budgetBadgeStyle = "";
-        if (totalLoss <= 25) {
-            budgetIcon = "✅";
-            budgetStatus = "Dentro del presupuesto óptimo";
-            budgetColor = "#15803d";
-            budgetBadgeStyle = "background-color: #dcfce7; color: #166534;";
-        } else if (totalLoss <= 28) {
-            budgetIcon = "⚠️";
-            budgetStatus = "Cerca del límite (Clase B+)";
-            budgetColor = "#b45309";
-            budgetBadgeStyle = "background-color: #fef9c3; color: #854d0e;";
-        } else {
-            budgetIcon = "❌";
-            budgetStatus = "Fuera del presupuesto";
-            budgetColor = "#b91c1c";
-            budgetBadgeStyle = "background-color: #fee2e2; color: #991b1b;";
-        }
-
-        // Fiber Estimation (meters)
-        const fiberFeeder = liveRadiusMeters * 1.5;
-        const fiberDist = totalNaps * 150;
-        const fiberDrop = liveClientCount * 80;
-        const fiberTotal = fiberFeeder + fiberDist + fiberDrop;
-        // ----------------------------------------
-
-        detailsDiv.innerHTML = `
-            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-bottom: 15px; overflow: hidden; font-family: 'Inter', sans-serif;">
-                <!-- Main Header -->
-                <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 12px 16px; display: flex; align-items: flex-start; gap: 12px;">
-                    <span style="font-size: 24px; line-height: 1;">📍</span>
-                    <div style="flex: 1;">
-                        <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;">OLT Calculada (Fase 1.5)</h3>
-                        <p style="margin: 2px 0 0; font-size: 13px; color: #64748b;">Se ha hallado el centroide óptimo para ${liveClientCount} clientes interactivos.</p>
-                        <p style="margin: 4px 0 0; font-size: 11px; color: #94a3b8; font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; display: inline-block;">LAT: ${oltOptimal.lat.toFixed(5)} | LNG: ${oltOptimal.lng.toFixed(5)}</p>
-                    </div>
-                </div>
-
-                <!-- Metrics Grid -->
-                <div style="padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #ffffff;">
-                    
-                    <!-- 1. OLT Summary -->
-                    <div>
-                        <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                            <span>🏢</span> RESUMEN OLT
-                        </div>
-                        <div style="border-left: 2px solid #3b82f6; padding-left: 10px;">
-                            <div style="font-size: 13px; color: #1e293b;"><b>Mod. Sugerido:</b> ${oltModel}</div>
-                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Puertos PON req.: <span style="color:#0f172a; font-weight:600;">${ponPortsNeeded}</span></div>
-                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Capacidad: ${(totalPortsConfigured).toLocaleString()} puertos totales</div>
-                            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">(Basado en Split 1:64 alg. 80%)</div>
-                        </div>
-                    </div>
-
-                    <!-- 2. NAP Distribution -->
-                    <div>
-                        <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                            <span>🔀</span> DISTRIBUCIÓN NAPs
-                        </div>
-                        <div style="border-left: 2px solid #8b5cf6; padding-left: 10px;">
-                            <div style="font-size: 13px; color: #1e293b;"><b>Total NAPs:</b> ${totalNaps}</div>
-                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">NAPs 48 Ptos: <span style="color:#0f172a; font-weight:600;">${naps48}</span></div>
-                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">NAPs 16 Ptos: <span style="color:#0f172a; font-weight:600;">${naps16}</span></div>
-                            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">(Mix 16/48 sugerido para cotización)</div>
-                        </div>
-                    </div>
-
-                    <!-- 3. Optical Budget -->
-                    <div>
-                        <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                            <span>⚡</span> PRESUPUESTO ÓPTICO (Estimado)
-                        </div>
-                        <div style="border-left: 2px solid ${budgetColor}; padding-left: 10px;">
-                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
-                                <span>Fibra Feeder (${maxFeederDistKm.toFixed(2)}km):</span> <span>-${feederLoss.toFixed(2)} dB</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-top: 2px;">
-                                <span>Splitters (1:8 + 1:8):</span> <span>-21.00 dB</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-top: 2px;">
-                                <span>Empalmes y Conectores:</span> <span>-${splicesLoss.toFixed(2)} dB</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 4px; border-top: 1px dashed #cbd5e1; padding-top: 4px;">
-                                <span>Pérdida Total:</span> <span>-${totalLoss.toFixed(2)} dB</span>
-                            </div>
-                            <div style="margin-top: 6px; font-size: 11px; padding: 2px 6px; border-radius: 4px; display: inline-block; font-weight: 600; ${budgetBadgeStyle}">
-                                ${budgetIcon} ${budgetStatus}
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 4. Fiber Estimation -->
-                    <div>
-                        <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                            <span>🧵</span> METRAJE DE FIBRA (Estimado)
-                        </div>
-                        <div style="border-left: 2px solid #10b981; padding-left: 10px;">
-                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
-                                <span>Feeder (Troncal):</span> <span>${(fiberFeeder).toLocaleString('en-US', { maximumFractionDigits: 0 })} m</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-top: 2px;">
-                                <span>Distribución (NAPs):</span> <span>${(fiberDist).toLocaleString('en-US', { maximumFractionDigits: 0 })} m</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-top: 2px;">
-                                <span>Drop (Acometidas ~80m):</span> <span>${(fiberDrop).toLocaleString('en-US', { maximumFractionDigits: 0 })} m</span>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-            </div>
-        `;
-    }
+    // Renderizar panel de detalles
+    updateArchitectureDetailsPanel(oltOptimal);
 
     // 5. Initialize/Update Map (fullRefresh=true: recalculate NAPs)
     if (!map) {
@@ -7026,18 +7063,8 @@ async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false
         // Re-render only (fullRefresh=false): preserves user's NAPs
         await updateMap({ lat: lngLat.lat, lng: lngLat.lng }, null, null, false);
 
-        // Update UI details
-        const detailsDiv = document.getElementById('architecture-details');
-        if (detailsDiv) {
-            detailsDiv.innerHTML = `
-                <div style="background: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 10px; margin-bottom: 10px;">
-                    <p style="margin:0; font-weight:bold; color: #0284c7;">OLT Reubicada</p>
-                    <p style="margin:5px 0 0; font-size:13px; color: #0369a1;">
-                        Nuevas Coordenadas: ${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}
-                    </p>
-                </div>
-            `;
-        }
+        // Actualizar panel de detalles automáticamente
+        updateArchitectureDetailsPanel({ lat: lngLat.lat, lng: lngLat.lng });
     });
 
     // 5. Draw Connection Lines — Real street routing via OSRM (Phase 4)
@@ -7689,19 +7716,9 @@ function enableAddressSearch() {
                     }
 
                     // Update UI text
-                    const detailsDiv = document.getElementById('architecture-details');
-                    if (detailsDiv) {
-                        detailsDiv.style.display = 'block';
-                        detailsDiv.innerHTML = `
-                            <div style="background: #dcfce7; border-left: 4px solid #22c55e; padding: 10px; margin-bottom: 10px;">
-                                <p style="margin:0; font-weight:bold; color: #15803d;">📍 Dirección Encontrada</p>
-                                <p style="margin:5px 0 0; font-size:13px; color: #166534;">
-                                    ${result.display_name}
-                                    <br>Coordenadas: ${lat.toFixed(5)}, ${lng.toFixed(5)}
-                                </p>
-                            </div>
-                        `;
-                    }
+                    // Actualizar panel de detalles
+                    updateArchitectureDetailsPanel({ lat, lng });
+
 
                 } else {
                     alert("No se encontraron resultados para esa dirección.");
