@@ -255,6 +255,8 @@
         </div>
 
         <div id="page-direct-quote" class="page content" style="display:none;">
+            <button class="btn-secondary" onclick="backToProjectSelect()"
+                style="width: auto; padding: 10px 20px; margin-bottom: 20px;">← Volver</button>
             <div class="section">
                 <h2 class="section-title">Cotizador Directo</h2>
                 <div
@@ -339,8 +341,8 @@
                     </div>
 
                     <button class="btn-primary" id="directAnalyzeBtn" onclick="analyzeDirectImage()"
-                        style="display: none; margin-top: 15px; width: 100%; background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);">
-                        ✨ Analizar y Sugerir Materiales
+                        style="display: none; margin-top: 15px; width: 100%; background: linear-gradient(135deg, #5c78f6 0%, #0f48b3 100%);">
+                        Analizar y Sugerir Materiales
                     </button>
 
                     <!-- Resultados del análisis -->
@@ -362,11 +364,10 @@
                 </div>
 
                 <div style="display: flex; gap: 15px; margin-top: 30px; justify-content: flex-end;">
-                    <button class="btn-secondary" onclick="backToProjectSelect()">← Volver</button>
                     <button class="btn-secondary" onclick="saveDirectQuote()"
-                        style="background: #3b82f6; border-color: #2563eb; color: white;">💾 Guardar</button>
+                        style="background: #3b82f6; border-color: #2563eb; color: white;"> Guardar</button>
                     <button class="btn-primary" onclick="generateDirectExcel()"
-                        style="background: #10b981; border-color: #059669;">� Generar Excel (.xls)</button>
+                        style="background: #10b981; border-color: #059669;">Generar Excel (.xls)</button>
                 </div>
             </div>
         </div>

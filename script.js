@@ -1,4 +1,4 @@
-﻿// ============================================
+// ============================================
 // CONFIGURACIÓN Y ESTADO GLOBAL
 // ============================================
 
@@ -3350,6 +3350,30 @@ function renderCotizacionTable() {
     listContainer.innerHTML = html;
 }
 
+/**
+ * Recalcula la lista de materiales (BOM) basándose en el estado actual del mapa y parámetros.
+ * Se llama automáticamente cuando la OLT se mueve o los parámetros cambian.
+ */
+window.refreshProjectBOM = function () {
+    console.log("Sincronizando Lista de Materiales (BOM) con cambios en mapa...");
+
+    // 1. Obtener valores actuales de la UI de Arquitectura
+    const uiCenso = document.getElementById('arch-censo');
+    const uiRadius = document.getElementById('arch-radius');
+
+    const liveClientCount = (uiCenso && uiCenso.value) ? parseInt(uiCenso.value) : (window.lastClientCount || 20);
+    const liveRadiusMeters = (uiRadius && uiRadius.value) ? parseInt(uiRadius.value) : (window.lastRadiusMeters || 500);
+    const liveRadiusKm = liveRadiusMeters / 1000;
+
+    // 2. Calcular mezcla de NAPs
+    const napMix = calcularMixNAPs(liveClientCount);
+    const napsRequeridos = napMix.total;
+
+    // 3. Disparar generador de BOM
+    generarListaCotizacion(liveClientCount, napsRequeridos, liveRadiusKm);
+};
+
+
 function updateItemQuantity(id, newQty) {
     const qty = parseFloat(newQty);
     if (isNaN(qty) || qty < 0) {
@@ -6372,6 +6396,13 @@ class PoleManager {
             }
         });
 
+        // Límite de 50 metros para el snapping
+        const MAX_SNAP_KM = 0.05; 
+        if (minDist > MAX_SNAP_KM) {
+            console.log(`Punto muy lejos del poste (${(minDist * 1000).toFixed(0)}m), usando posición libre.`);
+            return coords; 
+        }
+
         return { lat: nearest.lat, lng: nearest.lng, type: nearest.type, snappedId: nearest.id };
     }
 }
@@ -6725,8 +6756,12 @@ window.updateArchitectureDetailsPanel = function (oltOptimal) {
             </div>
         </div>
     `;
-
+    // Sincronizar automáticamente la tabla de materiales (BOM)
+    if (typeof window.refreshProjectBOM === 'function') {
+        window.refreshProjectBOM();
+    }
 };
+
 
 window.showArchitecture = async function () {
     console.log("Iniciando Fase 1.5: Cálculo de OLT y Visualización");
@@ -6826,18 +6861,23 @@ window.showArchitecture = async function () {
 
     console.log(`Inputs: Clientes=${clientCount}, Radio=${radiusMeters}m`);
 
-    // 2. Determine map center (use real OLT position if available, else geolocation, else Caracas default)
-    let centerLat = 10.4806; // Caracas fallback
+    // 2. Determine project center (where clients/NAPs are centered)
+    // Priority: 1) searched address center, 2) existing project center, 3) geolocation, 4) Caracas
+    let centerLat = 10.4806;
     let centerLng = -66.9036;
 
-    // If OLT marker is already on the map, use its current position
-    if (currentOLTMarker) {
+    if (window.projectCenter) {
+        centerLat = window.projectCenter.lat;
+        centerLng = window.projectCenter.lng;
+        console.log(`Using persistent project center: ${centerLat}, ${centerLng}`);
+    } else if (currentOLTMarker) {
         const pos = currentOLTMarker.getLngLat();
         centerLat = pos.lat;
         centerLng = pos.lng;
-        console.log(`Using existing OLT marker position: ${centerLat}, ${centerLng}`);
+        window.projectCenter = { lat: centerLat, lng: centerLng };
+        console.log(`Setting initial project center from OLT: ${centerLat}, ${centerLng}`);
     } else {
-        // Try to get user geolocation (quick, non-blocking attempt)
+        // Try to get user geolocation
         const geoResult = await new Promise(resolve => {
             if (!navigator.geolocation) return resolve(null);
             navigator.geolocation.getCurrentPosition(
@@ -6849,9 +6889,15 @@ window.showArchitecture = async function () {
         if (geoResult) {
             centerLat = geoResult.lat;
             centerLng = geoResult.lng;
-            console.log(`Using geolocation: ${centerLat}, ${centerLng}`);
+            window.projectCenter = { lat: centerLat, lng: centerLng };
+            console.log(`Using geolocation as project center: ${centerLat}, ${centerLng}`);
+        } else {
+            window.projectCenter = { lat: centerLat, lng: centerLng };
         }
     }
+
+    // We'll determine the final OLT location after running the optimizer
+    // to allow fallback to oltOptimal if the user hasn't moved the OLT.
 
     const syntheticClients = [];
 
@@ -6880,6 +6926,13 @@ window.showArchitecture = async function () {
     const optimizer = new OLT_Optimizer(syntheticClients);
     const result = optimizer.findOptimalOLT();
     const oltOptimal = result ? result.optimal : { lat: centerLat, lng: centerLng };
+
+    // Final OLT position: 
+    // - If user manually moved it (currentOLTMarker exists), keep that pos.
+    // - Otherwise, use the mathematically optimal center.
+    const oltLocation = currentOLTMarker ?
+        { lat: currentOLTMarker.getLngLat().lat, lng: currentOLTMarker.getLngLat().lng } :
+        oltOptimal;
 
     // 3.1. Run NAP Optimizer
     const napOptim = new NAP_Optimizer(syntheticClients, 16);
@@ -6959,11 +7012,12 @@ window.showArchitecture = async function () {
 
     // 5. Initialize/Update Map (fullRefresh=true: recalculate NAPs)
     if (!map) {
-        initMap(oltOptimal, rawNaps, radiusMeters);
+        initMap(oltLocation, rawNaps, radiusMeters);
     } else {
         map.resize();
         // fullRefresh=true: always recalculate on showArchitecture
-        updateMap(oltOptimal, rawNaps, radiusMeters, true);
+        // Use oltLocation if it's the first render, or current marker pos if already moving
+        updateMap(oltLocation, rawNaps, radiusMeters, true);
     }
 
     // Scroll to map
@@ -6979,7 +7033,10 @@ async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false
     if (!map) return;
 
     // Clear old markers only (NOT window.naps, unless fullRefresh)
-    if (currentOLTMarker) currentOLTMarker.remove();
+    if (currentOLTMarker) {
+        currentOLTMarker.remove();
+        currentOLTMarker = null;
+    }
     napMarkers.forEach(m => m.remove());
     napMarkers = [];
     poleMarkers.forEach(m => m.remove());
@@ -7626,7 +7683,7 @@ function createSmallDot(color) {
 
 function initMap(initialLoc, rawNaps, radiusMeters) {
     const mapContainer = document.getElementById('map-container');
-    if (!mapContainer) return;
+    if (!mapContainer || map) return; // Prevent multiple initializations
 
     // Use passed location or default
     const startPos = initialLoc ? [initialLoc.lng, initialLoc.lat] : [-66.9036, 10.4806];
@@ -7699,8 +7756,9 @@ function enableAddressSearch() {
 
                     console.log(`Found: ${lat}, ${lng}`);
 
-                    // Save searched location as current map center
+                    // Save searched location as current map center and persistent project center
                     window.currentMapCenter = { lat, lng };
+                    window.projectCenter = { lat, lng };
 
                     // fullRefresh=true: regenerate NAPs and snap to real poles around the new location
                     const radiusM = window.currentRadiusMeters || 500;
@@ -7747,20 +7805,15 @@ function updateOptimizationLabel(naps, radiusMeters) {
     dashboard.style.display = 'block';
 
     // Metrics Calculation
-    let withinRadius = 0;
-    // Límite de conectividad OLT (10km) vs Radio Comercial (radiusMeters)
-    const OLT_LIMIT_METERS = 10000;
-
-    // Check NAPs that are effectively within the commercial radius
-    let napsInCommercialZone = 0;
+    let withinRange = 0;
+    // Límite Técnico de la OLT (10km)
+    const OLT_TECH_LIMIT = 10000;
 
     naps.forEach(n => {
-        if (n.distanciaOLT <= OLT_LIMIT_METERS) withinRadius++;
-        if (n.distanciaOLT <= radiusMeters) napsInCommercialZone++;
+        if (n.distanciaOLT <= OLT_TECH_LIMIT) withinRange++;
     });
 
-    const connectivityPct = (withinRadius / naps.length) * 100;
-    const commercialCoveragePct = (napsInCommercialZone / naps.length) * 100;
+    const technicalReachPct = (withinRange / naps.length) * 100;
 
     // Logic for Connectivity Status
     let connStatus = '';
@@ -7768,12 +7821,12 @@ function updateOptimizationLabel(naps, radiusMeters) {
     let connBg = '';
     let connIcon = '';
 
-    if (connectivityPct >= 100) {
+    if (technicalReachPct >= 100) {
         connStatus = 'ÓPTIMO';
         connColor = '#15803d'; // Green
         connBg = '#dcfce7';
         connIcon = '🟢';
-    } else if (connectivityPct >= 80) {
+    } else if (technicalReachPct >= 80) {
         connStatus = 'ACEPTABLE';
         connColor = '#b45309'; // Yellow/Orange
         connBg = '#fef9c3';
@@ -7785,10 +7838,10 @@ function updateOptimizationLabel(naps, radiusMeters) {
         connIcon = '🔴';
     }
 
-    // Commercial Coverage metric (how efficiently the radius covers the network)
-    const coverageEfficiencyStatus = commercialCoveragePct >= 95 ?
-        `<span style="color: #15803d; font-weight: bold;">Alta Efectividad (${commercialCoveragePct.toFixed(0)}%)</span>` :
-        `<span style="color: #b45309; font-weight: bold;">Cobertura Parcial (${commercialCoveragePct.toFixed(0)}%)</span>`;
+    // Structural Coverage Status (Technical Baseline 10km)
+    const coverageStatusLabel = technicalReachPct >= 100 ?
+        `<span style="color: #15803d; font-weight: bold;">En Rango (100%)</span>` :
+        `<span style="color: #b91c1c; font-weight: bold;">Fuera de Rango (${technicalReachPct.toFixed(0)}%)</span>`;
 
     dashboard.innerHTML = `
         <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)); padding: 20px; font-family: var(--font-main); animation: slideUp 0.3s ease-out;">
@@ -7796,37 +7849,43 @@ function updateOptimizationLabel(naps, radiusMeters) {
                 <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 20px;">📊</span> Rendimiento Global de la Red
                 </h3>
-                <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; background: #f8fafc; padding: 4px 10px; border-radius: 20px; border: 1px solid #e2e8f0;">
-                    Radio: ${radiusMeters}m
+                <div style="display: flex; gap: 8px;">
+                    <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; background: #f1f5f9; padding: 4px 10px; border-radius: 20px; border: 1px solid #e2e8f0;">
+                        Límite Técnico: 10km
+                    </div>
+                    <div style="font-size: 10px; color: #0ea5e9; font-weight: 700; text-transform: uppercase; background: #f0f9ff; padding: 4px 10px; border-radius: 20px; border: 1px solid #bae6fd;">
+                        Radio Com.: ${radiusMeters}m
+                    </div>
                 </div>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
                 <!-- Conectividad -->
                 <div style="background: ${connBg}; border: 1px solid ${connColor}30; padding: 12px 16px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center;">
-                    <div style="font-size: 11px; font-weight: 800; color: ${connColor}; margin-bottom: 4px; text-transform: uppercase;">Estado de Conectividad</div>
+                    <div style="font-size: 11px; font-weight: 800; color: ${connColor}; margin-bottom: 4px; text-transform: uppercase;">Enlace Técnico OLT</div>
                     <div style="font-size: 14px; font-weight: 700; color: #0f172a;">${connIcon} ${connStatus}</div>
-                    <div style="font-size: 12px; color: #475569; margin-top: 2px;">${connectivityPct.toFixed(0)}% de nodos alcanzan la OLT.</div>
+                    <div style="font-size: 12px; color: #475569; margin-top: 2px;">${technicalReachPct.toFixed(0)}% de nodos alcanzan la OLT.</div>
                 </div>
 
-                <!-- Cobertura -->
+                <!-- Alcance -->
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center;">
-                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Eficiencia de Cobertura</div>
-                    <div style="font-size: 14px; color: #0f172a;">${coverageEfficiencyStatus}</div>
-                    <div style="font-size: 12px; color: #475569; margin-top: 2px;">Densidad dentro del radio.</div>
+                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Alcance Estructural</div>
+                    <div style="font-size: 14px; color: #0f172a;">${coverageStatusLabel}</div>
+                    <div style="font-size: 12px; color: #475569; margin-top: 2px;">Basado en límite de 10km.</div>
                 </div>
 
                 <!-- Uso de Nodos -->
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center;">
                     <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Aprovechamiento NAPs</div>
                     <div style="font-size: 16px; font-weight: 800; color: #3b82f6; display: flex; align-items: baseline; gap: 4px;">
-                        ${withinRadius} <span style="font-size: 12px; font-weight: 500; color: #64748b;">/ ${naps.length} Activos</span>
+                        ${withinRange} <span style="font-size: 12px; font-weight: 500; color: #64748b;">/ ${naps.length} Activos</span>
                     </div>
                 </div>
             </div>
         </div>
     `;
 }
+
 
 // ==========================================
 // PHASE 3.5: VISUAL REFINEMENT HELPERS
