@@ -47,7 +47,7 @@ const PRODUCT_MAPPING = {
     "Fleje de acero 3/4 pulgada (45mts)": "FLEJE 3/4 ACERO 201 19*0.7*45MTS",
     "Hebillas de Acero 1/2 pulgada": "HEBILLA 1/2",
     "Hebilla para flejes 1/2 y 3/4 pulgadas": "HEBILLA 1/2",
-    "Tensores Drop": "[NTS060016] TENSOR DROP METALICO TIPO CUÑA",
+    "Tensores Drop": "TENSOR DROP TIPO ABRAZADERA PLASTICO",
     "Tensor metálico con herraje tipo cuña": "TENSOR PARA DROP METALICO TIPO CUÑA",
     "Tensor tipo ancla (Modelo Tensor)": "TENSOR ADSS PAL-1500 TIPO ANCLA PLASTICO Y METALICO DR1500 10,1MM A 14MM",
     "Abrazaderas (para tensor ancla)": "TENSOR DROP TIPO ABRAZADERA PLASTICO",

@@ -2486,7 +2486,15 @@ function finalizar() {
         return el ? el.value : null;
     };
 
-    const hp = parseInt(getVal('censo') || 0);
+    let hp = parseInt(getVal('censo') || 0);
+
+    // Forzar límite máximo de OSRM (820)
+    if (hp > 820) {
+        hp = 820;
+        const hpEl = document.getElementById('censo');
+        if (hpEl) hpEl.value = "820";
+        showToast("Se ajustó al límite máximo de 820 clientes para visualización avanzada OSRM.", 'warning');
+    }
     const radioVal = getVal('coverageRadius') || 500;
     const radioKm = parseFloat(radioVal) / 1000;
 
@@ -6493,10 +6501,17 @@ let poleManager = new PoleManager();
 // Sincronización de parámetros editables en la Página 4
 window.updateArchParams = function () {
     console.log("Actualizando parámetros de arquitectura desde la UI del mapa...");
-    const newCenso = document.getElementById('arch-censo').value;
+    let newCenso = document.getElementById('arch-censo').value;
     const newRadius = document.getElementById('arch-radius').value;
 
     if (!newCenso || parseInt(newCenso) <= 0) return;
+
+    // Forzar límite máximo de OSRM (820)
+    if (parseInt(newCenso) > 820) {
+        newCenso = "820";
+        document.getElementById('arch-censo').value = newCenso;
+        showToast("Se alcanzó el límite de 820 clientes para mantener el modo de cálculo avanzado.", 'warning');
+    }
 
     // Sincronizar hacia los inputs originales (Página 2/1)
     const censoEl = document.getElementById('censo');
@@ -6754,13 +6769,153 @@ window.showArchitecture = async function () {
 
     if (detailsDiv) {
         detailsDiv.style.display = 'block';
+
+        // --- FTTH Optical Budget Calculations ---
+        // Fetch live values from UI if available, else fallback to function args
+        const uiCenso = document.getElementById('arch-censo');
+        const uiRadius = document.getElementById('arch-radius');
+        const liveClientCount = (uiCenso && uiCenso.value) ? parseInt(uiCenso.value) : clientCount;
+        const liveRadiusMeters = (uiRadius && uiRadius.value) ? parseInt(uiRadius.value) : radiusMeters;
+
+        // Port logic (similar to calcularMixNAPs)
+        const util = 0.9;
+        const cap16 = 16 * util;
+        const cap48 = 48 * util;
+        const naps48 = Math.floor(liveClientCount / cap48);
+        const rem = liveClientCount - (naps48 * cap48);
+        const naps16 = rem > 0 ? Math.ceil(rem / cap16) : 0;
+        const totalNaps = naps48 + naps16;
+
+        const totalPortsConfigured = (naps48 * 48) + (naps16 * 16);
+        const ponPortsNeeded = Math.ceil(totalPortsConfigured / 64);
+
+        // OLT Model Suggestion
+        let oltModel = "Desconocido";
+        if (ponPortsNeeded <= 4) oltModel = "1× OLT 4 Puertos";
+        else if (ponPortsNeeded <= 8) oltModel = "1× OLT 8 Puertos";
+        else if (ponPortsNeeded <= 16) oltModel = "1× OLT 16 Puertos";
+        else oltModel = `${Math.ceil(ponPortsNeeded / 16)}× OLT 16 Puertos`;
+
+        // Optical Budget (dB)
+        const maxFeederDistKm = (liveRadiusMeters / 1000) * 1.5;
+        const feederLoss = maxFeederDistKm * 0.35;
+        const primarySplitterLoss = 10.5; // Assuming 1:8
+        const secondarySplitterLoss = 10.5; // Assuming 1:8
+        const splicesLoss = 1.5; // Connectors & splices
+        const totalLoss = feederLoss + primarySplitterLoss + secondarySplitterLoss + splicesLoss;
+
+        let budgetIcon = "";
+        let budgetStatus = "";
+        let budgetColor = "";
+        let budgetBadgeStyle = "";
+        if (totalLoss <= 25) {
+            budgetIcon = "✅";
+            budgetStatus = "Dentro del presupuesto óptimo";
+            budgetColor = "#15803d";
+            budgetBadgeStyle = "background-color: #dcfce7; color: #166534;";
+        } else if (totalLoss <= 28) {
+            budgetIcon = "⚠️";
+            budgetStatus = "Cerca del límite (Clase B+)";
+            budgetColor = "#b45309";
+            budgetBadgeStyle = "background-color: #fef9c3; color: #854d0e;";
+        } else {
+            budgetIcon = "❌";
+            budgetStatus = "Fuera del presupuesto";
+            budgetColor = "#b91c1c";
+            budgetBadgeStyle = "background-color: #fee2e2; color: #991b1b;";
+        }
+
+        // Fiber Estimation (meters)
+        const fiberFeeder = liveRadiusMeters * 1.5;
+        const fiberDist = totalNaps * 150;
+        const fiberDrop = liveClientCount * 80;
+        const fiberTotal = fiberFeeder + fiberDist + fiberDrop;
+        // ----------------------------------------
+
         detailsDiv.innerHTML = `
-            <div style="background: #e0f2fe; border-left: 4px solid #0ea5e9; padding: 10px; margin-bottom: 10px;">
-                <p style="margin:0; font-weight:bold; color: #0284c7;">✅ OLT Calculada (Fase 1.5)</p>
-                <p style="margin:5px 0 0; font-size:13px; color: #0369a1;">
-                    Ubicación óptima encontrada para ${clientCount} clientes simulados.
-                    <br>Coordenadas: ${oltOptimal.lat.toFixed(5)}, ${oltOptimal.lng.toFixed(5)}
-                </p>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-bottom: 15px; overflow: hidden; font-family: 'Inter', sans-serif;">
+                <!-- Main Header -->
+                <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 12px 16px; display: flex; align-items: flex-start; gap: 12px;">
+                    <span style="font-size: 24px; line-height: 1;">📍</span>
+                    <div style="flex: 1;">
+                        <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;">OLT Calculada (Fase 1.5)</h3>
+                        <p style="margin: 2px 0 0; font-size: 13px; color: #64748b;">Se ha hallado el centroide óptimo para ${liveClientCount} clientes interactivos.</p>
+                        <p style="margin: 4px 0 0; font-size: 11px; color: #94a3b8; font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; display: inline-block;">LAT: ${oltOptimal.lat.toFixed(5)} | LNG: ${oltOptimal.lng.toFixed(5)}</p>
+                    </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div style="padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #ffffff;">
+                    
+                    <!-- 1. OLT Summary -->
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <span>🏢</span> RESUMEN OLT
+                        </div>
+                        <div style="border-left: 2px solid #3b82f6; padding-left: 10px;">
+                            <div style="font-size: 13px; color: #1e293b;"><b>Mod. Sugerido:</b> ${oltModel}</div>
+                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Puertos PON req.: <span style="color:#0f172a; font-weight:600;">${ponPortsNeeded}</span></div>
+                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Capacidad: ${(totalPortsConfigured).toLocaleString()} puertos totales</div>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">(Basado en Split 1:64 alg. 80%)</div>
+                        </div>
+                    </div>
+
+                    <!-- 2. NAP Distribution -->
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <span>🔀</span> DISTRIBUCIÓN NAPs
+                        </div>
+                        <div style="border-left: 2px solid #8b5cf6; padding-left: 10px;">
+                            <div style="font-size: 13px; color: #1e293b;"><b>Total NAPs:</b> ${totalNaps}</div>
+                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">NAPs 48 Ptos: <span style="color:#0f172a; font-weight:600;">${naps48}</span></div>
+                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">NAPs 16 Ptos: <span style="color:#0f172a; font-weight:600;">${naps16}</span></div>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">(Mix 16/48 sugerido para cotización)</div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Optical Budget -->
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <span>⚡</span> PRESUPUESTO ÓPTICO (Estimado)
+                        </div>
+                        <div style="border-left: 2px solid ${budgetColor}; padding-left: 10px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
+                                <span>Fibra Feeder (${maxFeederDistKm.toFixed(2)}km):</span> <span>-${feederLoss.toFixed(2)} dB</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-top: 2px;">
+                                <span>Splitters (1:8 + 1:8):</span> <span>-21.00 dB</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-top: 2px;">
+                                <span>Empalmes y Conectores:</span> <span>-${splicesLoss.toFixed(2)} dB</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 4px; border-top: 1px dashed #cbd5e1; padding-top: 4px;">
+                                <span>Pérdida Total:</span> <span>-${totalLoss.toFixed(2)} dB</span>
+                            </div>
+                            <div style="margin-top: 6px; font-size: 11px; padding: 2px 6px; border-radius: 4px; display: inline-block; font-weight: 600; ${budgetBadgeStyle}">
+                                ${budgetIcon} ${budgetStatus}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Fiber Estimation -->
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <span>🧵</span> METRAJE DE FIBRA (Estimado)
+                        </div>
+                        <div style="border-left: 2px solid #10b981; padding-left: 10px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
+                                <span>Feeder (Troncal):</span> <span>${(fiberFeeder).toLocaleString('en-US', { maximumFractionDigits: 0 })} m</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-top: 2px;">
+                                <span>Distribución (NAPs):</span> <span>${(fiberDist).toLocaleString('en-US', { maximumFractionDigits: 0 })} m</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-top: 2px;">
+                                <span>Drop (Acometidas ~80m):</span> <span>${(fiberDrop).toLocaleString('en-US', { maximumFractionDigits: 0 })} m</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
             </div>
         `;
     }
@@ -7042,28 +7197,39 @@ async function drawNetworkLines(olt, naps) {
         return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
     };
 
-    // ─── PASO 1: OSRM Table API (driving) → matriz de distancias reales por calle ──
+    // ─── PASO 1: OSRM Table API (foot) → matriz de distancias reales por calle peatonal ──
     let distMatrix = null;
-    // Skip Table API for large sets (> 20 nodos) — demasiado lento en OSRM público
-    if (n <= 20) {
+    // Skip Table API for large sets (> 50 nodos) — OSRM público es lento pero útil hasta 50
+    if (n <= 50) {
         try {
             const coords = nodes.map(nd => `${nd.lng},${nd.lat}`).join(';');
-            const tableUrl = `https://router.project-osrm.org/table/v1/driving/${coords}?annotations=distance`;
-            MapProgress.step(58, 'Consultando matriz de distancias OSRM...');
-            const res = await fetchWithTimeout(tableUrl, 7000);
-            if (res.ok) {
-                const data = await res.json();
-                if (data.code === 'Ok' && data.distances) {
-                    distMatrix = data.distances;
-                    console.log(`✅ OSRM Table (driving): matriz ${n}×${n} lista`);
-                    MapProgress.step(65, `Matriz de distancias vehiculares ${n}×${n} lista`);
+            const providers = [
+                `https://router.project-osrm.org/table/v1/foot/${coords}?annotations=distance`,
+                `https://routing.openstreetmap.de/routed-foot/table/v1/foot/${coords}?annotations=distance`
+            ];
+
+            for (const tableUrl of providers) {
+                try {
+                    MapProgress.step(58, `Consultando matriz OSRM (${providers.indexOf(tableUrl) === 0 ? 'Primario' : 'Respaldo'})...`);
+                    const res = await fetchWithTimeout(tableUrl, 8000);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.code === 'Ok' && data.distances) {
+                            distMatrix = data.distances;
+                            console.log(`✅ OSRM Table (foot): matriz ${n}×${n} lista (${tableUrl.includes('project-osrm') ? 'OSR' : 'OSM'})`);
+                            MapProgress.step(65, `Matriz de distancias peatonales ${n}×${n} lista`);
+                            break;
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Provider ${tableUrl} falló, intentando siguiente...`);
                 }
             }
         } catch (e) {
-            console.warn('OSRM Table falló o timeout, usando Haversine:', e.message);
+            console.warn('OSRM Table falló totalmente, usando Haversine:', e.message);
         }
     } else {
-        console.log(`Saltando OSRM Table (${n} nodos > 20) — usando Haversine`);
+        console.log(`Saltando OSRM Table (${n} nodos > 50) — usando Haversine`);
     }
 
     // Fallback: Haversine si Table API falla o hay muchos nodos
@@ -7098,32 +7264,39 @@ async function drawNetworkLines(olt, naps) {
         return nodes[fromIdx].capacidad === 48 ? 'trunk' : 'dist';
     };
 
-    // ─── PASO 4: OSRM Route (driving) para los N-1 enlaces MST ────────────────────
+    // ─── PASO 4: OSRM Route (foot) para los N-1 enlaces MST ────────────────────
     const fetchRoute = async (from, to) => {
-        const url = `https://router.project-osrm.org/route/v1/driving/` +
-            `${from.lng},${from.lat};${to.lng},${to.lat}` +
-            `?overview=full&geometries=geojson&alternatives=false`;
-        try {
-            const res = await fetchWithTimeout(url, 4000);
-            if (res.ok) {
-                const data = await res.json();
-                if (data.code === 'Ok' && data.routes?.[0]) return data.routes[0].geometry.coordinates;
+        const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
+        const providers = [
+            `https://router.project-osrm.org/route/v1/foot/${coords}?overview=full&geometries=geojson&alternatives=false`,
+            `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coords}?overview=full&geometries=geojson&alternatives=false`
+        ];
+
+        for (const url of providers) {
+            try {
+                const res = await fetchWithTimeout(url, 6000);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.code === 'Ok' && data.routes?.[0]) return data.routes[0].geometry.coordinates;
+                }
+            } catch (e) {
+                console.warn(`Route provider ${providers.indexOf(url)} falló para ${coords}`);
             }
-        } catch (e) { /* timeout o error — fallback línea recta */ }
-        return [[from.lng, from.lat], [to.lng, to.lat]];
+        }
+        return [[from.lng, from.lat], [to.lng, to.lat]]; // Fallback línea recta
     };
 
     // ─── Lógica Adaptativa OSRM basada en tamaño ─────────────────
-    let shouldUseOSRM = (edge) => true; // Small topology (< 60): OSRM everything
+    let shouldUseOSRM = (edge) => true; // Small topology (< 120): OSRM everything
     let BATCH_SIZE = 3;
     let DELAY_MS = 150;
 
-    if (n > 200) {
-        // Large Topologies: Skip OSRM to prioritize speed and prevent 429
+    if (n > 400) {
+        // Very Large Topologies: Skip OSRM to prioritize speed and prevent 429
         shouldUseOSRM = (edge) => false;
-    } else if (n > 60) {
-        // Medium Topologies: Only OSRM the main Trunk lines
-        shouldUseOSRM = (edge) => edgeType(edge.fromIdx) === 'trunk';
+    } else if (n > 120) {
+        // Medium/Large Topologies: Only OSRM the main Trunk lines (to avoid rate limits)
+        shouldUseOSRM = (edge) => edgeType(edge.fromIdx) === 'trunk' || n < 150;
         BATCH_SIZE = 4;
         DELAY_MS = 100;
     }
