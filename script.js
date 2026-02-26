@@ -2757,7 +2757,15 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
     processReq("🧵 Fibra Óptica", "Drop Flat/Tenzado 1 hilo (Bobina 1km)", metrosDropTotal, "m", "alta", stock.fibra);
 
     // Troncal
-    const metrosTroncal = Math.ceil(radioKm * 1000 * 1.5 * slackFactor);
+    let metrosTroncal = 0;
+    if (window.currentNetworkMetrics && window.currentNetworkMetrics.trunk !== undefined) {
+        metrosTroncal = Math.ceil(window.currentNetworkMetrics.trunk * slackFactor);
+        console.log(`📏 Usando metros troncal del mapa: ${metrosTroncal}m`);
+    } else {
+        metrosTroncal = Math.ceil(radioKm * 1000 * 1.5 * slackFactor);
+        console.log(`📏 Usando metros troncal estimados: ${metrosTroncal}m`);
+    }
+
     if (metrosTroncal > 0) {
         let hiloTroncal = "ADSS 48 hilos";
         if (clientes > 1000) hiloTroncal = "ADSS 96 hilos";
@@ -2768,7 +2776,15 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
     }
 
     // Distribución
-    const metrosDist = Math.ceil((napsRequeridos * 200) * slackFactor);
+    let metrosDist = 0;
+    if (window.currentNetworkMetrics && window.currentNetworkMetrics.dist !== undefined) {
+        metrosDist = Math.ceil(window.currentNetworkMetrics.dist * slackFactor);
+        console.log(`📏 Usando metros distribución del mapa: ${metrosDist}m`);
+    } else {
+        metrosDist = Math.ceil((napsRequeridos * 200) * slackFactor);
+        console.log(`📏 Usando metros distribución estimados: ${metrosDist}m`);
+    }
+
     if (metrosDist > 0) {
         // Consolidamos usando el mismo nombre que la troncal si aplica
         processReq("🧵 Fibra Óptica", "ADSS 24 hilos", metrosDist, "m", "alta", stock.fibra);
@@ -6397,10 +6413,10 @@ class PoleManager {
         });
 
         // Límite de 50 metros para el snapping
-        const MAX_SNAP_KM = 0.05; 
+        const MAX_SNAP_KM = 0.05;
         if (minDist > MAX_SNAP_KM) {
             console.log(`Punto muy lejos del poste (${(minDist * 1000).toFixed(0)}m), usando posición libre.`);
-            return coords; 
+            return coords;
         }
 
         return { lat: nearest.lat, lng: nearest.lng, type: nearest.type, snappedId: nearest.id };
@@ -6576,7 +6592,7 @@ window.updateArchParams = function () {
  * Actualiza el panel de detalles de arquitectura con información dinámica.
  * @param {Object} oltOptimal - Coordenadas actuales de la OLT.
  */
-window.updateArchitectureDetailsPanel = function (oltOptimal) {
+window.updateArchitectureDetailsPanel = function (oltOptimal, isCalculatingMetrics = false) {
     const detailsDiv = document.getElementById('architecture-details');
     if (!detailsDiv) return;
 
@@ -6604,14 +6620,21 @@ window.updateArchitectureDetailsPanel = function (oltOptimal) {
     const totalNaps = naps48 + naps16;
 
     const totalPortsConfigured = (naps48 * 48) + (naps16 * 16);
-    const ponPortsNeeded = Math.ceil(totalPortsConfigured / 64);
+
+    // Sincronizando con la lógica del BOM (clientes / 128)
+    const ponPortsNeeded = Math.ceil(liveClientCount / 128);
 
     // Sugerencia de Modelo OLT
     let oltModel = "Desconocido";
-    if (ponPortsNeeded <= 4) oltModel = "1× OLT 4 Puertos";
-    else if (ponPortsNeeded <= 8) oltModel = "1× OLT 8 Puertos";
-    else if (ponPortsNeeded <= 16) oltModel = "1× OLT 16 Puertos";
-    else oltModel = `${Math.ceil(ponPortsNeeded / 16)}× OLT 16 Puertos`;
+    if (ponPortsNeeded <= 4) {
+        oltModel = "1× OLT 4 Puertos";
+    } else if (ponPortsNeeded <= 8) {
+        oltModel = "1× OLT 8 Puertos";
+    } else if (ponPortsNeeded <= 16) {
+        oltModel = "1× OLT 16 Puertos";
+    } else {
+        oltModel = `${Math.ceil(ponPortsNeeded / 16)}× OLT 16 Puertos`;
+    }
 
     // Presupuesto Óptico (dB)
     const maxFeederDistKm = (liveRadiusMeters / 1000) * 1.5;
@@ -6631,9 +6654,14 @@ window.updateArchitectureDetailsPanel = function (oltOptimal) {
     }
 
     // Estimación de Fibra (metros)
-    const fiberFeeder = liveRadiusMeters * 1.5;
-    const fiberDist = totalNaps * 150;
-    const fiberDrop = liveClientCount * 80;
+    const fiberFeeder = Math.ceil((window.currentNetworkMetrics && window.currentNetworkMetrics.trunk !== undefined)
+        ? window.currentNetworkMetrics.trunk * 1.15 // Adding slack factor visually
+        : liveRadiusMeters * 1.5);
+
+    const fiberDist = Math.ceil((window.currentNetworkMetrics && window.currentNetworkMetrics.dist !== undefined)
+        ? window.currentNetworkMetrics.dist * 1.15 // Adding slack factor visually
+        : totalNaps * 150);
+    const fiberDrop = Math.ceil(liveClientCount * 80);
 
     detailsDiv.innerHTML = `
         <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: var(--shadow-lg); margin-bottom: 24px; overflow: hidden; font-family: var(--font-main); animation: slideUp 0.4s ease-out;">
@@ -6671,10 +6699,6 @@ window.updateArchitectureDetailsPanel = function (oltOptimal) {
                                 <span>Puertos PON req.</span>
                                 <b style="color: #0f172a;">${ponPortsNeeded}</b>
                             </div>
-                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
-                                <span>Capacidad Total</span>
-                                <b style="color: #0f172a;">${(totalPortsConfigured).toLocaleString()} p.</b>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -6685,7 +6709,10 @@ window.updateArchitectureDetailsPanel = function (oltOptimal) {
                         <span style="color: #8b5cf6; font-size: 14px;">🔀</span> Red de Distribución
                     </div>
                     <div style="padding-left: 2px;">
-                        <div style="font-size: 15px; color: #1e293b; font-weight: 700;">Total ${totalNaps} Cajas NAP</div>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                            <div style="font-size: 15px; color: #1e293b; font-weight: 700;">Total ${totalNaps} Cajas NAP</div>
+                            <div style="font-size: 12px; color: #64748b;">Capacidad: <b style="color: #0f172a;">${(totalPortsConfigured).toLocaleString()} p.</b></div>
+                        </div>
                         <div style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                             <div style="background: white; padding: 6px 10px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center;">
                                 <div style="font-size: 16px; font-weight: 800; color: #3b82f6;">${naps48}</div>
@@ -6723,22 +6750,20 @@ window.updateArchitectureDetailsPanel = function (oltOptimal) {
                 <!-- 4. Fiber Estimation -->
                 <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #f1f5f9;">
                     <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.05em;">
-                        <span style="color: #10b981; font-size: 14px;">🧵</span> Metraje Estimado
+                        <span style="color: #10b981; font-size: 14px;">🧵</span> Metraje Estimado de Fibra Óptica
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: flex-end;">
                             <span style="font-size: 12px; color: #64748b;">Cable Troncal</span>
-                            <span style="font-size: 13px; font-weight: 700; color: #1e293b;">${(fiberFeeder).toLocaleString()}m</span>
-                        </div>
-                        <div style="height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden;">
-                            <div style="width: 30%; height: 100%; background: #3b82f6;"></div>
+                            <span style="font-size: 13px; font-weight: 700; color: #1e293b;">
+                                ${isCalculatingMetrics ? '<span style="color:#3b82f6;">Calculando... ⏳</span>' : `${(fiberFeeder).toLocaleString()}m`}
+                            </span>
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 4px;">
                             <span style="font-size: 12px; color: #64748b;">Distribución</span>
-                            <span style="font-size: 13px; font-weight: 700; color: #1e293b;">${(fiberDist).toLocaleString()}m</span>
-                        </div>
-                        <div style="height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden;">
-                            <div style="width: 70%; height: 100%; background: #8b5cf6;"></div>
+                            <span style="font-size: 13px; font-weight: 700; color: #1e293b;">
+                                ${isCalculatingMetrics ? '<span style="color:#8b5cf6;">Calculando... ⏳</span>' : `${(fiberDist).toLocaleString()}m`}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -7007,8 +7032,8 @@ window.showArchitecture = async function () {
         mapContainer.offsetHeight; // force refresh
     }
 
-    // Renderizar panel de detalles
-    updateArchitectureDetailsPanel(oltOptimal);
+    // Renderizar panel de detalles en estado cargando métricas
+    updateArchitectureDetailsPanel(oltOptimal, true);
 
     // 5. Initialize/Update Map (fullRefresh=true: recalculate NAPs)
     if (!map) {
@@ -7117,11 +7142,11 @@ async function updateMap(oltLocation, rawNaps, radiusMeters, fullRefresh = false
         const lngLat = currentOLTMarker.getLngLat();
         console.log(`OLT Moved to: ${lngLat.lat}, ${lngLat.lng}`);
 
+        // Actualizar panel de detalles automáticamente en estado cargando
+        updateArchitectureDetailsPanel({ lat: lngLat.lat, lng: lngLat.lng }, true);
+
         // Re-render only (fullRefresh=false): preserves user's NAPs
         await updateMap({ lat: lngLat.lat, lng: lngLat.lng }, null, null, false);
-
-        // Actualizar panel de detalles automáticamente
-        updateArchitectureDetailsPanel({ lat: lngLat.lat, lng: lngLat.lng });
     });
 
     // 5. Draw Connection Lines — Real street routing via OSRM (Phase 4)
@@ -7170,6 +7195,7 @@ function renderNapMarker(nap, index) {
 
         // Refresh system (no fullRefresh: preserve other NAPs)
         const oltPos = currentOLTMarker.getLngLat();
+        updateArchitectureDetailsPanel({ lat: oltPos.lat, lng: oltPos.lng }, true); // Loading state
         await updateMap({ lat: oltPos.lat, lng: oltPos.lng }, null, null, false);
     });
 
@@ -7441,9 +7467,52 @@ async function drawNetworkLines(olt, naps) {
         });
     }
 
+    // ─── PASO 6: Calcular métricas reales para el presupuesto ────────────────
+    let totalTrunkM = 0;
+    let totalDistM = 0;
+
+    // Helper: calcular longitud real de un Feature/LineString (arreglo de [lng, lat])
+    const calcLineStringLen = (coords) => {
+        let len = 0;
+        if (!coords || coords.length < 2) return 0;
+        for (let j = 0; j < coords.length - 1; j++) {
+            // Ojo: routeCoords viene como [lng, lat]
+            len += haversineM({ lng: coords[j][0], lat: coords[j][1] }, { lng: coords[j + 1][0], lat: coords[j + 1][1] });
+        }
+        return len;
+    };
+
+    mstEdges.forEach((e, i) => {
+        const type = edgeType(e.fromIdx);
+        // Distancia real dibujada en el mapa (routeCoords[i])
+        const drawnDist = calcLineStringLen(routeCoords[i]);
+
+        if (type === 'trunk') totalTrunkM += drawnDist;
+        else totalDistM += drawnDist;
+    });
+
+    window.currentNetworkMetrics = {
+        trunk: Math.ceil(totalTrunkM),
+        dist: Math.ceil(totalDistM),
+        naps: naps.length
+    };
+
     const trunkN = mstEdges.filter(e => edgeType(e.fromIdx) === 'trunk').length;
-    console.log(`✅ Red dibujada: ${trunkN} troncales (azul) + ${mstEdges.length - trunkN} distribución (verde)`);
+    console.log(`✅ Red dibujada: ${trunkN} troncales (${totalTrunkM.toFixed(0)}m) + ${mstEdges.length - trunkN} distribución (${totalDistM.toFixed(0)}m)`);
     MapProgress.done(`Red dibujada: ${trunkN} troncales + ${mstEdges.length - trunkN} distribuciones`);
+
+    // Sincronizar automáticamente el presupuesto (BOM) con los datos reales del mapa
+    if (window.lastClientCount !== undefined) {
+        console.log("🔄 Sincronizando BOM con métricas reales del mapa...");
+        const hp = window.lastClientCount;
+        const radioKm = (window.currentRadiusMeters || 500) / 1000;
+        generarListaCotizacion(hp, naps.length, radioKm);
+    }
+
+    // Sincronizar también el panel visual de Estimación de Arquitectura ahora que terminó la carga asíncrona
+    if (typeof window.updateArchitectureDetailsPanel === 'function') {
+        window.updateArchitectureDetailsPanel(olt, false);
+    }
 }
 
 
