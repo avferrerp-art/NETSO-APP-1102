@@ -27,8 +27,13 @@ module.exports = async (req, res) => {
 
     // 2. Extraer URL destino
     // En Vercel, req.query está disponible. En Node puro, hay que parsearlo.
-    const query = url.parse(req.url, true).query;
-    const targetUrl = query.url; // La URL de Odoo
+    let targetUrl = '';
+    if (req.query && req.query.url) {
+        targetUrl = req.query.url;
+    } else {
+        const query = url.parse(req.url, true).query;
+        targetUrl = query.url;
+    }
 
     if (!targetUrl) {
         res.status(400).json({ error: 'Falta parámetro ?url=...' });
