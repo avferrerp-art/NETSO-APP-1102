@@ -6,7 +6,6 @@ const PRODUCT_MAPPING = {
     // FIBRA
     "Drop Flat/Tenzado 1 hilo (Bobina 1km)": "[NTS010001] FIBRA DROP GJYXCH 1 HILOS NETSO MENSAJERO METALICO 1KM G657.A1",
     "ADSS 24 hilos (Distribución)": "[NTS010028] FIBRA OPTICA ADSS 24 HILOS G652D SPAN100 4KM SUMEC",
-    "ADSS 24 hilos": "FIBRA OPTICA ADSS 24 HILOS G652D SPAN100 4KM SUMEC",
     "ADSS 12 hilos": "FIBRA OPTICA ADSS 12 HILOS G652.D NETSO SPAN 100 4KM 10.1MM",
     "ADSS 48 hilos": "[NTS010013] FIBRA OPTICA ADSS 48 HILOS G652.D NETSO SPAN 100 4KM 10.8MM",
     "ADSS 96 hilos": "FIBRA OPTICA ADSS 96 HILOS G652.D NETSO SPAN 100 4KM 12.5MM",
@@ -60,6 +59,7 @@ const PRODUCT_MAPPING = {
     "Acople APC": "ACOPLADOR SIMPLEX SC/APC",
     "Preformado NETSO": "PREFORMADO TIPO DEAD END 1/2 PARA CABLE DIAMETRO 12.4 A 13MM",
     "Manga de Empalme Domo 24/48 hilos": "MANGA DOMO 24 CORES IP68 CON PUERTO OVAL MEDIANA TERMOCONTRAIBLE",
+    "Manga de Empalme Domo 144C 6 bandejas 24 puertos": "[NTS040027H] MANGA DOMO 144C 6 BANDEJAS 24 PUERTOS ST-F108H",
     "Herraje de Sujeción Tipo D (Trompoplatina)": "HERRAJE DE SUJECION TIPO D (TROMPOPLATINA)",
     "Herraje de Suspensión Tipo J 5MM - 8MM": "[NTS060025] HERRAJE DE SUSPENSION TIPO J 5MM - 8MM",
     "Tensor ADSS": "TENSOR ADSS PAL-1500 TIPO ANCLA PLASTICO Y METALICO DR1500 10,1MM A 14MM",
@@ -121,6 +121,7 @@ const MATERIAL_RULES = {
     "Tensor ADSS": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
     "Preformado NETSO": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
     "Manga de Empalme Domo 24/48 hilos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "Manga de Empalme Domo 144C 6 bandejas 24 puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
     "Herraje de Sujeción Tipo D (Trompoplatina)": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
     "Herraje de Suspensión Tipo J 5MM - 8MM": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
 

@@ -14905,29 +14905,15 @@ async function drawNetworkLines(olt, naps) {
 
     MapProgress.step(92, 'Dibujando red de fibra en el mapa...');
 
-    // Helper: calcular longitud real de un Feature/LineString (arreglo de [lng, lat])
-    const calcLineStringLen = (coords) => {
-        let len = 0;
-        if (!coords || coords.length < 2) return 0;
-        for (let j = 0; j < coords.length - 1; j++) {
-            len += haversineM({ lng: coords[j][0], lat: coords[j][1] }, { lng: coords[j + 1][0], lat: coords[j + 1][1] });
-        }
-        return len;
-    };
+    const features = mstEdges.map((e, i) => ({
 
-    const features = mstEdges.map((e, i) => {
-        const dist = calcLineStringLen(routeCoords[i]);
-        return {
-            type: 'Feature',
-            id: i,
-            properties: { 
-                type: edgeType(e.fromIdx),
-                distance: dist,
-                formattedDistance: dist > 1000 ? (dist/1000).toFixed(2) + ' km' : Math.round(dist) + ' m'
-            },
-            geometry: { type: 'LineString', coordinates: routeCoords[i] }
-        };
-    });
+        type: 'Feature',
+
+        properties: { type: edgeType(e.fromIdx) },
+
+        geometry: { type: 'LineString', coordinates: routeCoords[i] }
+
+    }));
 
 
 
@@ -14955,11 +14941,7 @@ async function drawNetworkLines(olt, naps) {
 
             layout: { 'line-join': 'round', 'line-cap': 'round' },
 
-            paint: { 
-                'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#facc15', '#2563eb'],
-                'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5.0, 3.5],
-                'line-opacity': 0.95 
-            }
+            paint: { 'line-color': '#2563eb', 'line-width': 3.5, 'line-opacity': 0.95 }
 
         });
 
@@ -14975,77 +14957,11 @@ async function drawNetworkLines(olt, naps) {
 
             layout: { 'line-join': 'round', 'line-cap': 'round' },
 
-            paint: { 
-                'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#facc15', '#22c55e'],
-                'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4.0, 2.2],
-                'line-dasharray': [4, 2], 
-                'line-opacity': 0.9 
-            }
+            paint: { 'line-color': '#22c55e', 'line-width': 2.2, 'line-dasharray': [4, 2], 'line-opacity': 0.9 }
 
         });
 
-        // Interacciones de click para mostrar distancia de la fibra
-        const layersToInteract = ['network-lines-trunk', 'network-lines-dist'];
-        
-        let hoveredStateId = null;
-        let currentPopup = null;
-
-        layersToInteract.forEach(layerId => {
-            // Click
-            map.on('click', layerId, (e) => {
-                if (!e.features.length) return;
-                const feature = e.features[0];
-                const newId = feature.id;
-
-                // Deselect old segment first
-                if (hoveredStateId !== null) {
-                    map.setFeatureState({ source: 'network-lines', id: hoveredStateId }, { selected: false });
-                }
-                
-                // Remove old popup without triggering our cleanup (set to null first)
-                if (currentPopup) {
-                    const oldPopup = currentPopup;
-                    currentPopup = null;
-                    oldPopup.remove();
-                }
-
-                // Select new segment
-                hoveredStateId = newId;
-                map.setFeatureState({ source: 'network-lines', id: hoveredStateId }, { selected: true });
-
-                const distStr = feature.properties.formattedDistance;
-                const isTrunk = feature.properties.type === 'trunk';
-                
-                currentPopup = new maplibregl.Popup({ closeButton: true })
-                    .setLngLat(e.lngLat)
-                    .setHTML(`<div style="padding: 5px; font-family: sans-serif;">
-                        <span style="font-weight: bold; color: ${isTrunk ? '#2563eb' : '#22c55e'};">
-                            Fibra ${isTrunk ? 'Troncal' : 'Distribución'}
-                        </span><br>
-                        Distancia: <b>${distStr}</b>
-                    </div>`)
-                    .addTo(map);
-                    
-                currentPopup.on('close', () => {
-                    // Only cleanup if this popup is still the active one
-                    if (currentPopup !== null && hoveredStateId !== null) {
-                        map.setFeatureState({ source: 'network-lines', id: hoveredStateId }, { selected: false });
-                        hoveredStateId = null;
-                        currentPopup = null;
-                    }
-                });
-            });
-            
-            // Hover (cambiar cursor)
-            map.on('mouseenter', layerId, () => {
-                map.getCanvas().style.cursor = 'pointer';
-            });
-            map.on('mouseleave', layerId, () => {
-                map.getCanvas().style.cursor = '';
-            });
-        });
     }
-
 
 
 
@@ -15057,25 +14973,25 @@ async function drawNetworkLines(olt, naps) {
 
 
 
+    // Helper: calcular longitud real de un Feature/LineString (arreglo de [lng, lat])
 
+    const calcLineStringLen = (coords) => {
 
+        let len = 0;
 
+        if (!coords || coords.length < 2) return 0;
 
+        for (let j = 0; j < coords.length - 1; j++) {
 
+            // Ojo: routeCoords viene como [lng, lat]
 
+            len += haversineM({ lng: coords[j][0], lat: coords[j][1] }, { lng: coords[j + 1][0], lat: coords[j + 1][1] });
 
+        }
 
+        return len;
 
-
-
-
-
-
-
-
-
-
-
+    };
 
 
 

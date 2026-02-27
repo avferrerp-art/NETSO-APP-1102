@@ -58,13 +58,27 @@ async function calculateNAPs(clients) {
     }
 
     // Format output
-    return centroids.map((cent, idx) => ({
-        id: `NAP-${(idx + 1).toString().padStart(3, '0')}`,
-        lat: cent.lat,
-        lng: cent.lng,
-        clients: clusters[idx].length,
-        capacity: PORT_CAPACITY
-    }));
+    return centroids.map((cent, idx) => {
+        let finalLat = cent.lat;
+        let finalLng = cent.lng;
+
+        // Snap to nearest pole if available
+        if (typeof poleManager !== 'undefined' && poleManager.snapToNearestPole) {
+            const snapped = poleManager.snapToNearestPole({ lat: cent.lat, lng: cent.lng });
+            if (snapped) {
+                finalLat = snapped.lat;
+                finalLng = snapped.lng;
+            }
+        }
+
+        return {
+            id: `NAP-${(idx + 1).toString().padStart(3, '0')}`,
+            lat: finalLat,
+            lng: finalLng,
+            clients: clusters[idx].length,
+            capacity: PORT_CAPACITY
+        };
+    });
 }
 
 // ==========================================
