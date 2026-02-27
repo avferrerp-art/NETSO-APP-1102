@@ -635,8 +635,9 @@
                                     style="color: #10b981;">500</span>
                             </label>
                             <input type="range" id="arch-radius" min="100" max="5000" step="50"
-                                oninput="document.getElementById('arch-radius-display').innerText = this.value;"
+                                oninput="document.getElementById('arch-radius-display').innerText = this.value; if(typeof window.updateArchitectureDetailsPanel==='function'&&currentOLTMarker){var p=currentOLTMarker.getLngLat();window.updateArchitectureDetailsPanel({lat:p.lat,lng:p.lng},false);}"
                                 onchange="updateArchParams()" style="width: 100%; margin-top: 5px;">
+
                         </div>
                     </div>
                 </div>
@@ -666,6 +667,11 @@
                 <button class="btn-primary" onclick="downloadComparisonReport()"
                     style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);">
                     📄 Descargar Reporte de Compras
+                </button>
+
+                <button class="btn-primary" onclick="downloadKML()"
+                    style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);">
+                    🗺️ Descargar KML (Google Earth)
                 </button>
 
                 <button class="btn-secondary" onclick="location.reload()">

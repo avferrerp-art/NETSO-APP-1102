@@ -1578,45 +1578,24 @@ function renderProjectRows(projects) {
 
         if (p.type === 'direct' && p.quoteItems) {
 
-            downloadBtn = `
-
-                <button onclick="downloadDirectQuoteFromHistory('${p.id}')" class="btn-secondary download-btn-excel" title="Descargar Cotización">
-
-                    📊 Excel
-
-                </button>
-
-            `;
+            downloadBtn = `<div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
+                <a href="#" onclick="downloadDirectQuoteFromHistory('${p.id}'); return false;" style="color: #10b981; text-decoration: none; font-weight: 600;">📊 Cotización Excel</a>
+            </div>`;
 
         } else if (p.reportData && p.reportData.length > 0) {
 
-            // Updated Buttons for Engineering Reports
-
-            downloadBtn = `
-
-                <div class="history-actions-cell">
-
-                    <button onclick="downloadSavedReport('${p.id}')" class="btn-secondary download-btn-excel" title="Descargar Excel">
-
-                        📊 Excel
-
-                    </button>
-
-                    <button onclick="downloadPdfReport('${p.id}')" class="btn-secondary download-btn-pdf" title="Descargar PDF">
-
-                        📄 PDF
-
-                    </button>
-
-                </div>
-
-            `;
+            downloadBtn = `<div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
+                <a href="#" onclick="downloadSavedReport('${p.id}'); return false;" style="color: #0ea5e9; text-decoration: none; font-weight: 600;">📥 Reporte de Compras</a>
+                <a href="#" onclick="downloadPdfReport('${p.id}'); return false;" style="color: #ef4444; text-decoration: none; font-weight: 600;">📄 Propuesta PDF</a>
+                ${p.kmlData ? `<a href="#" onclick="downloadProjectKML('${p.id}'); return false;" style="color: #16a34a; text-decoration: none; font-weight: 600;">🗺️ Archivo KML</a>` : ''}
+            </div>`;
 
         } else {
 
             downloadBtn = `<span style="font-size: 12px; color: #94a3b8; font-style:italic;">En borrador</span>`;
 
         }
+
 
 
 
@@ -1744,9 +1723,7 @@ function renderDashboardTable() {
 
                             <a href="#" onclick="downloadPdfReport('${p.id}'); return false;" style="color: #ef4444; text-decoration: none; font-weight: 600;">📄 Propuesta PDF</a>
 
-                            <!-- KMZ placeholder if logic existed, but based on current code only xls/pdf are saved logic dependent -->
-
-                            <a href="#" onclick="generarKMZ('${p.id}'); return false;" style="color: #10b981; text-decoration: none; font-weight: 600;">🌐 Archivo KMZ</a>
+                            ${p.kmlData ? `<a href="#" onclick="downloadProjectKML('${p.id}'); return false;" style="color: #16a34a; text-decoration: none; font-weight: 600;">🗺️ Archivo KML</a>` : ''}
 
                         </div>
 
@@ -7180,7 +7157,155 @@ function generarKMZ() {
 
 
 
+function downloadKML() {
+    // Validate data
+    if (!currentOLTMarker) {
+        alert('No hay OLT colocada en el mapa. Por favor genera la arquitectura primero.');
+        return;
+    }
+    if (!window.naps || window.naps.length === 0) {
+        alert('No hay NAPs colocadas en el mapa. Por favor genera la arquitectura primero.');
+        return;
+    }
+
+    const oltPos = currentOLTMarker.getLngLat();
+
+    // Helper to escape XML special characters
+    const escapeXml = (s) => String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    // Build KML
+    let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Arquitectura Red FTTH</name>
+    <description>Generado por NETSO App</description>
+
+    <!-- Estilos -->
+    <Style id="olt-style">
+      <IconStyle><color>ff0000ff</color><scale>1.4</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><color>ff0000ff</color><scale>1.1</scale></LabelStyle>
+    </Style>
+
+    <Style id="nap-style">
+      <IconStyle><color>ff00d7ff</color><scale>1.1</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-circle.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><color>ff00d7ff</color><scale>0.9</scale></LabelStyle>
+    </Style>
+
+    <Style id="trunk-style">
+      <LineStyle><color>ffeb4034</color><width>3</width></LineStyle>
+    </Style>
+
+    <Style id="dist-style">
+      <LineStyle><color>ff3eb505</color><width>2</width></LineStyle>
+    </Style>
+
+    <!-- OLT -->
+    <Placemark>
+      <name>OLT</name>
+      <description>Central de Fibra Óptica (OLT)</description>
+      <styleUrl>#olt-style</styleUrl>
+      <Point>
+        <coordinates>${oltPos.lng},${oltPos.lat},0</coordinates>
+      </Point>
+    </Placemark>
+`;
+
+    // NAPs
+    window.naps.forEach((nap, idx) => {
+        const label = nap.label || `NAP ${idx + 1}`;
+        const desc = nap.clients ? `Clientes: ${nap.clients}` : '';
+        kml += `
+    <Placemark>
+      <name>${escapeXml(label)}</name>
+      <description>${escapeXml(desc)}</description>
+      <styleUrl>#nap-style</styleUrl>
+      <Point>
+        <coordinates>${nap.lng},${nap.lat},0</coordinates>
+      </Point>
+    </Placemark>`;
+    });
+
+    // Fiber lines from map source
+    try {
+        const src = map.getSource('network-lines');
+        if (src && src._data && src._data.features) {
+            src._data.features.forEach((feat, idx) => {
+                if (feat.geometry && feat.geometry.type === 'LineString') {
+                    const isTrunk = feat.properties && feat.properties.type === 'trunk';
+                    const styleId = isTrunk ? 'trunk-style' : 'dist-style';
+                    const typeName = isTrunk ? 'Fibra Troncal' : 'Fibra Distribución';
+                    const dist = feat.properties && feat.properties.formattedDistance
+                        ? ` (${feat.properties.formattedDistance})` : '';
+                    const coords = feat.geometry.coordinates
+                        .map(c => `${c[0]},${c[1]},0`)
+                        .join(' ');
+                    kml += `
+    <Placemark>
+      <name>${escapeXml(typeName + dist)}</name>
+      <styleUrl>#${styleId}</styleUrl>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>`;
+                }
+            });
+        }
+    } catch (err) {
+        console.warn('No se pudo exportar fibra al KML:', err);
+    }
+
+    kml += `
+  </Document>
+</kml>`;
+
+    // Dynamic project name in filename
+    const projectName = document.getElementById('projectName')?.value || 'Proyecto_Netso';
+    const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
+
+    // Save KML to Firestore so it appears in supervision panel
+    saveProjectRegistry({ kmlData: kml, kmlName: `arquitectura_red_${safeProjectName}.kml`, kmlGeneratedAt: new Date().toISOString() });
+
+    // Download
+    const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `arquitectura_red_${safeProjectName}.kml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function downloadProjectKML(projectId) {
+    const project = allProjectsCache ? allProjectsCache.find(p => p.id === projectId) : null;
+    if (!project || !project.kmlData) {
+        alert('Este proyecto no tiene un archivo KML generado todavía. Abre el proyecto y descarga el KML desde la página de arquitectura.');
+        return;
+    }
+    const safeName = (project.kmlName || `arquitectura_red_${(project.projectName || 'proyecto').replace(/[\s]/g, '_')}.kml`);
+    const blob = new Blob([project.kmlData], { type: 'application/vnd.google-earth.kml+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = safeName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 async function downloadComparisonReport() {
+
 
     const btn = document.querySelector('[onclick="downloadComparisonReport()"]');
 
@@ -7584,6 +7709,9 @@ async function downloadComparisonReport() {
 
         const filename = `Plan_Compra_${safeProjectName}.xls`;
 
+        // Save the exact generated Excel to Firestore so Mis Proyectos and panel download the same file
+        saveProjectRegistry({ excelData: excelContent, excelName: filename });
+
         const blob = new Blob(['\uFEFF', excelContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
 
         const url = URL.createObjectURL(blob);
@@ -7601,6 +7729,7 @@ async function downloadComparisonReport() {
 
 
         setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
+
 
 
 
@@ -11620,6 +11749,22 @@ window.downloadSavedReport = async function (id) {
 
     }
 
+    // If the project has a cached Excel from Page 4, use it directly (same file as downloaded there)
+    if (project.excelData) {
+        const safeName = project.excelName || `Plan_Compra_${(project.projectName || 'proyecto').replace(/\s/g, '_')}.xls`;
+        const blob = new Blob(['\uFEFF', project.excelData], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = safeName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+    }
+
+
 
 
     // Ensure Odoo Products are loaded for mapping
@@ -13149,6 +13294,12 @@ window.updateArchParams = function () {
 
     }
 
+    // Actualizar panel de arquitectura inmediatamente (balance de potencia y OLT)
+    if (typeof window.updateArchitectureDetailsPanel === 'function' && currentOLTMarker) {
+        const pos = currentOLTMarker.getLngLat();
+        window.updateArchitectureDetailsPanel({ lat: pos.lat, lng: pos.lng }, false);
+    }
+
 };
 
 
@@ -13221,65 +13372,61 @@ window.updateArchitectureDetailsPanel = function (oltOptimal, isCalculatingMetri
 
 
 
-    // Sincronizando con la lógica del BOM (clientes / 128)
+    // Sincronizando con la lógica del BOM (clientes / 128 × 1.25 overhead como en generarListaCotizacion)
+    const ponPortsBase = Math.ceil(liveClientCount / 128);
+    const ponPortsNeeded = Math.ceil(ponPortsBase * 1.25);
 
-    const ponPortsNeeded = Math.ceil(liveClientCount / 128);
 
 
-
-    // Sugerencia de Modelo OLT
-
+    // Sugerencia de Modelo OLT — mismo criterio que el BOM
     let oltModel = "Desconocido";
 
     if (ponPortsNeeded <= 4) {
 
-        oltModel = "1× OLT 4 Puertos";
+        oltModel = "1× OLT Navigator 4 Puertos";
 
     } else if (ponPortsNeeded <= 8) {
 
-        oltModel = "1× OLT 8 Puertos";
+        oltModel = "1× OLT Navigator 8 Puertos";
 
     } else if (ponPortsNeeded <= 16) {
 
-        oltModel = "1× OLT 16 Puertos";
+        oltModel = "1× OLT Navigator 16 Puertos";
 
     } else {
 
-        oltModel = `${Math.ceil(ponPortsNeeded / 16)}× OLT 16 Puertos`;
+        oltModel = `${Math.ceil(ponPortsNeeded / 16)}× OLT Navigator 16 Puertos`;
 
     }
 
 
 
-    // Presupuesto Óptico (dB)
-
+    // Presupuesto Óptico (dB) — topología 1:128 = splitter primario 1:4 + secundario 1:32
     const maxFeederDistKm = (liveRadiusMeters / 1000) * 1.5;
-
-    const feederLoss = maxFeederDistKm * 0.35;
-
-    const primarySplitterLoss = 10.5;
-
-    const secondarySplitterLoss = 10.5;
-
-    const splicesLoss = 1.5;
-
+    const feederLoss = maxFeederDistKm * 0.35;         // Pérdida fibra (0.35 dB/km)
+    const primarySplitterLoss = 7.0;                   // 1:4  → ~7 dB
+    const secondarySplitterLoss = 16.5;                // 1:32 → ~16.5 dB
+    const splicesLoss = 1.5;                           // Conectores y empalmes
     const totalLoss = feederLoss + primarySplitterLoss + secondarySplitterLoss + splicesLoss;
 
 
+
+    // OLT GPON XGS-PON típico: budget de 29 dB clase C+
+    const budgetLimit = 29;
 
     let budgetIcon = "", budgetStatus = "", budgetColor = "", budgetBadgeStyle = "";
 
     if (totalLoss <= 25) {
 
-        budgetIcon = "✅"; budgetStatus = "Dentro del presupuesto óptimo"; budgetColor = "#15803d"; budgetBadgeStyle = "background-color: #dcfce7; color: #166534;";
+        budgetIcon = "✅"; budgetStatus = "Óptimo (Clase B+)"; budgetColor = "#15803d"; budgetBadgeStyle = "background-color: #dcfce7; color: #166534;";
 
-    } else if (totalLoss <= 28) {
+    } else if (totalLoss <= budgetLimit) {
 
-        budgetIcon = "⚠️"; budgetStatus = "Cerca del límite (Clase B+)"; budgetColor = "#b45309"; budgetBadgeStyle = "background-color: #fef9c3; color: #854d0e;";
+        budgetIcon = "⚠️"; budgetStatus = "Cerca del límite (Clase C+)"; budgetColor = "#b45309"; budgetBadgeStyle = "background-color: #fef9c3; color: #854d0e;";
 
     } else {
 
-        budgetIcon = "❌"; budgetStatus = "Fuera del presupuesto"; budgetColor = "#b91c1c"; budgetBadgeStyle = "background-color: #fee2e2; color: #991b1b;";
+        budgetIcon = "❌"; budgetStatus = "Fuera del presupuesto — extender OLT"; budgetColor = "#b91c1c"; budgetBadgeStyle = "background-color: #fee2e2; color: #991b1b;";
 
     }
 
@@ -14920,10 +15067,10 @@ async function drawNetworkLines(olt, naps) {
         return {
             type: 'Feature',
             id: i,
-            properties: { 
+            properties: {
                 type: edgeType(e.fromIdx),
                 distance: dist,
-                formattedDistance: dist > 1000 ? (dist/1000).toFixed(2) + ' km' : Math.round(dist) + ' m'
+                formattedDistance: dist > 1000 ? (dist / 1000).toFixed(2) + ' km' : Math.round(dist) + ' m'
             },
             geometry: { type: 'LineString', coordinates: routeCoords[i] }
         };
@@ -14955,10 +15102,10 @@ async function drawNetworkLines(olt, naps) {
 
             layout: { 'line-join': 'round', 'line-cap': 'round' },
 
-            paint: { 
+            paint: {
                 'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#facc15', '#2563eb'],
                 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 5.0, 3.5],
-                'line-opacity': 0.95 
+                'line-opacity': 0.95
             }
 
         });
@@ -14975,18 +15122,18 @@ async function drawNetworkLines(olt, naps) {
 
             layout: { 'line-join': 'round', 'line-cap': 'round' },
 
-            paint: { 
+            paint: {
                 'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#facc15', '#22c55e'],
                 'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 4.0, 2.2],
-                'line-dasharray': [4, 2], 
-                'line-opacity': 0.9 
+                'line-dasharray': [4, 2],
+                'line-opacity': 0.9
             }
 
         });
 
         // Interacciones de click para mostrar distancia de la fibra
         const layersToInteract = ['network-lines-trunk', 'network-lines-dist'];
-        
+
         let hoveredStateId = null;
         let currentPopup = null;
 
@@ -15001,7 +15148,7 @@ async function drawNetworkLines(olt, naps) {
                 if (hoveredStateId !== null) {
                     map.setFeatureState({ source: 'network-lines', id: hoveredStateId }, { selected: false });
                 }
-                
+
                 // Remove old popup without triggering our cleanup (set to null first)
                 if (currentPopup) {
                     const oldPopup = currentPopup;
@@ -15015,7 +15162,7 @@ async function drawNetworkLines(olt, naps) {
 
                 const distStr = feature.properties.formattedDistance;
                 const isTrunk = feature.properties.type === 'trunk';
-                
+
                 currentPopup = new maplibregl.Popup({ closeButton: true })
                     .setLngLat(e.lngLat)
                     .setHTML(`<div style="padding: 5px; font-family: sans-serif;">
@@ -15025,7 +15172,7 @@ async function drawNetworkLines(olt, naps) {
                         Distancia: <b>${distStr}</b>
                     </div>`)
                     .addTo(map);
-                    
+
                 currentPopup.on('close', () => {
                     // Only cleanup if this popup is still the active one
                     if (currentPopup !== null && hoveredStateId !== null) {
@@ -15035,7 +15182,7 @@ async function drawNetworkLines(olt, naps) {
                     }
                 });
             });
-            
+
             // Hover (cambiar cursor)
             map.on('mouseenter', layerId, () => {
                 map.getCanvas().style.cursor = 'pointer';
@@ -15521,7 +15668,12 @@ async function moveTopologyTo(newCenter) {
 
     window.postes = [];
 
-    await poleManager.fetchPoles(newCenter.lat, newCenter.lng, fetchRadius);
+    try {
+        await poleManager.fetchPoles(newCenter.lat, newCenter.lng, fetchRadius);
+        console.log(`Fetched ${window.postes.length} poles at new location`);
+    } catch (err) {
+        console.warn('No se pudieron obtener postes en la nueva ubicacion, se mantendran posiciones calculadas.', err);
+    }
 
 
 
