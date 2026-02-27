@@ -1290,6 +1290,11 @@ function saveProjectRegistry(projectData, isNew = false) {
 
 
 
+    // Auto-inject date if not set by caller (so any save always has a timestamp)
+    if (!projectData.date) {
+        projectData.date = new Date().toISOString();
+    }
+
     if (currentProjectDocId && !isNew) {
 
         // ACTUALIZAR proyecto existente
@@ -1442,51 +1447,53 @@ function renderIspHistoryTable() {
 
 function fetchProjectHistory(uid) {
 
-    db.collection("projects")
+    const userEmail = auth.currentUser ? auth.currentUser.email : null;
 
-        .where("uid", "==", uid)
+    // Query by uid AND by userEmail in parallel, then merge (covers old/new uid mismatches)
+    const byUid = db.collection("projects").where("uid", "==", uid).get();
+    const byEmail = userEmail
+        ? db.collection("projects").where("userEmail", "==", userEmail).get()
+        : Promise.resolve({ docs: [] });
 
-        .get()
+    Promise.all([byUid, byEmail])
+        .then(([snapUid, snapEmail]) => {
 
-        .then((querySnapshot) => {
-
+            const seen = new Set();
             let projects = [];
 
-            querySnapshot.forEach((doc) => {
+            const addDocs = (snap) => {
+                snap.forEach((doc) => {
+                    if (!seen.has(doc.id)) {
+                        seen.add(doc.id);
+                        projects.push({ id: doc.id, ...doc.data() });
+                    }
+                });
+            };
 
-                projects.push({ id: doc.id, ...doc.data() });
+            addDocs(snapUid);
+            addDocs(snapEmail);
 
-            });
-
-
-
-            // Ordenar por fecha desc
-
+            // Sort by date descending
             projects.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-
-
             // Cache for filtering
-
             allProjectsCache = projects;
-
-
 
             renderProjectRows(projects);
 
         })
-
         .catch((error) => {
 
             console.error("Error loading history:", error);
 
             const tbody = document.getElementById('isp-history-body');
 
-            tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Error al cargar historial.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Error al cargar historial: ${error.message}</td></tr>`;
 
         });
 
 }
+
 
 
 
@@ -1568,7 +1575,8 @@ function renderProjectRows(projects) {
 
         const dateObj = new Date(p.date);
 
-        const dateStr = dateObj.toLocaleDateString();
+        const dateStr = isNaN(dateObj) ? 'Sin fecha' :
+            dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 
 
@@ -7157,7 +7165,75 @@ function generarKMZ() {
 
 
 
+function guardarProyecto() {
+    const btn = document.getElementById('save-project-btn');
+    const originalText = btn ? btn.innerHTML : '';
+
+    // Validate project has data
+    if (!window.finalReportState || window.finalReportState.length === 0) {
+        alert('⚠️ No hay datos del análisis para guardar. Por favor ejecuta el análisis inteligente primero.');
+        return;
+    }
+
+    if (btn) { btn.innerHTML = '⏳ Guardando...'; btn.disabled = true; }
+
+    try {
+        const projectName = document.getElementById('projectName')?.value || 'Proyecto Sin Nombre';
+        const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
+
+        // Build the save payload — same data that downloads use
+        const payload = {
+            reportData: window.finalReportState,
+            savedAt: new Date().toISOString(),
+            date: new Date().toISOString(),
+            projectName: projectName,
+            status: 'completed',
+        };
+
+        // Include KML if already generated in memory
+        if (window._lastGeneratedKml) {
+            payload.kmlData = window._lastGeneratedKml;
+            payload.kmlName = `arquitectura_red_${safeProjectName}.kml`;
+        }
+
+        // Include NAPs and OLT position for future reference
+        if (currentOLTMarker) {
+            const pos = currentOLTMarker.getLngLat();
+            payload.oltPosition = { lat: pos.lat, lng: pos.lng };
+        }
+        if (window.naps && window.naps.length > 0) {
+            payload.napsSnapshot = window.naps.map(n => ({
+                id: n.id, lat: n.lat, lng: n.lng,
+                capacidad: n.capacidad, clientesCubiertos: n.clientesCubiertos
+            }));
+        }
+
+        saveProjectRegistry(payload);
+
+        // Visual feedback
+        if (btn) {
+            btn.innerHTML = '✅ Guardado';
+            btn.style.background = 'linear-gradient(135deg, #059669 0%, #047857 100%)';
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.style.background = 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)';
+                btn.disabled = false;
+            }, 2500);
+        }
+
+        if (typeof showToast === 'function') {
+            showToast('✅ Proyecto guardado. Encuéntralo en "Mis Proyectos".', 'success');
+        }
+
+    } catch (err) {
+        console.error('Error guardando proyecto:', err);
+        if (btn) { btn.innerHTML = originalText; btn.disabled = false; }
+        alert('❌ Error al guardar el proyecto: ' + err.message);
+    }
+}
+
 function downloadKML() {
+
     // Validate data
     if (!currentOLTMarker) {
         alert('No hay OLT colocada en el mapa. Por favor genera la arquitectura primero.');
@@ -7270,6 +7346,9 @@ function downloadKML() {
     // Dynamic project name in filename
     const projectName = document.getElementById('projectName')?.value || 'Proyecto_Netso';
     const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
+
+    // Cache KML in memory so guardarProyecto() can include it without re-downloading
+    window._lastGeneratedKml = kml;
 
     // Save KML to Firestore so it appears in supervision panel
     saveProjectRegistry({ kmlData: kml, kmlName: `arquitectura_red_${safeProjectName}.kml`, kmlGeneratedAt: new Date().toISOString() });
