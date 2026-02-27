@@ -105,11 +105,34 @@ const odooConfig = {
 
 
 // Inicialización
-
 document.addEventListener('DOMContentLoaded', async () => {
+    // 1. Obtener configuración segura del servidor de Vercel si no estamos en local/test
+    try {
+        if (!window.NETSO_CONFIG) {
+            console.log("Cargando variables de entorno seguras...");
+            const envResp = await fetch('/api/env');
+            if (envResp.ok) {
+                const envData = await envResp.json();
+
+                // Asignar Gemini Mágico
+                googleApiKey = envData.GEMINI_KEY || googleApiKey;
+
+                // Asignar Odoo
+                if (envData.ODOO_CONFIG) {
+                    odooConfig.url = envData.ODOO_CONFIG.URL || odooConfig.url;
+                    odooConfig.db = envData.ODOO_CONFIG.DB || odooConfig.db;
+                    odooConfig.username = envData.ODOO_CONFIG.USERNAME || odooConfig.username;
+                    odooConfig.apiKey = envData.ODOO_CONFIG.API_KEY || odooConfig.apiKey;
+                }
+
+                console.log("📦 Entorno seguro configurado correctamente (DB:", odooConfig.db, ")");
+            }
+        }
+    } catch (e) {
+        console.warn("No se pudo cargar /api/env (probablemente ejecutando en entorno local estático sin servidor)");
+    }
 
     // Initializa Auth Listener
-
     initAuthListener();
 
 
