@@ -39,21 +39,28 @@ module.exports = async (req, res) => {
     const parsedTarget = url.parse(targetUrl);
     const lib = parsedTarget.protocol === 'https:' ? https : http;
 
+    const proxyHeaders = { ...req.headers };
+    delete proxyHeaders['content-length']; // Importante: recalculamos esto después
+    delete proxyHeaders['host'];
+
     const proxyReq = lib.request({
         hostname: parsedTarget.hostname,
         port: parsedTarget.port,
         path: parsedTarget.path,
         method: req.method,
         headers: {
-            ...req.headers,
+            ...proxyHeaders,
             host: parsedTarget.hostname, // Importante: Host header correcto
             origin: parsedTarget.protocol + '//' + parsedTarget.hostname // Fingir origen
         }
     }, (proxyRes) => {
         // Enviar respuesta al cliente
-        res.statusCode = proxyRes.statusCode;
+        res.status(proxyRes.statusCode);
         Object.keys(proxyRes.headers).forEach((key) => {
-            res.setHeader(key, proxyRes.headers[key]);
+            // No mandar transfer-encoding chunked manual si lo maneja el framework
+            if (key.toLowerCase() !== 'transfer-encoding') {
+                res.setHeader(key, proxyRes.headers[key]);
+            }
         });
         proxyRes.pipe(res);
     });
@@ -64,15 +71,21 @@ module.exports = async (req, res) => {
     });
 
     // 4. Enviar datos del cuerpo (si es POST)
-    if (req.body) {
+    if (req.body && Object.keys(req.body).length > 0) {
         // Si el entorno ya parseó el body (Vercel), lo stringificamos
         const bodyData = typeof req.body === 'object' ? JSON.stringify(req.body) : req.body;
-        proxyReq.write(bodyData);
-    } else {
-        // Si es stream directo
-        req.pipe(proxyReq);
-    }
 
-    // Si ya enviamos datos vía pipe, no llamamos end() manual a menos que sea necesario
-    if (req.body) proxyReq.end();
+        // RECALCULAR CONTENT-LENGTH porque si fue parseado y re-stringificado, el original es erróneo
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+
+        proxyReq.write(bodyData);
+        proxyReq.end();
+    } else {
+        // Si no hay body parseado pero es un método con payload (como un body stream puro)
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+            req.pipe(proxyReq);
+        } else {
+            proxyReq.end();
+        }
+    }
 };
