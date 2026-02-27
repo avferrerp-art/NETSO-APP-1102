@@ -1660,9 +1660,8 @@ function renderDashboardTable() {
 
 
     // Listener en tiempo real de Firestore
-
-    db.collection("projects").orderBy("date", "desc")
-
+    // NOTE: No orderBy here so documents without a 'date' field are not excluded
+    db.collection("projects")
         .onSnapshot((querySnapshot) => {
 
             const projects = [];
@@ -1673,7 +1672,12 @@ function renderDashboardTable() {
 
             });
 
-
+            // Sort in memory: projects with date first (desc), then undated ones at end
+            projects.sort((a, b) => {
+                const da = a.date ? new Date(a.date) : new Date(0);
+                const db2 = b.date ? new Date(b.date) : new Date(0);
+                return db2 - da;
+            });
 
             // Actualizar caché para descargas
 
@@ -7190,8 +7194,15 @@ function guardarProyecto() {
             status: 'completed',
         };
 
-        // Include KML if already generated in memory
-        if (window._lastGeneratedKml) {
+        // Generate and include KML automatically if the map is ready
+        if (typeof buildKmlString === 'function') {
+            const generatedKml = buildKmlString();
+            if (generatedKml) {
+                payload.kmlData = generatedKml;
+                payload.kmlName = `arquitectura_red_${safeProjectName}.kml`;
+                window._lastGeneratedKml = generatedKml; // cache it too
+            }
+        } else if (window._lastGeneratedKml) {
             payload.kmlData = window._lastGeneratedKml;
             payload.kmlName = `arquitectura_red_${safeProjectName}.kml`;
         }
@@ -7232,6 +7243,71 @@ function guardarProyecto() {
     }
 }
 
+function buildKmlString() {
+    if (!currentOLTMarker) return null;
+    if (!window.naps || window.naps.length === 0) return null;
+
+    const oltPos = currentOLTMarker.getLngLat();
+    const escapeXml = (s) => String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Arquitectura Red FTTH</name>
+    <description>Generado por NETSO App</description>
+    <Style id="olt-style"><IconStyle><color>ff0000ff</color><scale>1.4</scale>
+      <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+      </IconStyle><LabelStyle><color>ff0000ff</color><scale>1.1</scale></LabelStyle></Style>
+    <Style id="nap-style"><IconStyle><color>ff00d7ff</color><scale>1.1</scale>
+      <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-circle.png</href></Icon>
+      </IconStyle><LabelStyle><color>ff00d7ff</color><scale>0.9</scale></LabelStyle></Style>
+    <Style id="trunk-style"><LineStyle><color>ffeb4034</color><width>3</width></LineStyle></Style>
+    <Style id="dist-style"><LineStyle><color>ff3eb505</color><width>2</width></LineStyle></Style>
+    <Placemark>
+      <name>OLT</name><description>Central de Fibra Óptica (OLT)</description>
+      <styleUrl>#olt-style</styleUrl>
+      <Point><coordinates>${oltPos.lng},${oltPos.lat},0</coordinates></Point>
+    </Placemark>
+`;
+    window.naps.forEach((nap, idx) => {
+        const label = nap.label || `NAP ${idx + 1}`;
+        const desc = nap.clients ? `Clientes: ${nap.clients}` : '';
+        kml += `    <Placemark>
+      <name>${escapeXml(label)}</name><description>${escapeXml(desc)}</description>
+      <styleUrl>#nap-style</styleUrl>
+      <Point><coordinates>${nap.lng},${nap.lat},0</coordinates></Point>
+    </Placemark>\n`;
+    });
+
+    try {
+        const src = map.getSource('network-lines');
+        if (src && src._data && src._data.features) {
+            src._data.features.forEach((feat) => {
+                if (feat.geometry && feat.geometry.type === 'LineString') {
+                    const isTrunk = feat.properties && feat.properties.type === 'trunk';
+                    const styleId = isTrunk ? 'trunk-style' : 'dist-style';
+                    const typeName = isTrunk ? 'Fibra Troncal' : 'Fibra Distribución';
+                    const dist = feat.properties && feat.properties.formattedDistance
+                        ? ` (${feat.properties.formattedDistance})` : '';
+                    const coords = feat.geometry.coordinates.map(c => `${c[0]},${c[1]},0`).join(' ');
+                    kml += `    <Placemark>
+      <name>${escapeXml(typeName + dist)}</name>
+      <styleUrl>#${styleId}</styleUrl>
+      <LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>
+    </Placemark>\n`;
+                }
+            });
+        }
+    } catch (err) {
+        console.warn('No se pudo exportar fibra al KML:', err);
+    }
+
+    kml += `  </Document>\n</kml>`;
+    return kml;
+}
+
 function downloadKML() {
 
     // Validate data
@@ -7244,106 +7320,10 @@ function downloadKML() {
         return;
     }
 
-    const oltPos = currentOLTMarker.getLngLat();
-
-    // Helper to escape XML special characters
-    const escapeXml = (s) => String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-
-    // Build KML
-    let kml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>Arquitectura Red FTTH</name>
-    <description>Generado por NETSO App</description>
-
-    <!-- Estilos -->
-    <Style id="olt-style">
-      <IconStyle><color>ff0000ff</color><scale>1.4</scale>
-        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
-      </IconStyle>
-      <LabelStyle><color>ff0000ff</color><scale>1.1</scale></LabelStyle>
-    </Style>
-
-    <Style id="nap-style">
-      <IconStyle><color>ff00d7ff</color><scale>1.1</scale>
-        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-circle.png</href></Icon>
-      </IconStyle>
-      <LabelStyle><color>ff00d7ff</color><scale>0.9</scale></LabelStyle>
-    </Style>
-
-    <Style id="trunk-style">
-      <LineStyle><color>ffeb4034</color><width>3</width></LineStyle>
-    </Style>
-
-    <Style id="dist-style">
-      <LineStyle><color>ff3eb505</color><width>2</width></LineStyle>
-    </Style>
-
-    <!-- OLT -->
-    <Placemark>
-      <name>OLT</name>
-      <description>Central de Fibra Óptica (OLT)</description>
-      <styleUrl>#olt-style</styleUrl>
-      <Point>
-        <coordinates>${oltPos.lng},${oltPos.lat},0</coordinates>
-      </Point>
-    </Placemark>
-`;
-
-    // NAPs
-    window.naps.forEach((nap, idx) => {
-        const label = nap.label || `NAP ${idx + 1}`;
-        const desc = nap.clients ? `Clientes: ${nap.clients}` : '';
-        kml += `
-    <Placemark>
-      <name>${escapeXml(label)}</name>
-      <description>${escapeXml(desc)}</description>
-      <styleUrl>#nap-style</styleUrl>
-      <Point>
-        <coordinates>${nap.lng},${nap.lat},0</coordinates>
-      </Point>
-    </Placemark>`;
-    });
-
-    // Fiber lines from map source
-    try {
-        const src = map.getSource('network-lines');
-        if (src && src._data && src._data.features) {
-            src._data.features.forEach((feat, idx) => {
-                if (feat.geometry && feat.geometry.type === 'LineString') {
-                    const isTrunk = feat.properties && feat.properties.type === 'trunk';
-                    const styleId = isTrunk ? 'trunk-style' : 'dist-style';
-                    const typeName = isTrunk ? 'Fibra Troncal' : 'Fibra Distribución';
-                    const dist = feat.properties && feat.properties.formattedDistance
-                        ? ` (${feat.properties.formattedDistance})` : '';
-                    const coords = feat.geometry.coordinates
-                        .map(c => `${c[0]},${c[1]},0`)
-                        .join(' ');
-                    kml += `
-    <Placemark>
-      <name>${escapeXml(typeName + dist)}</name>
-      <styleUrl>#${styleId}</styleUrl>
-      <LineString>
-        <tessellate>1</tessellate>
-        <coordinates>${coords}</coordinates>
-      </LineString>
-    </Placemark>`;
-                }
-            });
-        }
-    } catch (err) {
-        console.warn('No se pudo exportar fibra al KML:', err);
-    }
-
-    kml += `
-  </Document>
-</kml>`;
+    const kml = buildKmlString();
 
     // Dynamic project name in filename
+
     const projectName = document.getElementById('projectName')?.value || 'Proyecto_Netso';
     const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
 
