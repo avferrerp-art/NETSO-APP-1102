@@ -657,6 +657,162 @@
             <!-- CONTENEDOR DE SUGERENCIAS IA -->
             <div id="project-ai-suggestions-container" style="display:none; margin-bottom: 25px;"></div>
 
+            <!-- PRESUPUESTO ÓPTICO GPON -->
+            <div id="optical-budget-panel" class="section"
+                style="margin-top: 24px; border: 1.5px solid #cbd5e1; border-radius: 16px; overflow: hidden;">
+                <div onclick="toggleOpticalPanel()"
+                    style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 16px 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 22px;">🔦</span>
+                        <span style="font-size: 15px; font-weight: 700; color: white;">Presupuesto Óptico GPON</span>
+                        <span style="font-size: 11px; color: #94a3b8; font-weight: 500;">ITU-T G.671 / G.984.2</span>
+                    </div>
+                    <span id="optical-panel-arrow"
+                        style="color: #94a3b8; font-size: 18px; transition: transform 0.3s;">▼</span>
+                </div>
+
+                <div id="optical-panel-body" style="display: none; padding: 20px; background: #f8fafc;">
+                    <!-- INPUTS GRID -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px;">
+
+                        <div>
+                            <label class="field-label">Potencia OLT – P<sub>TX</sub> (dBm)</label>
+                            <input type="number" id="ob-ptx" value="5" step="0.1" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Sensibilidad ONT – S<sub>RX</sub> (dBm)</label>
+                            <input type="number" id="ob-srx" value="-27" step="0.1" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Dist. Troncal (km)</label>
+                            <input type="number" id="ob-d-trunk" value="2" step="0.1" min="0" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Dist. Distribución (km)</label>
+                            <input type="number" id="ob-d-dist" value="1.5" step="0.1" min="0" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Splitter Nivel 1</label>
+                            <select id="ob-split1" class="input-field" style="padding: 9px 12px;">
+                                <option value="0">Sin splitter</option>
+                                <option value="1:2">1:2 (3.7 dB)</option>
+                                <option value="1:4">1:4 (7.2 dB)</option>
+                                <option value="1:8" selected>1:8 (10.5 dB)</option>
+                                <option value="1:16">1:16 (13.5 dB)</option>
+                                <option value="1:32">1:32 (16.8 dB)</option>
+                                <option value="1:64">1:64 (20.0 dB)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">Splitter Nivel 2</label>
+                            <select id="ob-split2" class="input-field" style="padding: 9px 12px;">
+                                <option value="0" selected>Sin splitter</option>
+                                <option value="1:2">1:2 (3.7 dB)</option>
+                                <option value="1:4">1:4 (7.2 dB)</option>
+                                <option value="1:8">1:8 (10.5 dB)</option>
+                                <option value="1:16">1:16 (13.5 dB)</option>
+                                <option value="1:32">1:32 (16.8 dB)</option>
+                                <option value="1:64">1:64 (20.0 dB)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">Conectores SC/APC (u)</label>
+                            <input type="number" id="ob-connectors" value="6" min="0" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Empalmes por Fusión (u)</label>
+                            <input type="number" id="ob-splices" value="4" min="0" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Margen Envejecimiento (dB)</label>
+                            <input type="number" id="ob-margin" value="2.0" step="0.5" min="0" max="5"
+                                class="input-field" style="padding: 9px 12px;">
+                        </div>
+                    </div>
+
+                    <button onclick="calcularPresupuestoOptico()"
+                        style="width: 100%; padding: 12px; background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%); color: white; font-weight: 700; font-size: 14px; border: none; border-radius: 10px; cursor: pointer; transition: all 0.2s;">
+                        📐 Calcular Presupuesto Óptico
+                    </button>
+
+                    <!-- EARLY WARNING BANNER -->
+                    <div id="ob-early-warning"
+                        style="display:none; margin-top: 14px; padding: 12px 16px; background: #fef9c3; border: 1.5px solid #fde047; border-radius: 10px; font-size: 13px; color: #713f12; font-weight: 600;">
+                        ⚠️ <strong>Alerta Temprana:</strong> El margen de potencia está por debajo de 5 dB. El enlace es
+                        funcional, pero se recomienda revisión preventiva de la planta óptica.
+                    </div>
+
+                    <!-- RESULTS TABLE -->
+                    <div id="ob-results" style="display:none; margin-top: 16px;">
+                        <div id="ob-status-badge"
+                            style="text-align: center; padding: 14px; border-radius: 12px; margin-bottom: 16px; font-size: 15px; font-weight: 800;">
+                        </div>
+
+                        <!-- Per-wavelength summary -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                            <div id="ob-wl-1310"
+                                style="background: white; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px; text-align: center;">
+                                <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">1310
+                                    nm · Upstream ⬆ (Peor caso)</div>
+                                <div id="ob-pbm-1310" style="font-size: 22px; font-weight: 900;"></div>
+                                <div style="font-size: 11px; color: #94a3b8;">PBM (dB)</div>
+                            </div>
+                            <div id="ob-wl-1490"
+                                style="background: white; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px; text-align: center;">
+                                <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">1490
+                                    nm · Downstream ⬇</div>
+                                <div id="ob-pbm-1490" style="font-size: 22px; font-weight: 900;"></div>
+                                <div style="font-size: 11px; color: #94a3b8;">PBM (dB)</div>
+                            </div>
+                        </div>
+
+                        <!-- Loss breakdown table -->
+                        <div style="border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <thead>
+                                    <tr style="background: #1e293b; color: white;">
+                                        <th style="padding: 10px 12px; text-align: left;">Elemento</th>
+                                        <th style="padding: 10px 8px; text-align: center;">Cant.</th>
+                                        <th style="padding: 10px 8px; text-align: right;">Unit. (dB)</th>
+                                        <th style="padding: 10px 8px; text-align: right;">Total (dB)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ob-breakdown-body">
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background: #f1f5f9; font-weight: 700; border-top: 2px solid #cbd5e1;">
+                                        <td colspan="3" style="padding: 10px 12px; text-align: right; font-size: 13px;">
+                                            L<sub>total</sub> (1310nm)</td>
+                                        <td id="ob-ltotal-1310"
+                                            style="padding: 10px 8px; text-align: right; color: #1e293b;"></td>
+                                    </tr>
+                                    <tr style="background: #f1f5f9; font-weight: 700;">
+                                        <td colspan="3" style="padding: 10px 12px; text-align: right; font-size: 13px;">
+                                            Budget Bruto OLT–ONT</td>
+                                        <td id="ob-budget-bruto"
+                                            style="padding: 10px 8px; text-align: right; color: #1e293b;"></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <!-- Clase reference -->
+                        <div
+                            style="margin-top: 12px; padding: 10px 14px; background: #eff6ff; border-radius: 8px; font-size: 12px; color: #1e40af;">
+                            📋 <strong>Referencia ITU-T G.984.2:</strong>&nbsp; Clase B+ = 28 dB &nbsp;|&nbsp; Clase C+
+                            = 32 dB &nbsp;|&nbsp; Clase C++ = 35 dB
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- FIN PRESUPUESTO ÓPTICO -->
+
             <div id="lista-faltantes" class="shopping-container">
                 <p style="font-size: 13px; color: #64748b; text-align: center; margin: 0;">
                     Analizando inventario para generar lista de compra...
