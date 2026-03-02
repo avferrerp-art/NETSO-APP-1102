@@ -119,10 +119,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 // Asignar Odoo
                 if (envData.ODOO_CONFIG) {
-                    odooConfig.url = envData.ODOO_CONFIG.URL || odooConfig.url;
-                    odooConfig.db = envData.ODOO_CONFIG.DB || odooConfig.db;
-                    odooConfig.username = envData.ODOO_CONFIG.USERNAME || odooConfig.username;
-                    odooConfig.apiKey = envData.ODOO_CONFIG.API_KEY || odooConfig.apiKey;
+                    odooConfig.url = (envData.ODOO_CONFIG.URL || odooConfig.url || '').trim();
+                    odooConfig.db = (envData.ODOO_CONFIG.DB || odooConfig.db || '').trim();
+                    odooConfig.username = (envData.ODOO_CONFIG.USERNAME || odooConfig.username || '').trim().replace(/['"]/g, '');
+                    odooConfig.apiKey = (envData.ODOO_CONFIG.API_KEY || odooConfig.apiKey || '').trim().replace(/['"]/g, '');
                 }
 
                 console.log("📦 Entorno seguro configurado correctamente (DB:", odooConfig.db, ")");
