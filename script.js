@@ -8643,7 +8643,7 @@ async function fetchOdooProducts(isAuto = false) {
 
         const domain = [['priority', '=', '1']];
 
-        const fields = ['default_code', 'name', 'display_name', 'categ_id', 'list_price', 'lst_price', 'list_price_usd', 'standard_price', 'uom_id', 'qty_available', 'outgoing_qty', 'product_tmpl_id'];
+        const fields = ['default_code', 'name', 'display_name', 'categ_id', 'list_price', 'lst_price', 'list_price_usd', 'standard_price', 'uom_id', 'qty_available', 'outgoing_qty', 'incoming_qty', 'product_tmpl_id'];
 
 
 
@@ -8747,51 +8747,12 @@ async function fetchOdooProducts(isAuto = false) {
 
         ];
 
-        const stockFields = ['product_id', 'location_id', 'quantity'];
-
+        const stockFields = ['product_id', 'location_id', 'quantity', 'reserved_quantity'];
         const stockData = await odooCall('stock.quant', 'search_read', [stockDomain], { fields: stockFields });
 
-
-
-        // 3. Fetch Pending Moves - OUTGOING
-
-        const moveDomain = [
-
-            ['product_id', 'in', productIds],
-
-            ['state', 'in', ['confirmed', 'assigned', 'partially_available']],
-
-            ['location_id.usage', '=', 'internal'],
-
-            ['location_dest_id.usage', '=', 'customer']
-
-        ];
-
-        const moveFields = ['product_id', 'location_id', 'product_uom_qty'];
-
-        const moveData = await odooCall('stock.move', 'search_read', [moveDomain], { fields: moveFields });
-
-
-
-        // 4. Fetch Pending Moves - INCOMING (New)
-
-        const inDomain = [
-
-            ['product_id', 'in', productIds],
-
-            ['state', 'in', ['confirmed', 'assigned', 'partially_available', 'waiting']], // Waiting availability too
-
-            ['location_dest_id.usage', '=', 'internal'], // Dest is our warehouse
-
-            ['location_id.usage', '!=', 'internal'] // Source is NOT internal (e.g. Vendor, Adjustment)
-
-        ];
-
-        const inFields = ['product_id', 'location_dest_id', 'product_uom_qty'];
-
-        const inData = await odooCall('stock.move', 'search_read', [inDomain], { fields: inFields });
-
-
+        // Removed stock.move calls due to Odoo permissions for regular users
+        const moveData = [];
+        const inData = [];
 
         // 5. Merge Data: Map by Product -> Location
 
@@ -8811,65 +8772,47 @@ async function fetchOdooProducts(isAuto = false) {
 
 
 
-        // Process Quants (On Hand)
-
+        // Process Quants (On Hand and Reserved)
         stockData.forEach(q => {
-
             const pid = q.product_id[0];
-
             const locId = q.location_id[0];
-
             const locName = q.location_id[1];
-
             const qty = q.quantity;
-
+            const reserved = q.reserved_quantity || 0;
             ensureEntry(pid, locId, locName);
-
             tempMap[pid][locId].onHand += qty;
-
+            tempMap[pid][locId].outgoing += reserved; // Use reserved directly instead of move computation
         });
 
+        // Process Expected Quantities per Location (since stock.move permission is denied)
+        // We query product.product with location context for the main warehouses
+        const odooLocationsForIncoming = [
+            { id: 58, name: 'ANA/Existencias' },
+            { id: 64, name: 'CCS/Existencias' },
+            { id: 52, name: 'LEC/Existencias' },
+            { id: 82, name: 'Urbin/Existencias' }
+        ];
 
+        for (const loc of odooLocationsForIncoming) {
+            try {
+                const locData = await odooCall('product.product', 'search_read', [
+                    [['id', 'in', productIds]]
+                ], {
+                    fields: ['incoming_qty'],
+                    context: { location: loc.id }
+                });
 
-        // Process Moves (Outgoing)
-
-        moveData.forEach(m => {
-
-            const pid = m.product_id[0];
-
-            const locId = m.location_id[0];
-
-            const locName = m.location_id[1];
-
-            const qty = m.product_uom_qty;
-
-            ensureEntry(pid, locId, locName);
-
-            tempMap[pid][locId].outgoing += qty;
-
-        });
-
-
-
-        // Process Moves (Incoming)
-
-        inData.forEach(m => {
-
-            const pid = m.product_id[0];
-
-            const locId = m.location_dest_id[0]; // Use DEST location for incoming
-
-            const locName = m.location_dest_id[1];
-
-            const qty = m.product_uom_qty;
-
-            ensureEntry(pid, locId, locName);
-
-            tempMap[pid][locId].incoming += qty;
-
-        });
-
-
+                locData.forEach(p => {
+                    const inc = p.incoming_qty || 0;
+                    if (inc > 0) {
+                        ensureEntry(p.id, loc.id, loc.name);
+                        tempMap[p.id][loc.id].incoming += inc;
+                    }
+                });
+            } catch (err) {
+                console.warn("Could not fetch incoming qty for loc:", loc.name, err);
+            }
+        }
 
         // Convert to array format for renderer
 
@@ -9355,7 +9298,7 @@ function renderOdooProductsTable(products, stockMap) {
 
                                 </div>
 
-                                <span style="font-weight: ${weight}; color: ${color}; font-size: 11px;">${s.net}</span>
+                                <span style="font-weight: ${weight}; color: ${color}; font-size: 11px; white-space: nowrap; margin-left: 8px;">${s.net}</span>
 
                             </div>`;
 
@@ -9399,7 +9342,7 @@ function renderOdooProductsTable(products, stockMap) {
 
                         <div id="stock-detail-${p.id}" class="stock-dropdown" 
 
-                            style="display: none; position: absolute; top: 100%; right: 0; background: white; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border-radius: 6px; padding: 8px; min-width: 150px; z-index: 50; text-align: left;">
+                            style="display: none; position: absolute; top: 100%; right: 0; background: white; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border-radius: 6px; padding: 8px; min-width: max-content; z-index: 50; text-align: left;">
 
                             ${listHtml}
 
