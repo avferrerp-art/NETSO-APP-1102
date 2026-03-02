@@ -13477,6 +13477,17 @@ window.updateArchitectureDetailsPanel = function (oltOptimal, isCalculatingMetri
 
 
 
+    // --- Notificar al Presupuesto Optico con datos reales ---
+    if (typeof window.notifyArchitectureReady === 'function') {
+        window.notifyArchitectureReady({
+            naps16: naps16,
+            naps48: naps48,
+            feederKm: parseFloat((fiberFeeder / 1000).toFixed(2)),
+            distKm: parseFloat((fiberDist / 1000).toFixed(2))
+        });
+    }
+
+
     detailsDiv.innerHTML = `
 
         <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; box-shadow: var(--shadow-lg); margin-bottom: 24px; overflow: hidden; font-family: var(--font-main); animation: slideUp 0.4s ease-out;">
@@ -13603,49 +13614,8 @@ window.updateArchitectureDetailsPanel = function (oltOptimal, isCalculatingMetri
 
 
 
-                <!-- 3. Optical Budget -->
 
-                <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #f1f5f9;">
-
-                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.05em;">
-
-                        <span style="color: #f59e0b; font-size: 14px;">⚡</span> Balance de Potencia
-
-                    </div>
-
-                    <div>
-
-                        <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-bottom: 4px;">
-
-                            <span>Pérdida por Distancia</span> <span>-${feederLoss.toFixed(2)} dB</span>
-
-                        </div>
-
-                        <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-bottom: 8px;">
-
-                            <span>Conectorización</span> <span>-${splicesLoss.toFixed(2)} dB</span>
-
-                        </div>
-
-                        <div style="padding-top: 8px; border-top: 1px dashed #cbd5e1; display: flex; justify-content: space-between; align-items: center;">
-
-                            <div style="font-size: 16px; font-weight: 800; color: #0f172a;">-${totalLoss.toFixed(2)} dB</div>
-
-                            <div style="font-size: 10px; padding: 4px 10px; border-radius: 20px; font-weight: 800; ${budgetBadgeStyle} text-transform: uppercase; letter-spacing: 0.02em;">
-
-                                ${budgetStatus}
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- 4. Fiber Estimation -->
+                <!-- 3. Fiber Estimation -->
 
                 <div style="background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid #f1f5f9;">
 

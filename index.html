@@ -657,6 +657,215 @@
             <!-- CONTENEDOR DE SUGERENCIAS IA -->
             <div id="project-ai-suggestions-container" style="display:none; margin-bottom: 25px;"></div>
 
+            <!-- PRESUPUESTO OPTICO GPON  ITU-T G.671 / G.984.2 -->
+            <div id="optical-budget-panel" class="section"
+                style="margin-top: 24px; border: 1.5px solid #cbd5e1; border-radius: 16px; overflow: hidden;">
+                <div onclick="toggleOpticalPanel()"
+                    style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 16px 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 22px;">🔦</span>
+                        <span style="font-size: 15px; font-weight: 700; color: white;">Presupuesto Óptico GPON</span>
+                        <span style="font-size: 11px; color: #94a3b8; font-weight: 500;">ITU-T G.671 / G.984.2</span>
+                    </div>
+                    <span id="optical-panel-arrow"
+                        style="color: #94a3b8; font-size: 18px; transition: transform 0.3s;">▼</span>
+                </div>
+
+                <div id="optical-panel-body"
+                    style="display: none; padding: 20px; background: #f8fafc; position: relative;">
+
+                    <!-- LOCK OVERLAY (se oculta cuando carga la arquitectura) -->
+                    <div id="ob-lock-overlay"
+                        style="position: absolute; inset: 0; background: rgba(248,250,252,0.92); backdrop-filter: blur(4px); z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 0 0 14px 14px; text-align: center; padding: 30px;">
+                        <div style="font-size: 36px; margin-bottom: 12px;">🔒</div>
+                        <div style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Genera la
+                            Arquitectura de Red primero</div>
+                        <div style="font-size: 12px; color: #64748b;">Una vez calculada, los campos se rellenarán
+                            automáticamente con los datos reales de tu diseño.</div>
+                    </div>
+
+                    <!-- BADGE: datos cargados desde arquitectura (oculto por defecto) -->
+                    <div id="ob-arch-badge"
+                        style="display:none; margin-bottom: 14px; padding: 8px 14px; background: #dcfce7; border: 1px solid #86efac; border-radius: 8px; font-size: 12px; color: #166534; font-weight: 700;">
+                        🔗 Datos cargados automáticamente desde la Arquitectura de Red — puedes ajustarlos manualmente
+                    </div>
+
+                    <!-- INPUTS GRID -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px;">
+
+                        <div style="grid-column: span 2;">
+                            <label class="field-label">Modelo OLT Navigator</label>
+                            <select id="ob-olt-model" class="input-field" style="padding: 9px 12px;"
+                                onchange="onOltModelChange()">
+                                <option value="NAVGPT-01P">NAVGPT-01P — 1 puerto GPON (max 128 subs)</option>
+                                <option value="NAVGPT-02P">NAVGPT-02P — 2 puertos GPON (max 256 subs)</option>
+                                <option value="NAVGPT-04P">NAVGPT-04P — 4 puertos GPON (max 512 subs)</option>
+                                <option value="NAVGPT-08P" selected>NAVGPT-08P — 8 puertos GPON (max 1024 subs)</option>
+                                <option value="NAVGPT-16">NAVGPT-16 — 16 puertos GPON (max 2048 subs)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">Clase GPON</label>
+                            <select id="ob-olt-class" class="input-field" style="padding: 9px 12px;"
+                                onchange="onOltModelChange()">
+                                <option value="classBplus">Clase B+ (P_TX +1.5~+5 dBm)</option>
+                                <option value="classCplus" selected>Clase C+ (P_TX +3~+7 dBm)</option>
+                                <option value="classCplusplus">Clase C++ (P_TX +6~+10 dBm) — solo NAVGPT-16</option>
+                            </select>
+                            <div id="ob-class-warning"
+                                style="display:none; margin-top:5px; font-size:11px; color:#b45309; font-weight:600;">
+                                ⚠️ Clase C++ solo disponible en NAVGPT-16. Se aplicó C+ como máximo para este modelo.
+                            </div>
+                        </div>
+                        <div>
+                            <label class="field-label">Potencia OLT — P<sub>TX</sub> (dBm)</label>
+                            <input type="number" id="ob-ptx" value="5" step="0.1" class="input-field"
+                                style="padding: 9px 12px;" title="Auto-rellenado según modelo y clase. Puedes ajustar.">
+                        </div>
+                        <div style="grid-column: span 2;">
+                            <label class="field-label">Modelo ONT Navigator</label>
+                            <select id="ob-ont-model" class="input-field" style="padding: 9px 12px;"
+                                onchange="onOntModelChange()">
+                                <option value="SM164242-T21" selected>SM164242-GHDUHR-T21 — Gateway Convergente (Triple
+                                    Play, WiFi, POTS)</option>
+                                <option value="SM16101-T10">SM16101-GHZ-T10 — ONT Simple / Datos (1x GigE)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">Sensibilidad ONT — S<sub>RX</sub> (dBm)</label>
+                            <input type="number" id="ob-srx" value="-28" step="0.1" class="input-field"
+                                style="padding: 9px 12px;" title="Auto-rellenado según modelo ONT. Puedes ajustar.">
+                        </div>
+                        <div>
+                            <label class="field-label">Dist. Troncal (km)</label>
+                            <input type="number" id="ob-d-trunk" value="2" step="0.1" min="0" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Dist. Distribución (km)</label>
+                            <input type="number" id="ob-d-dist" value="1.5" step="0.1" min="0" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Splitter Nivel 1</label>
+                            <select id="ob-split1" class="input-field" style="padding: 9px 12px;">
+                                <option value="0">Sin splitter</option>
+                                <option value="1:2">1:2 (3.7 dB)</option>
+                                <option value="1:4">1:4 (7.2 dB)</option>
+                                <option value="1:8" selected>1:8 (10.5 dB)</option>
+                                <option value="1:16">1:16 (13.5 dB)</option>
+                                <option value="1:32">1:32 (16.8 dB)</option>
+                                <option value="1:64">1:64 (20.0 dB)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">Splitter Nivel 2</label>
+                            <select id="ob-split2" class="input-field" style="padding: 9px 12px;">
+                                <option value="0" selected>Sin splitter</option>
+                                <option value="1:2">1:2 (3.7 dB)</option>
+                                <option value="1:4">1:4 (7.2 dB)</option>
+                                <option value="1:8">1:8 (10.5 dB)</option>
+                                <option value="1:16">1:16 (13.5 dB)</option>
+                                <option value="1:32">1:32 (16.8 dB)</option>
+                                <option value="1:64">1:64 (20.0 dB)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">Conectores SC/APC (u)</label>
+                            <input type="number" id="ob-connectors" value="6" min="0" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Empalmes por Fusión (u)</label>
+                            <input type="number" id="ob-splices" value="4" min="0" class="input-field"
+                                style="padding: 9px 12px;">
+                        </div>
+                        <div>
+                            <label class="field-label">Margen Envejecimiento (dB)</label>
+                            <input type="number" id="ob-margin" value="2.0" step="0.5" min="0" max="5"
+                                class="input-field" style="padding: 9px 12px;">
+                        </div>
+                    </div>
+
+                    <!-- INLINE ERROR -->
+                    <div id="ob-input-error"
+                        style="display:none; margin-bottom: 12px; padding: 10px 14px; background: #fee2e2; border: 1.5px solid #f87171; border-radius: 8px; font-size: 13px; color: #b91c1c; font-weight: 600;">
+                    </div>
+
+                    <button onclick="calcularPresupuestoOptico()"
+                        style="width: 100%; padding: 12px; background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%); color: white; font-weight: 700; font-size: 14px; border: none; border-radius: 10px; cursor: pointer;">
+                        📐 Calcular Presupuesto Óptico
+                    </button>
+
+                    <!-- EARLY WARNING BANNER -->
+                    <div id="ob-early-warning"
+                        style="display:none; margin-top: 14px; padding: 12px 16px; background: #fef9c3; border: 1.5px solid #fde047; border-radius: 10px; font-size: 13px; color: #713f12; font-weight: 600;">
+                        ⚠️ <strong>Alerta Temprana:</strong> Margen de potencia por debajo de 5 dB. El enlace es
+                        funcional pero requiere revisión preventiva.
+                    </div>
+
+                    <!-- RESULTS SECTION -->
+                    <div id="ob-results" style="display:none; margin-top: 16px;">
+                        <div id="ob-status-badge"
+                            style="text-align: center; padding: 14px; border-radius: 12px; margin-bottom: 16px; font-size: 15px; font-weight: 800;">
+                        </div>
+
+                        <!-- Per-wavelength summary -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                            <div id="ob-wl-1310"
+                                style="background: white; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px; text-align: center;">
+                                <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">1310
+                                    nm · Upstream ⬆ (Peor caso)</div>
+                                <div id="ob-pbm-1310" style="font-size: 22px; font-weight: 900;"></div>
+                                <div style="font-size: 11px; color: #94a3b8;">PBM (dB)</div>
+                            </div>
+                            <div id="ob-wl-1490"
+                                style="background: white; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px; text-align: center;">
+                                <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">1490
+                                    nm · Downstream ⬇</div>
+                                <div id="ob-pbm-1490" style="font-size: 22px; font-weight: 900;"></div>
+                                <div style="font-size: 11px; color: #94a3b8;">PBM (dB)</div>
+                            </div>
+                        </div>
+
+                        <!-- Loss breakdown table -->
+                        <div style="border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <thead>
+                                    <tr style="background: #1e293b; color: white;">
+                                        <th style="padding: 10px 12px; text-align: left;">Elemento</th>
+                                        <th style="padding: 10px 8px; text-align: center;">Cant.</th>
+                                        <th style="padding: 10px 8px; text-align: right;">Unit. (dB)</th>
+                                        <th style="padding: 10px 8px; text-align: right;">Total (dB)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ob-breakdown-body"></tbody>
+                                <tfoot>
+                                    <tr style="background: #f1f5f9; font-weight: 700; border-top: 2px solid #cbd5e1;">
+                                        <td colspan="3" style="padding: 10px 12px; text-align: right;">L<sub>total</sub>
+                                            (1310 nm)</td>
+                                        <td id="ob-ltotal-1310" style="padding: 10px 8px; text-align: right;"></td>
+                                    </tr>
+                                    <tr style="background: #f1f5f9; font-weight: 700;">
+                                        <td colspan="3" style="padding: 10px 12px; text-align: right;">Budget Bruto
+                                            OLT–ONT</td>
+                                        <td id="ob-budget-bruto" style="padding: 10px 8px; text-align: right;"></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <!-- Class reference -->
+                        <div
+                            style="margin-top: 12px; padding: 10px 14px; background: #eff6ff; border-radius: 8px; font-size: 12px; color: #1e40af;">
+                            📋 <strong>Referencia ITU-T G.984.2:</strong>&nbsp; Clase B+ = 28 dB &nbsp;|&nbsp; Clase C+
+                            = 32 dB &nbsp;|&nbsp; Clase C++ = 35 dB
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- FIN PRESUPUESTO OPTICO -->
+
             <div id="lista-faltantes" class="shopping-container">
                 <p style="font-size: 13px; color: #64748b; text-align: center; margin: 0;">
                     Analizando inventario para generar lista de compra...
@@ -856,6 +1065,225 @@
     <!-- Módulos de Despliegue -->
     <script src="fibraDespliegue.js?v=2.0"></script>
     <script src="script.js?v=2.0"></script>
+    <script src="navigator_specs.js?v=1.0"></script>
+    <script>
+        // ============================================================
+        //   PRESUPUESTO OPTICO GPON  -  Motor completo
+        // ============================================================
+
+        window.toggleOpticalPanel = function () {
+            var body = document.getElementById('optical-panel-body');
+            var arrow = document.getElementById('optical-panel-arrow');
+            if (!body) return;
+            var isOpen = body.style.display === 'block';
+            body.style.display = isOpen ? 'none' : 'block';
+            arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+        };
+
+        // Auto-rellena P_TX segun el modelo OLT y clase seleccionados
+        window.onOltModelChange = function () {
+            var specs = window.NAVIGATOR_SPECS;
+            if (!specs) return;
+            var modelKey = document.getElementById('ob-olt-model').value;
+            var classKey = document.getElementById('ob-olt-class').value;
+            var model = specs.OLT.models[modelKey];
+            var warnEl = document.getElementById('ob-class-warning');
+            if (!model) return;
+
+            var cls = model[classKey];
+            var usedFallback = false;
+
+            if (!cls) {
+                // C++ no disponible en este modelo — caer a C+ (no a B+)
+                cls = model['classCplus'] || model[model.defaultClass];
+                usedFallback = true;
+                // Reajustar el selector a C+ visualmente
+                document.getElementById('ob-olt-class').value = 'classCplus';
+            }
+
+            if (warnEl) warnEl.style.display = usedFallback ? 'block' : 'none';
+            if (!cls) return;
+
+            // Usar el valor máximo del rango (más conservador para el peor caso)
+            var pTxMax = parseFloat(cls.pTx_max.toFixed(1));
+            document.getElementById('ob-ptx').value = pTxMax;
+        };
+
+
+        // Auto-rellena S_RX segun el modelo ONT seleccionado
+        window.onOntModelChange = function () {
+            var specs = window.NAVIGATOR_SPECS;
+            if (!specs) return;
+            var modelKey = document.getElementById('ob-ont-model').value;
+            var model = specs.ONT.models[modelKey];
+            if (!model || !model.gpon) return;
+            document.getElementById('ob-srx').value = model.gpon.sRx;
+        };
+
+        // Llamada automatica cuando la arquitectura de red esta lista
+        window.notifyArchitectureReady = function (data) {
+            // data = { naps16, naps48, feederKm, distKm }
+            data = data || {};
+
+            // --- Desbloquear panel ---
+            var overlay = document.getElementById('ob-lock-overlay');
+            if (overlay) overlay.style.display = 'none';
+            var badge = document.getElementById('ob-arch-badge');
+            if (badge) badge.style.display = 'block';
+
+            // --- P_TX desde modelo OLT, S_RX desde modelo ONT ---
+            onOltModelChange();
+            onOntModelChange();
+
+            // --- Distancias desde la arquitectura ---
+            var feederKm = data.feederKm || 0;
+            var distKm = data.distKm || 0;
+
+            // Si llegaron del MST, totalFibraKm ya esta en arquitecturaData
+            if (!feederKm && window.arquitecturaData && window.arquitecturaData.totalFibraKm) {
+                // Dividir: ~30% troncal, ~70% distribucion como estimacion si no tenemos desglose
+                feederKm = parseFloat((window.arquitecturaData.totalFibraKm * 0.30).toFixed(2));
+                distKm = parseFloat((window.arquitecturaData.totalFibraKm * 0.70).toFixed(2));
+            }
+
+            var trunkEl = document.getElementById('ob-d-trunk');
+            var distEl = document.getElementById('ob-d-dist');
+            if (trunkEl && feederKm > 0) trunkEl.value = feederKm;
+            if (distEl && distKm > 0) distEl.value = distKm;
+
+            // --- Splitter segun mix de NAPs ---
+            var naps48 = data.naps48 || 0;
+            var naps16 = data.naps16 || 0;
+            var split1El = document.getElementById('ob-split1');
+            if (split1El) {
+                split1El.value = naps48 > 0 ? '1:32' : '1:16';
+            }
+
+            // --- Conectores y empalmes estimados ---
+            var totalNaps = naps48 + naps16;
+            var connEl = document.getElementById('ob-connectors');
+            var spliceEl = document.getElementById('ob-splices');
+            if (connEl && totalNaps > 0) connEl.value = Math.max(6, totalNaps * 2 + 4);
+            if (spliceEl && totalNaps > 0) spliceEl.value = Math.max(4, totalNaps);
+
+            // Abrir el panel automaticamente
+            var body = document.getElementById('optical-panel-body');
+            var arrow = document.getElementById('optical-panel-arrow');
+            if (body) body.style.display = 'block';
+            if (arrow) arrow.style.transform = 'rotate(180deg)';
+
+            // Scroll suave al panel
+            var panel = document.getElementById('optical-budget-panel');
+            if (panel) setTimeout(function () { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300);
+        };
+
+        window.calcularPresupuestoOptico = function () {
+            var ALPHA_1310 = 0.35;
+            var ALPHA_1490 = 0.20;
+            var L_CON = 0.30;
+            var L_SPLICE = 0.10;
+            var SPLIT_LOSS = { '0': 0, '1:2': 3.7, '1:4': 7.2, '1:8': 10.5, '1:16': 13.5, '1:32': 16.8, '1:64': 20.0 };
+
+            var pTx = parseFloat(document.getElementById('ob-ptx').value);
+            var sRx = parseFloat(document.getElementById('ob-srx').value);
+            var dTrunk = parseFloat(document.getElementById('ob-d-trunk').value) || 0;
+            var dDist = parseFloat(document.getElementById('ob-d-dist').value) || 0;
+            var split1Key = document.getElementById('ob-split1').value;
+            var split2Key = document.getElementById('ob-split2').value;
+            var nConn = parseInt(document.getElementById('ob-connectors').value) || 0;
+            var nSplice = parseInt(document.getElementById('ob-splices').value) || 0;
+            var margin = parseFloat(document.getElementById('ob-margin').value) || 0;
+
+            // Validacion
+            var errEl = document.getElementById('ob-input-error');
+            if (isNaN(pTx) || isNaN(sRx)) {
+                if (errEl) { errEl.textContent = 'Verifica que P_TX y S_RX tengan valores numericos.'; errEl.style.display = 'block'; }
+                return;
+            }
+            if (pTx <= sRx) {
+                if (errEl) { errEl.textContent = 'Error: P_TX debe ser mayor que S_RX para que el enlace sea viable.'; errEl.style.display = 'block'; }
+                return;
+            }
+            if (errEl) errEl.style.display = 'none';
+
+            var dTotal = dTrunk + dDist;
+            var lSplit1 = SPLIT_LOSS[split1Key] || 0;
+            var lSplit2 = SPLIT_LOSS[split2Key] || 0;
+            var lConn = nConn * L_CON;
+            var lSplice = nSplice * L_SPLICE;
+            var budgetBruto = pTx - sRx;
+
+            function calcWL(alpha) {
+                var lFiber = alpha * dTotal;
+                var lTotal = lFiber + lSplit1 + lSplit2 + lConn + lSplice + margin;
+                return { lFiber: lFiber, lTotal: lTotal, pbm: budgetBruto - lTotal };
+            }
+
+            var wl1310 = calcWL(ALPHA_1310);
+            var wl1490 = calcWL(ALPHA_1490);
+
+            function classify(pbm) {
+                if (pbm >= 6) return { label: '\u2705 Estado: OPTIMO', bg: '#dcfce7', color: '#15803d' };
+                if (pbm >= 3) return { label: '\u26a0\ufe0f Estado: ACEPTABLE', bg: '#fef9c3', color: '#92400e' };
+                if (pbm >= 0) return { label: '\ud83d\udd34 Estado: CRITICO', bg: '#fee2e2', color: '#b91c1c' };
+                return { label: '\u274c Estado: INVIABLE', bg: '#fca5a5', color: '#7f1d1d' };
+            }
+
+            function pbmColor(pbm) {
+                if (pbm >= 6) return '#15803d';
+                if (pbm >= 3) return '#b45309';
+                if (pbm >= 0) return '#b91c1c';
+                return '#7f1d1d';
+            }
+
+            var status = classify(wl1310.pbm);
+            var badge = document.getElementById('ob-status-badge');
+            badge.textContent = status.label;
+            badge.style.background = status.bg;
+            badge.style.color = status.color;
+            badge.style.border = '1.5px solid ' + status.color;
+
+            document.getElementById('ob-pbm-1310').textContent = wl1310.pbm.toFixed(2);
+            document.getElementById('ob-pbm-1310').style.color = pbmColor(wl1310.pbm);
+            document.getElementById('ob-pbm-1490').textContent = wl1490.pbm.toFixed(2);
+            document.getElementById('ob-pbm-1490').style.color = pbmColor(wl1490.pbm);
+            document.getElementById('ob-wl-1310').style.borderColor = pbmColor(wl1310.pbm);
+            document.getElementById('ob-wl-1490').style.borderColor = '#cbd5e1';
+
+            var rows = [
+                { name: 'Fibra Troncal (1310nm)', qty: dTrunk + ' km', unit: ALPHA_1310.toFixed(2), total: ALPHA_1310 * dTrunk },
+                { name: 'Fibra Distribucion (1310nm)', qty: dDist + ' km', unit: ALPHA_1310.toFixed(2), total: ALPHA_1310 * dDist },
+                { name: 'Splitter N1 (' + split1Key + ')', qty: '1', unit: lSplit1.toFixed(1), total: lSplit1, hidden: lSplit1 === 0 },
+                { name: 'Splitter N2 (' + split2Key + ')', qty: '1', unit: lSplit2.toFixed(1), total: lSplit2, hidden: lSplit2 === 0 },
+                { name: 'Conectores SC/APC', qty: nConn.toString(), unit: L_CON.toFixed(2), total: lConn, hidden: nConn === 0 },
+                { name: 'Empalmes por Fusion', qty: nSplice.toString(), unit: L_SPLICE.toFixed(2), total: lSplice, hidden: nSplice === 0 },
+                { name: 'Margen Envejecimiento', qty: '-', unit: '-', total: margin }
+            ];
+
+            var tbody = document.getElementById('ob-breakdown-body');
+            var html = '', idx = 0;
+            for (var i = 0; i < rows.length; i++) {
+                var r = rows[i];
+                if (r.hidden) continue;
+                var bg = (idx % 2 === 0) ? 'white' : '#f8fafc';
+                html += '<tr style="background:' + bg + ';">'
+                    + '<td style="padding:9px 12px;">' + r.name + '</td>'
+                    + '<td style="padding:9px 8px;text-align:center;">' + r.qty + '</td>'
+                    + '<td style="padding:9px 8px;text-align:right;">' + r.unit + '</td>'
+                    + '<td style="padding:9px 8px;text-align:right;font-weight:600;">' + r.total.toFixed(2) + '</td></tr>';
+                idx++;
+            }
+            tbody.innerHTML = html;
+
+            document.getElementById('ob-ltotal-1310').textContent = wl1310.lTotal.toFixed(2) + ' dB';
+            document.getElementById('ob-budget-bruto').textContent = budgetBruto.toFixed(2) + ' dB';
+
+            var earlyEl = document.getElementById('ob-early-warning');
+            earlyEl.style.display = (wl1310.pbm < 5 && wl1310.pbm >= 0) ? 'block' : 'none';
+
+            document.getElementById('ob-results').style.display = 'block';
+        };
+    </script>
 </body>
 
 </html>

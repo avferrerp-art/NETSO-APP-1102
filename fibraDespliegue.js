@@ -324,6 +324,12 @@ async function calcularMSTConRutas(map, olt, naps) {
     }
 
     console.log(`MST Completado. Fibra total: ${totalFibra}m`);
+
+    // Guardar para el Presupuesto Optico
+    window.arquitecturaData = window.arquitecturaData || {};
+    window.arquitecturaData.totalFibraKm = totalFibra / 1000;
+    window.arquitecturaData.mstCalculado = true;
+
     return {
         total_m: totalFibra,
         total_km: (totalFibra / 1000).toFixed(2),
