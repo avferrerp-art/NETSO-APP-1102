@@ -746,30 +746,67 @@
                             <input type="number" id="ob-d-dist" value="1.5" step="0.1" min="0" class="input-field"
                                 style="padding: 9px 12px;">
                         </div>
-                        <div>
-                            <label class="field-label">Splitter Nivel 1</label>
-                            <select id="ob-split1" class="input-field" style="padding: 9px 12px;">
-                                <option value="0">Sin splitter</option>
-                                <option value="1:2">1:2 (3.7 dB)</option>
-                                <option value="1:4">1:4 (7.2 dB)</option>
-                                <option value="1:8" selected>1:8 (10.5 dB)</option>
-                                <option value="1:16">1:16 (13.5 dB)</option>
-                                <option value="1:32">1:32 (16.8 dB)</option>
-                                <option value="1:64">1:64 (20.0 dB)</option>
-                            </select>
+                        <!-- SPLITTERS: Nivel 1 (siempre activo) + Nivel 2 (checkbox) -->
+                        <div style="grid-column: span 2;">
+                            <!-- Nivel 1 -->
+                            <div style="margin-bottom: 10px;">
+                                <label class="field-label">Splitter Nivel 1 (Principal)</label>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <select id="ob-split1" class="input-field" style="padding:9px 12px; flex:1;"
+                                        onchange="onSplit1Change()">
+                                        <option value="0">Sin splitter</option>
+                                        <option value="1:2">1:2 (3.7 dB)</option>
+                                        <option value="1:4">1:4 (7.2 dB)</option>
+                                        <option value="1:8" selected>1:8 (10.5 dB)</option>
+                                        <option value="1:16">1:16 (13.5 dB)</option>
+                                        <option value="1:32">1:32 (16.8 dB)</option>
+                                        <option value="1:64">1:64 (20.0 dB)</option>
+                                    </select>
+                                    <span id="split1-loss-badge"
+                                        style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:6px; padding:5px 10px; font-size:12px; font-weight:700; color:#0369a1; white-space:nowrap;">
+                                        10.5 dB
+                                    </span>
+                                </div>
+                            </div>
+                            <!-- Nivel 2 (opcional) -->
+                            <div style="margin-bottom: 6px;">
+                                <label
+                                    style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:6px;">
+                                    <input type="checkbox" id="ob-split2-enable" onchange="onSplit2CheckboxChange()"
+                                        style="width:15px; height:15px; accent-color:#2563eb; cursor:pointer;">
+                                    <span class="field-label" style="margin:0;">Splitter Nivel 2 (Cascada —
+                                        Opcional)</span>
+                                </label>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <select id="ob-split2" class="input-field"
+                                        style="padding:9px 12px; flex:1; opacity:0.45;" disabled
+                                        onchange="onSplit2Change()">
+                                        <option value="0">Sin splitter</option>
+                                        <option value="1:2">1:2 (3.7 dB)</option>
+                                        <option value="1:4">1:4 (7.2 dB)</option>
+                                        <option value="1:8">1:8 (10.5 dB)</option>
+                                        <option value="1:16">1:16 (13.5 dB)</option>
+                                        <option value="1:32">1:32 (16.8 dB)</option>
+                                        <option value="1:64">1:64 (20.0 dB)</option>
+                                    </select>
+                                    <span id="split2-loss-badge"
+                                        style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:5px 10px; font-size:12px; font-weight:700; color:#94a3b8; white-space:nowrap;">
+                                        0 dB
+                                    </span>
+                                </div>
+                            </div>
+                            <!-- Nivel 3: Placeholder futuro -->
+                            <div style="opacity:0.38; display:flex; align-items:center; gap:8px; margin-top:4px;">
+                                <input type="checkbox" disabled style="width:15px; height:15px; cursor:not-allowed;">
+                                <span style="font-size:12px; color:#64748b; font-style:italic;">Splitter Nivel 3+ —
+                                    Disponible en Fase 3</span>
+                            </div>
+                            <!-- Inline Banner: Cascade Validation -->
+                            <div id="ob-cascade-warning"
+                                style="display:none; margin-top:8px; padding:8px 12px; background:#fff7ed; border:1px solid #fdba74; border-radius:6px; font-size:12px; color:#c2410c; font-weight:600;">
+                            </div>
                         </div>
-                        <div>
-                            <label class="field-label">Splitter Nivel 2</label>
-                            <select id="ob-split2" class="input-field" style="padding: 9px 12px;">
-                                <option value="0" selected>Sin splitter</option>
-                                <option value="1:2">1:2 (3.7 dB)</option>
-                                <option value="1:4">1:4 (7.2 dB)</option>
-                                <option value="1:8">1:8 (10.5 dB)</option>
-                                <option value="1:16">1:16 (13.5 dB)</option>
-                                <option value="1:32">1:32 (16.8 dB)</option>
-                                <option value="1:64">1:64 (20.0 dB)</option>
-                            </select>
-                        </div>
+
                         <div>
                             <label class="field-label">Conectores SC/APC (u)</label>
                             <input type="number" id="ob-connectors" value="6" min="0" class="input-field"
@@ -828,6 +865,26 @@
                             </div>
                         </div>
 
+                        <!-- Loss breakdown table header and formulas toggle -->
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div style="font-size: 14px; font-weight: 700; color: #1e293b;">Desglose de Pérdidas</div>
+                            <button onclick="window.toggleFormulasModal()"
+                                style="background: none; border: none; color: #2563eb; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; transition: background 0.2s;">
+                                ℹ️ Fórmulas Aplicadas
+                            </button>
+                        </div>
+
+                        <!-- Formulas Container (Hidden by default) -->
+                        <div id="ob-formulas-container"
+                            style="display: none; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 13px; color: #334155;">
+                            <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">Cálculos Paso a Paso
+                                (Peor caso: 1310 nm):</div>
+                            <div id="ob-formulas-content"
+                                style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; line-height: 1.6;">
+                            </div>
+                        </div>
+
                         <!-- Loss breakdown table -->
                         <div style="border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0;">
                             <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
@@ -861,7 +918,20 @@
                             📋 <strong>Referencia ITU-T G.984.2:</strong>&nbsp; Clase B+ = 28 dB &nbsp;|&nbsp; Clase C+
                             = 32 dB &nbsp;|&nbsp; Clase C++ = 35 dB
                         </div>
+
+                        <!-- BOTONES DE EXPORTACION -->
+                        <div style="display:flex; gap:8px; margin-top:14px;">
+                            <button onclick="exportarPresupuestoJSON()"
+                                style="flex:1; padding:10px; background:linear-gradient(135deg,#0f766e,#0d9488); color:white; font-weight:700; font-size:13px; border:none; border-radius:8px; cursor:pointer;">
+                                ⬇ Exportar JSON
+                            </button>
+                            <button onclick="exportarPresupuestoPDF()"
+                                style="flex:1; padding:10px; background:linear-gradient(135deg,#7c3aed,#6d28d9); color:white; font-weight:700; font-size:13px; border:none; border-radius:8px; cursor:pointer;">
+                                🖨 Exportar PDF
+                            </button>
+                        </div>
                     </div>
+
                 </div>
             </div>
             <!-- FIN PRESUPUESTO OPTICO -->
@@ -1120,69 +1190,483 @@
             document.getElementById('ob-srx').value = model.gpon.sRx;
         };
 
-        // Llamada automatica cuando la arquitectura de red esta lista
+        // ============================================================
+        // FASE 2: FUNCIONES DE SPECS DINAMICAS
+        // ============================================================
+
+        // Retorna specs completas de OLT para modelo y clase dados
+        window.getOLTSpecs = function (modelo, clase) {
+            var DEFAULTS = { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, iturBudget: 28, maxDistKm: 20 };
+            var specs = window.NAVIGATOR_SPECS;
+            if (!specs || !specs.OLT) return DEFAULTS;
+            var model = specs.OLT.models[modelo];
+            if (!model) return DEFAULTS;
+            var claseData = model[clase] || model[model.defaultClass];
+            if (!claseData) return DEFAULTS;
+            return {
+                pTx_min: claseData.pTx_min,
+                pTx_max: claseData.pTx_max,
+                pTx_typical: claseData.pTx_typical || ((claseData.pTx_min + claseData.pTx_max) / 2),
+                sRx: claseData.sRx,
+                iturBudget: claseData.iturBudget || 28,
+                maxDistKm: model.maxDistKm || 20,
+                supportedClasses: model.supportedClasses || ['classBplus', 'classCplus']
+            };
+        };
+
+        // Retorna specs de ONT para modelo dado
+        window.getONTSpecs = function (modelo) {
+            var DEFAULTS = { sRx: -28, pTx_min: 0.5, pTx_max: 5.0, standard: 'FSAN G.984.2 Clase B+', connector: 'SC/PC' };
+            var specs = window.NAVIGATOR_SPECS;
+            if (!specs || !specs.ONT) return DEFAULTS;
+            var model = specs.ONT.models[modelo];
+            if (!model || !model.gpon) return DEFAULTS;
+            return {
+                sRx: model.gpon.sRx,
+                pTx_min: model.gpon.pTx_min,
+                pTx_max: model.gpon.pTx_max,
+                standard: model.gpon.standard,
+                connector: model.gpon.connector || 'SC/PC'
+            };
+        };
+
+        // ============================================================
+        // EVENT HANDLERS: SPLITTERS + BADGES EN TIEMPO REAL
+        // ============================================================
+        window.validarCascadaSplitters = function () {
+            var cb = document.getElementById('ob-split2-enable');
+            var sel1 = document.getElementById('ob-split1');
+            var sel2 = document.getElementById('ob-split2');
+            var banner = document.getElementById('ob-cascade-warning');
+            if (banner) banner.style.display = 'none';
+
+            if (cb && cb.checked && sel1 && sel2 && sel1.value !== '0' && sel2.value !== '0') {
+                var r1 = parseInt(sel1.value.split(':')[1]) || 0;
+                var r2 = parseInt(sel2.value.split(':')[1]) || 0;
+                if (r2 > r1) {
+                    if (banner) {
+                        banner.innerHTML = '⚠️ Splitter Nivel 2 (1:' + r2 + ') excede Nivel 1 (1:' + r1 + '). Deshabilitando.';
+                        banner.style.display = 'block';
+                        setTimeout(function () { banner.style.display = 'none'; }, 6000);
+                    }
+                    cb.checked = false;
+                    sel2.disabled = true;
+                    sel2.style.opacity = '0.45';
+                    sel2.value = '0';
+                    var badge = document.getElementById('split2-loss-badge');
+                    if (badge) { badge.textContent = '0 dB'; badge.style.color = '#94a3b8'; badge.style.borderColor = '#e2e8f0'; badge.style.background = '#f8fafc'; }
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        window.onSplit1Change = function () {
+            var val = document.getElementById('ob-split1').value;
+            var loss = window.OPTICAL_CONSTANTS ? (window.OPTICAL_CONSTANTS.SPLIT_LOSS[val] || 0) : 0;
+            var badge = document.getElementById('split1-loss-badge');
+            if (badge) badge.textContent = loss.toFixed(1) + ' dB';
+
+            window.validarCascadaSplitters();
+            if (typeof calcularPresupuestoOptico === 'function') calcularPresupuestoOptico();
+        };
+
+        window.onSplit2Change = function () {
+            window.validarCascadaSplitters();
+
+            var val = document.getElementById('ob-split2').value;
+            var loss = window.OPTICAL_CONSTANTS ? (window.OPTICAL_CONSTANTS.SPLIT_LOSS[val] || 0) : 0;
+            var badge = document.getElementById('split2-loss-badge');
+            if (badge) badge.textContent = loss.toFixed(1) + ' dB';
+
+            if (typeof calcularPresupuestoOptico === 'function') calcularPresupuestoOptico();
+        };
+
+        window.onSplit2CheckboxChange = function () {
+            var cb = document.getElementById('ob-split2-enable');
+            var sel = document.getElementById('ob-split2');
+            var badge = document.getElementById('split2-loss-badge');
+            if (!sel || !cb) return;
+
+            sel.disabled = !cb.checked;
+            sel.style.opacity = cb.checked ? '1' : '0.45';
+
+            if (cb.checked) {
+                if (!window.validarCascadaSplitters()) {
+                    if (typeof calcularPresupuestoOptico === 'function') calcularPresupuestoOptico();
+                    return;
+                }
+                var val = sel.value;
+                var loss = window.OPTICAL_CONSTANTS ? (window.OPTICAL_CONSTANTS.SPLIT_LOSS[val] || 0) : 0;
+                if (badge) { badge.textContent = loss.toFixed(1) + ' dB'; badge.style.color = '#0369a1'; badge.style.borderColor = '#bae6fd'; badge.style.background = '#f0f9ff'; }
+            } else {
+                sel.value = '0';
+                if (badge) { badge.textContent = '0 dB'; badge.style.color = '#94a3b8'; badge.style.borderColor = '#e2e8f0'; badge.style.background = '#f8fafc'; }
+            }
+
+            if (typeof calcularPresupuestoOptico === 'function') calcularPresupuestoOptico();
+        };
+
+        // ============================================================
+        // OB_STATE: ESTADO DE ARQUITECTURA PARA EVITAR CONFIRMACIONES REDUNDANTES
+        // ============================================================
+        window.OB_STATE = {
+            arquitecturaActual: null,
+            parametrosManualmenteSobrescritos: false
+        };
+
+        // ============================================================
+        // SUGIERE CLASE GPON OPTIMA SEGUN ESTANDAR ITU-T G.984
+        // ============================================================
+        window.sugerirClaseGPON = function (distancia_total, numero_usuarios) {
+            if (distancia_total > 25) return 'classCplusplus';
+            if (distancia_total > 20 || numero_usuarios > 256) return 'classCplus';
+            return 'classBplus';
+        };
+
+        // ============================================================
+        // NOTIFY ARCHITECTURE READY — CON DETECCION DE CAMBIOS
+        // ============================================================
         window.notifyArchitectureReady = function (data) {
-            // data = { naps16, naps48, feederKm, distKm }
             data = data || {};
 
-            // --- Desbloquear panel ---
-            var overlay = document.getElementById('ob-lock-overlay');
-            if (overlay) overlay.style.display = 'none';
-            var badge = document.getElementById('ob-arch-badge');
-            if (badge) badge.style.display = 'block';
+            // Normalizar estructura de conectores y empalmes (acepta formato legacy y nuevo)
+            var connTotal = (data.connectors && data.connectors.total) ? data.connectors.total
+                : (data.naps48 + data.naps16 > 0) ? Math.max(6, (data.naps48 + data.naps16) * 2 + 4) : 6;
+            var spliceTotal = (data.splices && data.splices.total) ? data.splices.total
+                : (data.naps48 + data.naps16 > 0) ? Math.max(4, data.naps48 + data.naps16) : 4;
 
-            // --- P_TX desde modelo OLT, S_RX desde modelo ONT ---
-            onOltModelChange();
-            onOntModelChange();
-
-            // --- Distancias desde la arquitectura ---
             var feederKm = data.feederKm || 0;
             var distKm = data.distKm || 0;
 
-            // Si llegaron del MST, totalFibraKm ya esta en arquitecturaData
+            // Fallback: si no hay desglose use totalFibraKm con regla 30/70
             if (!feederKm && window.arquitecturaData && window.arquitecturaData.totalFibraKm) {
-                // Dividir: ~30% troncal, ~70% distribucion como estimacion si no tenemos desglose
                 feederKm = parseFloat((window.arquitecturaData.totalFibraKm * 0.30).toFixed(2));
                 distKm = parseFloat((window.arquitecturaData.totalFibraKm * 0.70).toFixed(2));
             }
 
-            var trunkEl = document.getElementById('ob-d-trunk');
-            var distEl = document.getElementById('ob-d-dist');
-            if (trunkEl && feederKm > 0) trunkEl.value = feederKm;
-            if (distEl && distKm > 0) distEl.value = distKm;
-
-            // --- Splitter segun mix de NAPs ---
-            var naps48 = data.naps48 || 0;
-            var naps16 = data.naps16 || 0;
-            var split1El = document.getElementById('ob-split1');
-            if (split1El) {
-                split1El.value = naps48 > 0 ? '1:32' : '1:16';
+            // ---- Detectar si la arquitectura cambió ----
+            var dataHash = JSON.stringify({ feederKm: feederKm, distKm: distKm, connTotal: connTotal, spliceTotal: spliceTotal });
+            var arqCambio = (dataHash !== JSON.stringify(window.OB_STATE.arquitecturaActual));
+            if (arqCambio) {
+                window.OB_STATE.parametrosManualmenteSobrescritos = false; // Resetear flag
             }
 
-            // --- Conectores y empalmes estimados ---
-            var totalNaps = naps48 + naps16;
-            var connEl = document.getElementById('ob-connectors');
-            var spliceEl = document.getElementById('ob-splices');
-            if (connEl && totalNaps > 0) connEl.value = Math.max(6, totalNaps * 2 + 4);
-            if (spliceEl && totalNaps > 0) spliceEl.value = Math.max(4, totalNaps);
+            // ---- Detectar si usuario modificó manualmente ----
+            if (!arqCambio && window.OB_STATE.parametrosManualmenteSobrescritos) {
+                // Misma arquitectura, usuario rechazó antes → respetar
+                window.calcularPresupuestoOptico();
+                return;
+            }
 
-            // Abrir el panel automaticamente
+            var cambios = {
+                trunk: Math.abs(parseFloat(document.getElementById('ob-d-trunk').value) - feederKm) > 0.1,
+                dist: Math.abs(parseFloat(document.getElementById('ob-d-dist').value) - distKm) > 0.1,
+                conn: parseInt(document.getElementById('ob-connectors').value) !== connTotal,
+                splices: parseInt(document.getElementById('ob-splices').value) !== spliceTotal
+            };
+            var hayCambios = Object.values(cambios).some(function (v) { return v === true; });
+
+            if (hayCambios && arqCambio) {
+                var msg = '⚠️ La arquitectura cambió. ¿Actualizar parámetros ópticos?\n\nCambios detectados:\n'
+                    + (cambios.trunk ? '✓ Distancia troncal\n' : '')
+                    + (cambios.dist ? '✓ Distancia distribución\n' : '')
+                    + (cambios.conn ? '✓ Conectores\n' : '')
+                    + (cambios.splices ? '✓ Empalmes\n' : '');
+                var acepta = confirm(msg + '\n¿Actualizar automáticamente?');
+                if (!acepta) {
+                    window.OB_STATE.parametrosManualmenteSobrescritos = true;
+                    window.calcularPresupuestoOptico();
+                    return;
+                }
+            }
+
+            // ---- Desbloquear panel ----
+            var overlay = document.getElementById('ob-lock-overlay');
+            if (overlay) overlay.style.display = 'none';
+            var archBadge = document.getElementById('ob-arch-badge');
+            if (archBadge) archBadge.style.display = 'block';
+
+            // ---- Auto-poblar OLT Model ----
+            var oltSelect = document.getElementById('ob-olt-model');
+            if (oltSelect && data.oltModelKey) {
+                oltSelect.value = data.oltModelKey;
+                window.onOltModelChange();
+            }
+
+            // ---- Auto-poblar con getOLTSpecs / getONTSpecs ----
+            var oltModel = document.getElementById('ob-olt-model').value;
+            var numUsuarios = parseInt((document.getElementById('censo') || {}).value) || 0;
+            var claseRecomendada = window.sugerirClaseGPON(feederKm + distKm, numUsuarios);
+            var claseEl = document.getElementById('ob-olt-class');
+            if (claseEl) claseEl.value = claseRecomendada;
+
+            var oltSpecs = window.getOLTSpecs(oltModel, claseRecomendada);
+            var ontModel = document.getElementById('ob-ont-model').value;
+            var ontSpecs = window.getONTSpecs(ontModel);
+
+            document.getElementById('ob-ptx').value = oltSpecs.pTx_typical;
+            document.getElementById('ob-srx').value = ontSpecs.sRx;
+            document.getElementById('ob-d-trunk').value = feederKm.toFixed(2);
+            document.getElementById('ob-d-dist').value = distKm.toFixed(2);
+            document.getElementById('ob-connectors').value = connTotal;
+            document.getElementById('ob-splices').value = spliceTotal;
+
+            // ---- Poblar splitters desde arquitectura ----
+            var split1Key = '1:16';
+            var split2Key = null;
+            if (data.splitters && data.splitters.length > 0) {
+                split1Key = data.splitters[0].ratio || '1:16';
+                split2Key = (data.splitters.length > 1) ? data.splitters[1].ratio : null;
+            } else {
+                var naps48 = data.naps48 || 0;
+                split1Key = naps48 > 0 ? '1:32' : '1:16';
+            }
+
+            document.getElementById('ob-split1').value = split1Key;
+            window.onSplit1Change();
+
+            if (split2Key && split2Key !== '0') {
+                // Validar coherencia de cascada
+                var r1 = parseInt(split1Key.split(':')[1]) || 0;
+                var r2 = parseInt(split2Key.split(':')[1]) || 0;
+                if (r2 <= r1) {
+                    document.getElementById('ob-split2-enable').checked = true;
+                    document.getElementById('ob-split2').value = split2Key;
+                    document.getElementById('ob-split2').disabled = false;
+                    document.getElementById('ob-split2').style.opacity = '1';
+                    window.onSplit2Change();
+                } else {
+                    document.getElementById('ob-split2-enable').checked = false;
+                    document.getElementById('ob-split2').disabled = true;
+                    document.getElementById('ob-split2').style.opacity = '0.45';
+                    var banner = document.getElementById('ob-cascade-warning');
+                    if (banner) {
+                        banner.innerHTML = '⚠️ Splitter Nivel 2 (1:' + r2 + ') excede Nivel 1 (1:' + r1 + ') desde arquitectura. Deshabilitando.';
+                        banner.style.display = 'block';
+                        setTimeout(function () { banner.style.display = 'none'; }, 6000);
+                    }
+                }
+            } else {
+                document.getElementById('ob-split2-enable').checked = false;
+                document.getElementById('ob-split2').disabled = true;
+                document.getElementById('ob-split2').style.opacity = '0.45';
+            }
+
+            // ---- Abrir panel y recalcular ----
             var body = document.getElementById('optical-panel-body');
             var arrow = document.getElementById('optical-panel-arrow');
             if (body) body.style.display = 'block';
             if (arrow) arrow.style.transform = 'rotate(180deg)';
 
-            // Scroll suave al panel
-            var panel = document.getElementById('optical-budget-panel');
-            if (panel) setTimeout(function () { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300);
+            window.OB_STATE.arquitecturaActual = JSON.parse(JSON.stringify(
+                { feederKm: feederKm, distKm: distKm, connTotal: connTotal, spliceTotal: spliceTotal }
+            ));
+
+            window.calcularPresupuestoOptico();
+        };
+
+        // ============================================================
+        // EXPORTACION: JSON Y PDF
+        // ============================================================
+        window.exportarPresupuestoJSON = function () {
+            var oltModel = (document.getElementById('ob-olt-model') || {}).value || 'N/A';
+            var oltClass = (document.getElementById('ob-olt-class') || {}).value || 'N/A';
+            var ontModel = (document.getElementById('ob-ont-model') || {}).value || 'N/A';
+            var pTx = parseFloat((document.getElementById('ob-ptx') || {}).value) || 0;
+            var sRx = parseFloat((document.getElementById('ob-srx') || {}).value) || 0;
+            var dTrunk = parseFloat((document.getElementById('ob-d-trunk') || {}).value) || 0;
+            var dDist = parseFloat((document.getElementById('ob-d-dist') || {}).value) || 0;
+            var split1 = (document.getElementById('ob-split1') || {}).value || '0';
+            var split2En = (document.getElementById('ob-split2-enable') || {}).checked;
+            var split2 = split2En ? ((document.getElementById('ob-split2') || {}).value || '0') : '0';
+            var nConn = parseInt((document.getElementById('ob-connectors') || {}).value) || 0;
+            var nSplice = parseInt((document.getElementById('ob-splices') || {}).value) || 0;
+            var margin = parseFloat((document.getElementById('ob-margin') || {}).value) || 0;
+            var pbm1310 = (document.getElementById('ob-pbm-1310') || {}).textContent || 'N/A';
+            var pbm1490 = (document.getElementById('ob-pbm-1490') || {}).textContent || 'N/A';
+            var estado = (document.getElementById('ob-status-badge') || {}).textContent || 'N/A';
+
+            var alertasActivas = [];
+            var alertEls = document.querySelectorAll('#ob-early-warning [data-alert-level]');
+            alertEls.forEach(function (el) { alertasActivas.push(el.textContent.trim()); });
+
+            var reporte = {
+                fecha: new Date().toISOString(),
+                olt: { modelo: oltModel, clase: oltClass },
+                ont: { modelo: ontModel },
+                parametros: {
+                    pTx_dBm: pTx, sRx_dBm: sRx,
+                    distancia_troncal_km: dTrunk, distancia_distribucion_km: dDist,
+                    splitter_n1: split1, splitter_n2: split2,
+                    conectores: nConn, empalmes: nSplice,
+                    margen_envejecimiento_dB: margin
+                },
+                resultados: {
+                    pbm_1310nm_dB: pbm1310,
+                    pbm_1490nm_dB: pbm1490,
+                    estado_enlace: estado.trim(),
+                    alertas_activas: alertasActivas
+                }
+            };
+
+            var blob = new Blob([JSON.stringify(reporte, null, 2)], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'presupuesto-optico-' + new Date().toISOString().slice(0, 10) + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        window.exportarPresupuestoPDF = function () {
+            window.print();
+        };
+
+        // Constantes estéticas físicas globales GPON extraídas para mejor mantenibilidad
+        window.OPTICAL_CONSTANTS = {
+            ALPHA_1310: 0.35,  // dB/km a 1310nm (upstream)
+            ALPHA_1490: 0.20,  // dB/km a 1490nm (downstream)
+            L_CON: 0.30,       // dB por Conector SC/APC
+            L_SPLICE: 0.10,    // dB por Empalme Fusión
+            SPLIT_LOSS: { '0': 0, '1:2': 3.7, '1:4': 7.2, '1:8': 10.5, '1:16': 13.5, '1:32': 16.8, '1:64': 20.0 }
+        };
+
+        // Límites teóricos por estándares Clase OLT G.984
+        window.DISTANCE_LIMITS = {
+            'classBplus': 20,
+            'classCplus': 25,
+            'classCplusplus': 60
+        };
+
+        // Framework Multinivel Analizador de Riesgo Físico GPON
+        window.analizarAlertas = function (pbm, distancia, conectores, splitters) {
+            var alertas = [];
+            var consts = window.OPTICAL_CONSTANTS;
+            var classKey = document.getElementById('ob-olt-class').value || 'classCplus';
+            var maxDist = window.DISTANCE_LIMITS[classKey] || 20;
+
+            // Alerta 1: Distancia Operativa Crítica
+            if (distancia > 15 && distancia <= maxDist) {
+                var sugDist = [];
+                // Solo sugerir upgrade de clase si no es ya C++
+                if (classKey !== 'classCplusplus') {
+                    sugDist.push('• Considerar upgrading a OLT Clase C++ (distancia máx 60 km)');
+                }
+                var margin = parseFloat(document.getElementById('ob-margin').value) || 0;
+                sugDist.push('• Considerar amplificador óptico (booster) después de NAP');
+                sugDist.push('• Con margen de envejecimiento actual de ' + margin.toFixed(1) + ' dB, el PBM real es ' + pbm.toFixed(2) + ' dB');
+                sugDist.push('• Revisar ubicación de NAP central para acortar distancia');
+                alertas.push({
+                    level: 'WARNING',
+                    icon: '📏',
+                    titulo: 'Distancia Elevada (' + distancia.toFixed(1) + ' km)',
+                    detalle: 'Cercano al límite de clase GPON (' + maxDist + ' km)',
+                    sugerencias: sugDist
+                });
+            }
+
+            // Alerta 2: Conectores Mecánicos
+            if (conectores > 10) {
+                var perdida_actual = conectores * consts.L_CON;
+                var conectores_a_reemplazar = Math.floor(conectores / 2);
+                var ganancia_potencial = conectores_a_reemplazar * (consts.L_CON - consts.L_SPLICE);
+                var sugConn = ['• Pérdida actual por conectores: ' + perdida_actual.toFixed(2) + ' dB'];
+                if (ganancia_potencial > 0.5) {
+                    sugConn.push('• Reemplazar ' + conectores_a_reemplazar + ' conectores por empalmes fusionados');
+                    sugConn.push('• Ganancia potencial: ~' + ganancia_potencial.toFixed(2) + ' dB');
+                }
+                alertas.push({
+                    level: 'WARNING',
+                    icon: '🔌',
+                    titulo: 'Exceso de Conectores (' + conectores + ' unidades)',
+                    detalle: conectores + ' × ' + consts.L_CON.toFixed(2) + ' dB = ' + perdida_actual.toFixed(2) + ' dB pérdida',
+                    sugerencias: sugConn
+                });
+            }
+
+            // Alerta 3: PBM Ajustado
+            if (pbm < 6 && pbm >= 3) {
+                alertas.push({
+                    level: 'WARNING',
+                    icon: '⚡',
+                    titulo: 'Margen de Budget Ajustado',
+                    detalle: 'PBM = ' + pbm.toFixed(2) + ' dB (riesgo por envejecimiento)',
+                    sugerencias: [
+                        '• Usar empalmes fusionados en la FdT para mejorar estabilidad',
+                        '• Plan de monitoreo de atenuación preventivo cada 6 meses'
+                    ]
+                });
+            }
+
+            // Alerta 4: PBM Crítico / Inviable
+            if (pbm < 3) {
+                var split2Key = document.getElementById('ob-split2').value;
+                var km_necesarios = Math.abs(pbm < 0 ? pbm : 3 - pbm) / consts.ALPHA_1310;
+                var sugCrit = [];
+
+                // Solo sugerir upgrade si no es ya la clase máxima
+                if (classKey !== 'classCplusplus') {
+                    sugCrit.push('• CAMBIO OBLIGATORIO: Actualizar a OLT Clase superior (C++)');
+                }
+
+                // Solo sugerir eliminar split2 si realmente existe
+                if (split2Key && split2Key !== '0' && split2Key !== 'Sin splitter') {
+                    var perdida_split2 = consts.SPLIT_LOSS[split2Key] || 0;
+                    sugCrit.push('• Eliminar Splitter Nivel 2 ' + split2Key + ' (ahorro ' + perdida_split2.toFixed(1) + ' dB)');
+                }
+
+                // Siempre ofrecer la opción de acortar distancia
+                sugCrit.push('• O: Acortar distancia en ~' + km_necesarios.toFixed(1) + ' km para ser viable');
+
+                alertas.push({
+                    level: pbm < 0 ? 'CRITICAL' : 'WARNING',
+                    icon: '❌',
+                    titulo: 'Presupuesto INSUFICIENTE',
+                    detalle: 'PBM = ' + pbm.toFixed(2) + ' dB — Enlace marginal, requiere intervención',
+                    sugerencias: sugCrit
+                });
+            }
+
+            return alertas;
+        };
+        window.renderizarAlertas = function (alertas) {
+            var earlyEl = document.getElementById('ob-early-warning');
+            if (!earlyEl) return;
+
+            earlyEl.style.padding = '0';
+            earlyEl.style.background = 'transparent';
+            earlyEl.style.border = 'none';
+
+            if (alertas && alertas.length > 0) {
+                var htmlAlertas = '';
+                alertas.forEach(function (a) {
+                    var colorBorder = a.level === 'CRITICAL' ? '#fecaca' : '#fde047';
+                    var colorBg = a.level === 'CRITICAL' ? '#fef2f2' : '#fef9c3';
+                    var colorText = a.level === 'CRITICAL' ? '#991b1b' : '#713f12';
+
+                    htmlAlertas += '<div style="margin-top:14px; padding:12px 16px; background:' + colorBg + '; border: 1.5px solid ' + colorBorder + '; border-radius:10px;">';
+                    htmlAlertas += '<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">';
+                    htmlAlertas += '<span style="font-size:20px;">' + a.icon + '</span>';
+                    htmlAlertas += '<strong style="color:' + colorText + '; font-size:14px;">' + a.titulo + '</strong>';
+                    htmlAlertas += '<span style="font-size:12px; color:' + colorText + '; opacity:0.8;">| ' + a.detalle + '</span>';
+                    htmlAlertas += '</div>';
+                    htmlAlertas += '<div style="font-size:13px; color:' + colorText + '; padding-left:28px;">';
+                    a.sugerencias.forEach(function (sug) {
+                        htmlAlertas += '<div style="margin-bottom:3px; font-weight:600;">' + sug + '</div>';
+                    });
+                    htmlAlertas += '</div></div>';
+                });
+                earlyEl.innerHTML = htmlAlertas;
+                earlyEl.style.display = 'block';
+            } else {
+                earlyEl.style.display = 'none';
+                earlyEl.innerHTML = '';
+            }
         };
 
         window.calcularPresupuestoOptico = function () {
-            var ALPHA_1310 = 0.35;
-            var ALPHA_1490 = 0.20;
-            var L_CON = 0.30;
-            var L_SPLICE = 0.10;
-            var SPLIT_LOSS = { '0': 0, '1:2': 3.7, '1:4': 7.2, '1:8': 10.5, '1:16': 13.5, '1:32': 16.8, '1:64': 20.0 };
+            var consts = window.OPTICAL_CONSTANTS;
 
             var pTx = parseFloat(document.getElementById('ob-ptx').value);
             var sRx = parseFloat(document.getElementById('ob-srx').value);
@@ -1194,23 +1678,45 @@
             var nSplice = parseInt(document.getElementById('ob-splices').value) || 0;
             var margin = parseFloat(document.getElementById('ob-margin').value) || 0;
 
-            // Validacion
             var errEl = document.getElementById('ob-input-error');
-            if (isNaN(pTx) || isNaN(sRx)) {
-                if (errEl) { errEl.textContent = 'Verifica que P_TX y S_RX tengan valores numericos.'; errEl.style.display = 'block'; }
+            function showError(msg) {
+                if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+                document.getElementById('ob-results').style.display = 'none';
                 return;
             }
-            if (pTx <= sRx) {
-                if (errEl) { errEl.textContent = 'Error: P_TX debe ser mayor que S_RX para que el enlace sea viable.'; errEl.style.display = 'block'; }
-                return;
+
+            if (isNaN(pTx) || isNaN(sRx)) return showError('Verifica que P_TX y S_RX tengan valores numéricos.');
+            if (pTx <= sRx) return showError('Error: P_TX debe ser mayor que S_RX para que el enlace sea viable.');
+
+            // Validaciones Estrictas basadas en el Estándar
+            // Validaciones Estrictas Dinámicas
+            var dTotal = dTrunk + dDist;
+            var classKey = document.getElementById('ob-olt-class').value || 'classCplus';
+            var maxDist = window.DISTANCE_LIMITS[classKey] || 20;
+
+            if (dTrunk < 0.1 && dTrunk !== 0) return showError('Distancia troncal inválida (mínimo 0.1 km).');
+            if (dDist < 0.1) return showError('Distancia distribución inválida. (mínimo 0.1 km).');
+            if (dTotal > maxDist) return showError('Distancia total (' + dTotal.toFixed(1) + ' km) excede el máximo permitido para ' + classKey.replace('class', '') + ' (' + maxDist + ' km).');
+
+            if (nConn < 4 || nConn > 100) return showError('Conectores SC/APC: mínimo 4 (2 en OLT + 2 en NAP) y máximo 100.');
+            if (nSplice < 1 || nSplice > 50) return showError('Empalmes fusionados: al menos 1 por seguridad, máximo 50.');
+            if (margin < 0 || margin > 10) return showError('Margen de envejecimiento debe estar entre 0 y 10 dB.');
+
+            // Regla de Coherencia Topológica (Regla del 50%)
+            var ratio = parseInt(split1Key.split(':')[1]) || 0;
+            var numNaps = parseInt(document.getElementById('ob-splices').value) || nSplice;
+            var censoActual = parseInt(document.getElementById('censo').value) || 0;
+
+            if (ratio > 0 && censoActual > 0 && censoActual < (ratio * 0.5)) {
+                return showError('Incoherencia Topológica: Un splitter ' + split1Key + ' requiere al menos ' + Math.ceil(ratio * 0.5) + ' usuarios (regla del 50%). Tienes ' + censoActual + '.');
             }
+
             if (errEl) errEl.style.display = 'none';
 
-            var dTotal = dTrunk + dDist;
-            var lSplit1 = SPLIT_LOSS[split1Key] || 0;
-            var lSplit2 = SPLIT_LOSS[split2Key] || 0;
-            var lConn = nConn * L_CON;
-            var lSplice = nSplice * L_SPLICE;
+            var lSplit1 = consts.SPLIT_LOSS[split1Key] || 0;
+            var lSplit2 = consts.SPLIT_LOSS[split2Key] || 0;
+            var lConn = nConn * consts.L_CON;
+            var lSplice = nSplice * consts.L_SPLICE;
             var budgetBruto = pTx - sRx;
 
             function calcWL(alpha) {
@@ -1219,8 +1725,8 @@
                 return { lFiber: lFiber, lTotal: lTotal, pbm: budgetBruto - lTotal };
             }
 
-            var wl1310 = calcWL(ALPHA_1310);
-            var wl1490 = calcWL(ALPHA_1490);
+            var wl1310 = calcWL(consts.ALPHA_1310);
+            var wl1490 = calcWL(consts.ALPHA_1490);
 
             function classify(pbm) {
                 if (pbm >= 6) return { label: '\u2705 Estado: OPTIMO', bg: '#dcfce7', color: '#15803d' };
@@ -1251,12 +1757,12 @@
             document.getElementById('ob-wl-1490').style.borderColor = '#cbd5e1';
 
             var rows = [
-                { name: 'Fibra Troncal (1310nm)', qty: dTrunk + ' km', unit: ALPHA_1310.toFixed(2), total: ALPHA_1310 * dTrunk },
-                { name: 'Fibra Distribucion (1310nm)', qty: dDist + ' km', unit: ALPHA_1310.toFixed(2), total: ALPHA_1310 * dDist },
+                { name: 'Fibra Troncal (1310nm)', qty: dTrunk + ' km', unit: consts.ALPHA_1310.toFixed(2), total: consts.ALPHA_1310 * dTrunk },
+                { name: 'Fibra Distribucion (1310nm)', qty: dDist + ' km', unit: consts.ALPHA_1310.toFixed(2), total: consts.ALPHA_1310 * dDist },
                 { name: 'Splitter N1 (' + split1Key + ')', qty: '1', unit: lSplit1.toFixed(1), total: lSplit1, hidden: lSplit1 === 0 },
                 { name: 'Splitter N2 (' + split2Key + ')', qty: '1', unit: lSplit2.toFixed(1), total: lSplit2, hidden: lSplit2 === 0 },
-                { name: 'Conectores SC/APC', qty: nConn.toString(), unit: L_CON.toFixed(2), total: lConn, hidden: nConn === 0 },
-                { name: 'Empalmes por Fusion', qty: nSplice.toString(), unit: L_SPLICE.toFixed(2), total: lSplice, hidden: nSplice === 0 },
+                { name: 'Conectores SC/APC', qty: nConn.toString(), unit: consts.L_CON.toFixed(2), total: lConn, hidden: nConn === 0 },
+                { name: 'Empalmes por Fusion', qty: nSplice.toString(), unit: consts.L_SPLICE.toFixed(2), total: lSplice, hidden: nSplice === 0 },
                 { name: 'Margen Envejecimiento', qty: '-', unit: '-', total: margin }
             ];
 
@@ -1278,10 +1784,39 @@
             document.getElementById('ob-ltotal-1310').textContent = wl1310.lTotal.toFixed(2) + ' dB';
             document.getElementById('ob-budget-bruto').textContent = budgetBruto.toFixed(2) + ' dB';
 
-            var earlyEl = document.getElementById('ob-early-warning');
-            earlyEl.style.display = (wl1310.pbm < 5 && wl1310.pbm >= 0) ? 'block' : 'none';
+            // Llenar Fórmulas Aplicadas
+            var formulasText = [
+                '1. Presupuesto Bruto = P_TX - S_RX',
+                '   ' + pTx.toFixed(2) + ' dBm - (' + sRx.toFixed(2) + ' dBm) = ' + budgetBruto.toFixed(2) + ' dB',
+                '',
+                '2. Atenuación Total (L_total) = Fibra + Splitters + Conectores + Empalmes + Margen',
+                '   L_fibra_troncal (1310nm) : ' + dTrunk.toFixed(2) + ' km × ' + consts.ALPHA_1310.toFixed(2) + ' dB/km = ' + (dTrunk * consts.ALPHA_1310).toFixed(2) + ' dB',
+                '   L_fibra_distrib (1310nm) : ' + dDist.toFixed(2) + ' km × ' + consts.ALPHA_1310.toFixed(2) + ' dB/km = ' + (dDist * consts.ALPHA_1310).toFixed(2) + ' dB',
+                '   L_splitters              : ' + lSplit1.toFixed(2) + ' dB (N1) + ' + lSplit2.toFixed(2) + ' dB (N2) = ' + (lSplit1 + lSplit2).toFixed(2) + ' dB',
+                '   L_conectores             : ' + nConn + ' unid. × ' + consts.L_CON.toFixed(2) + ' dB = ' + lConn.toFixed(2) + ' dB',
+                '   L_empalmes               : ' + nSplice + ' unid. × ' + consts.L_SPLICE.toFixed(2) + ' dB = ' + lSplice.toFixed(2) + ' dB',
+                '   Margen de seguridad      : ' + margin.toFixed(2) + ' dB',
+                '   ------------------------------------------------------------',
+                '   L_total = ' + wl1310.lTotal.toFixed(2) + ' dB',
+                '',
+                '3. PBM (Power Budget Margin) = Presupuesto Bruto - L_total',
+                '   ' + budgetBruto.toFixed(2) + ' dB - ' + wl1310.lTotal.toFixed(2) + ' dB = ' + wl1310.pbm.toFixed(2) + ' dB'
+            ].join('\n');
+            var formEl = document.getElementById('ob-formulas-content');
+            if (formEl) formEl.textContent = formulasText;
+
+            // Visualizacion de advertencias multinivel
+            var alertas = window.analizarAlertas(wl1310.pbm, dTotal, nConn, split1Key);
+            window.renderizarAlertas(alertas);
 
             document.getElementById('ob-results').style.display = 'block';
+        };
+
+        window.toggleFormulasModal = function () {
+            var el = document.getElementById('ob-formulas-container');
+            if (el) {
+                el.style.display = el.style.display === 'none' ? 'block' : 'none';
+            }
         };
     </script>
 </body>

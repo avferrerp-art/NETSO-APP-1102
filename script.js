@@ -5785,65 +5785,37 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
 
     // OLT Logic
-
-    const puertosPon = Math.ceil(clientes / 128) * 1.25;
-
-    const puertosPONRounded = Math.ceil(puertosPon);
-
+    const puertosPONRounded = Math.ceil(clientes / 128);
     const sStock = stock.activos;
 
-
+    // Default to 8 ports if undefined
+    let oltModelKey = "NAVGPT-08P";
 
     // Check OLT
-
     if (sStock.olt === 'buy') {
-
         let modelo;
-
         let capacity;
-
-        if (puertosPONRounded <= 4) { modelo = "OLT Navigator 4 Puertos"; capacity = 4; }
-
-        else if (puertosPONRounded <= 8) { modelo = "OLT Navigator 8 Puertos"; capacity = 8; }
-
-        else { modelo = "OLT Navigator 16 Puertos"; capacity = 16; }
-
-
+        if (puertosPONRounded <= 4) { modelo = "OLT Navigator 4 Puertos"; capacity = 4; oltModelKey = "NAVGPT-04P"; }
+        else if (puertosPONRounded <= 8) { modelo = "OLT Navigator 8 Puertos"; capacity = 8; oltModelKey = "NAVGPT-08P"; }
+        else { modelo = "OLT Navigator 16 Puertos"; capacity = 16; oltModelKey = "NAVGPT-16"; }
 
         const qtyOlt = Math.ceil(puertosPONRounded / capacity) || 1;
-
         processReq("⚡ Equipos Activos", modelo, qtyOlt, "unidades", "crítica", null);
 
-
-
         // SFP C++ as conservative default
-
         processReq("⚡ Equipos Activos", "Módulos SFP C++", puertosPONRounded, "unidades", "crítica", null);
-
     } else {
-
         let cap = 0;
-
-        if (sStock.olt.includes('2')) cap = 2;
-
-        if (sStock.olt.includes('8')) cap = 8;
-
-        if (sStock.olt.includes('32')) cap = 16;
-
-
+        if (sStock.olt.includes('2') || sStock.olt.includes('4')) { cap = 4; oltModelKey = "NAVGPT-04P"; }
+        if (sStock.olt.includes('8')) { cap = 8; oltModelKey = "NAVGPT-08P"; }
+        if (sStock.olt.includes('32') || sStock.olt.includes('16')) { cap = 16; oltModelKey = "NAVGPT-16"; }
 
         if (puertosPONRounded > cap) {
-
             processReq("⚡ Equipos Activos", `Upgrade OLT Requerido (Necesitas ${puertosPONRounded} puertos)`, Math.ceil(puertosPONRounded / 16) || 1, "sistema", "crítica", null);
-
         }
-
         if (sStock.sfp === 'none') {
-
             processReq("⚡ Equipos Activos", "Módulos SFP C++", puertosPONRounded, "unidades", "crítica", null);
-
         }
-
     }
 
 
@@ -13397,9 +13369,8 @@ window.updateArchitectureDetailsPanel = function (oltOptimal, isCalculatingMetri
 
 
 
-    // Sincronizando con la lógica del BOM (clientes / 128 × 1.25 overhead como en generarListaCotizacion)
-    const ponPortsBase = Math.ceil(liveClientCount / 128);
-    const ponPortsNeeded = Math.ceil(ponPortsBase * 1.25);
+    // Sincronizando con la lógica del BOM (clientes / 128)
+    const ponPortsNeeded = Math.ceil(liveClientCount / 128);
 
 
 
@@ -13479,11 +13450,18 @@ window.updateArchitectureDetailsPanel = function (oltOptimal, isCalculatingMetri
 
     // --- Notificar al Presupuesto Optico con datos reales ---
     if (typeof window.notifyArchitectureReady === 'function') {
+        const puertosPONRounded = Math.ceil(liveClientCount / 128);
+        let derivedOltKey = "NAVGPT-08P"; // Default
+        if (puertosPONRounded <= 4) derivedOltKey = "NAVGPT-04P";
+        else if (puertosPONRounded <= 8) derivedOltKey = "NAVGPT-08P";
+        else derivedOltKey = "NAVGPT-16";
+
         window.notifyArchitectureReady({
             naps16: naps16,
             naps48: naps48,
             feederKm: parseFloat((fiberFeeder / 1000).toFixed(2)),
-            distKm: parseFloat((fiberDist / 1000).toFixed(2))
+            distKm: parseFloat((fiberDist / 1000).toFixed(2)),
+            oltModelKey: derivedOltKey
         });
     }
 

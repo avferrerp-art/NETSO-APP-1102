@@ -1642,3 +1642,58 @@ body {
         transform: translateY(0);
     }
 }
+
+/* ===========================================
+   PRESUPUESTO OPTICO: EXPORTACION PDF
+   =========================================== */
+@media print {
+
+    /* Ocultar todo excepto el panel de presupuesto */
+    body * {
+        visibility: hidden;
+    }
+
+    #ob-results,
+    #ob-results * {
+        visibility: visible;
+    }
+
+    #ob-early-warning,
+    #ob-early-warning * {
+        visibility: visible;
+    }
+
+    #ob-status-badge {
+        visibility: visible;
+    }
+
+    /* Posicionar el panel como página única */
+    #ob-results {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        padding: 24px;
+        background: white;
+    }
+
+    /* Ocultar botones de exportación en la impresión */
+    #ob-results button {
+        display: none !important;
+    }
+
+    /* Mejorar tipografía para impresión */
+    #ob-results table {
+        font-size: 12px;
+    }
+
+    #ob-status-badge {
+        font-size: 14px !important;
+    }
+
+    /* Forzar colores legibles en papel */
+    #ob-results * {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}

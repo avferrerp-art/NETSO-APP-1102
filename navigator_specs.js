@@ -20,58 +20,52 @@ window.NAVIGATOR_SPECS = {
                 label: 'Navigator NAVGPT-01P (1 puerto GPON)',
                 gponPorts: 1,
                 maxSubs: 128,
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, sRx: -28, pSat: -8 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, sRx: -30, pSat: -12 },
+                supportedClasses: ['classBplus', 'classCplus'],
+                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
+                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
                 defaultClass: 'classBplus',
-                pTxDefault: 3.5,   // dBm — punto medio Clase B+
-                sRxDefault: -28,    // dBm
                 maxDistKm: 20
             },
             'NAVGPT-02P': {
                 label: 'Navigator NAVGPT-02P (2 puertos GPON)',
                 gponPorts: 2,
                 maxSubs: 256,
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, sRx: -28, pSat: -8 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, sRx: -30, pSat: -12 },
+                supportedClasses: ['classBplus', 'classCplus'],
+                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
+                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
                 defaultClass: 'classBplus',
-                pTxDefault: 3.5,
-                sRxDefault: -28,
                 maxDistKm: 20
             },
             'NAVGPT-04P': {
                 label: 'Navigator NAVGPT-04P (4 puertos GPON)',
                 gponPorts: 4,
                 maxSubs: 512,
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, sRx: -28, pSat: -8 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, sRx: -30, pSat: -12 },
+                supportedClasses: ['classBplus', 'classCplus'],
+                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
+                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
                 defaultClass: 'classBplus',
-                pTxDefault: 3.5,
-                sRxDefault: -28,
                 maxDistKm: 20
             },
             'NAVGPT-08P': {
                 label: 'Navigator NAVGPT-08P (8 puertos GPON)',
                 gponPorts: 8,
                 maxSubs: 1024,
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, sRx: -28, pSat: -8 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, sRx: -30, pSat: -12 },
+                supportedClasses: ['classBplus', 'classCplus'],
+                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
+                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
                 defaultClass: 'classBplus',
-                pTxDefault: 3.5,
-                sRxDefault: -28,
                 maxDistKm: 20
             },
             'NAVGPT-16': {
                 label: 'Navigator NAVGPT-16 (16 puertos GPON)',
                 gponPorts: 16,
                 maxSubs: 2048,
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, sRx: -28, pSat: -8 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, sRx: -30, pSat: -12 },
-                // C++ y C+++ tambien soportados en NAVGPT-16
-                classCplusplus: { pTx_min: 6.0, pTx_max: 10.0, sRx: -32, pSat: -12 },
+                supportedClasses: ['classBplus', 'classCplus', 'classCplusplus'],
+                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
+                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
+                classCplusplus: { pTx_min: 6.0, pTx_max: 10.0, pTx_typical: 8.0, sRx: -32, pSat: -12, iturBudget: 35 },
                 defaultClass: 'classCplus',
-                pTxDefault: 5.0,   // dBm — punto medio Clase C+
-                sRxDefault: -30,
-                maxDistKm: 20
+                maxDistKm: 60
             }
         }
     },
