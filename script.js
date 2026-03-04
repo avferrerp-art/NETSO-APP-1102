@@ -6420,13 +6420,13 @@ function renderCotizacionTable() {
 
             </div>
 
-            <button onclick="fetchOdooProducts()" title="Refrescar datos de Odoo"
+            <button onclick="fetchOdooProducts()" title="Refrescar datos"
 
                 style="background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569; padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s;"
 
                 onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
 
-                <span>🔄</span> Refrescar Odoo
+                <span>🔄</span> Refrescar
 
             </button>
 
@@ -6660,7 +6660,7 @@ function renderCotizacionTable() {
 
             <tr style="background: #f1f5f9; border-top: 2px solid #e2e8f0; font-weight: 800;">
 
-                <td colspan="4" style="padding: 15px 16px; text-align: right; color: #475569; font-size: 13px;">TOTAL ESTIMADO (ODOO)</td>
+                <td colspan="4" style="padding: 15px 16px; text-align: right; color: #475569; font-size: 13px;">TOTAL ESTIMADO</td>
 
                 <td style="padding: 15px 16px; text-align: right; color: #0f172a; font-size: 15px;">$${totalEstimado.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
 
@@ -6704,7 +6704,7 @@ function renderCotizacionTable() {
 
                 <span style="font-size:10px; color:${allOdooProducts.length > 0 ? '#15803d' : '#64748b'}; background:${allOdooProducts.length > 0 ? '#dcfce7' : '#f1f5f9'}; padding:2px 6px; border-radius:4px;">
 
-                    ${allOdooProducts.length > 0 ? '✅ Catálogo Odoo Cargado' : '⏳ Sincronizando Catálogo...'}
+                    ${allOdooProducts.length > 0 ? '✅ Catálogo Cargado' : '⏳ Sincronizando Catálogo...'}
 
                 </span>
 
@@ -7573,7 +7573,7 @@ async function downloadComparisonReport() {
 
                 <table>
 
-                    <tr><td colspan="8" class="header" style="font-size:18px;">🛒 PLAN DE COMPRA - INTEGRACIÓN ODOO</td></tr>
+                    <tr><td colspan="8" class="header" style="font-size:18px;"> PLAN DE COMPRA</td></tr>
 
                     <tr><td colspan="8" style="text-align:center; background:#f1f5f9;">Proyecto: <strong>${projectName}</strong> - Cliente: <strong>${ispName}</strong></td></tr>
 
@@ -7585,9 +7585,9 @@ async function downloadComparisonReport() {
 
                     <tr style="height: 30px;">
 
-                        <td class="col-head" style="width:250px;">ITEM CALCULADO (INGENIERÍA)</td>
+                        <td class="col-head" style="width:250px;">ITEM CALCULADO</td>
 
-                        <td class="col-head" style="width:350px;">PRODUCTO ODOO (MATCH)</td>
+                        <td class="col-head" style="width:350px;">PRODUCTO CATALOGO INTERNO</td>
 
                         <td class="col-head" style="width:100px;">STOCK ISP</td>
 
@@ -8846,11 +8846,7 @@ async function fetchOdooProducts(isAuto = false) {
 
         }
 
-
-
-        alert(`✅ Catálogo actualizado y movimientos calculados.\n\nAhora puedes buscar productos en "Agregar Producto Extra".`);
-
-
+        alert(`✅ Catálogo sincronizado exitosamente.\n\nInventario en tiempo real cargado y movimientos calculados.\nAhora puedes buscar productos actualizados en "Agregar Producto Extra".`);
 
     } catch (error) {
 
@@ -13301,6 +13297,48 @@ window.updateArchParams = function () {
 
 
 
+// Definimos la función para actualizar la OLT cuando el usuario edita las coordenadas manualmente
+window.updateOLTFromInputs = function () {
+    const latInput = document.getElementById('editable-olt-lat');
+    const lngInput = document.getElementById('editable-olt-lng');
+
+    if (!latInput || !lngInput) return;
+
+    const lat = parseFloat(latInput.value);
+    const lng = parseFloat(lngInput.value);
+
+    if (isNaN(lat) || isNaN(lng)) {
+        if (typeof showToast === 'function') showToast("Coordenadas inválidas. Usa formato numérico.", "error");
+        return;
+    }
+
+    if (window.currentOLTMarker) {
+        // Movemos el pin de la OLT
+        window.currentOLTMarker.setLngLat([lng, lat]);
+
+        // Centramos el mapa
+        if (window.map) {
+            window.map.flyTo({ center: [lng, lat], zoom: 16 });
+        }
+
+        if (typeof showToast === 'function') showToast("Ubicación de OLT actualizada. Recalculando distancias...", "info");
+
+        // Limpiamos los clústers para forzar el recalculo de distribución si es necesario
+        window.rawNaps = [];
+
+        // Disparamos el recalculo completo (esto actualizará el dashboard, distancias y lista de materiales)
+        if (typeof window.finalizar === 'function') {
+            try {
+                window.finalizar();
+            } catch (e) {
+                console.error("Error al recalcular la arquitectura por cambio de coords OLT:", e);
+            }
+        }
+    } else {
+        if (typeof showToast === 'function') showToast("Genera la arquitectura primero en el mapa.", "warning");
+    }
+};
+
 // Override or define showArchitecture
 
 /**
@@ -13492,13 +13530,13 @@ window.updateArchitectureDetailsPanel = function (oltOptimal, isCalculatingMetri
 
                     <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em; margin-bottom: 4px;">Ubicación OLT</div>
 
-                    <div style="font-size: 11px; color: #475569; font-family: monospace; background: #f1f5f9; padding: 4px 10px; border-radius: 8px; border: 1px solid #e2e8f0; display: inline-flex; align-items: center; gap: 5px;">
+                    <div style="font-size: 11px; color: #475569; font-family: monospace; background: #f1f5f9; padding: 4px 8px; border-radius: 8px; border: 1px solid #e2e8f0; display: inline-flex; align-items: center; gap: 3px;" title="Edita estas coordenadas para mover la OLT manualmente">
 
-                        <span style="color: #0ea5e9;">${oltOptimal.lat.toFixed(6)}</span>
+                        <input type="number" step="0.000001" id="editable-olt-lat" value="${oltOptimal.lat.toFixed(6)}" style="color: #0ea5e9; font-weight: 700; width: 75px; background: transparent; border: 1px dashed transparent; outline: none; text-align: center; font-family: monospace; transition: all 0.2s; cursor: text;" onfocus="this.style.borderColor='#bae6fd'; this.style.background='#ffffff'" onblur="this.style.borderColor='transparent'; this.style.background='transparent'" onchange="if(typeof window.updateOLTFromInputs==='function') window.updateOLTFromInputs()">
 
                         <span style="opacity: 0.2;">|</span>
 
-                        <span style="color: #0ea5e9;">${oltOptimal.lng.toFixed(6)}</span>
+                        <input type="number" step="0.000001" id="editable-olt-lng" value="${oltOptimal.lng.toFixed(6)}" style="color: #0ea5e9; font-weight: 700; width: 75px; background: transparent; border: 1px dashed transparent; outline: none; text-align: center; font-family: monospace; transition: all 0.2s; cursor: text;" onfocus="this.style.borderColor='#bae6fd'; this.style.background='#ffffff'" onblur="this.style.borderColor='transparent'; this.style.background='transparent'" onchange="if(typeof window.updateOLTFromInputs==='function') window.updateOLTFromInputs()">
 
                     </div>
 
@@ -15215,7 +15253,38 @@ async function drawNetworkLines(olt, naps) {
 
     });
 
-
+    // ─── Recalcular distancia OLT ruteada real (por árbol de fibra) ───────────
+    // Usamos BFS en el MST para obtener la distancia de fibra real a cada NAP
+    (function recalcRoutedDistances() {
+        const adjMST = Array.from({ length: nodes.length }, () => []);
+        mstEdges.forEach((e, i) => {
+            const d = calcLineStringLen(routeCoords[i]);
+            adjMST[e.fromIdx].push({ to: e.toIdx, dist: d });
+            adjMST[e.toIdx].push({ to: e.fromIdx, dist: d });
+        });
+        const routedDist = new Array(nodes.length).fill(0);
+        const visited = new Array(nodes.length).fill(false);
+        const queue = [0];
+        visited[0] = true;
+        while (queue.length > 0) {
+            const curr = queue.shift();
+            for (const nb of adjMST[curr]) {
+                if (!visited[nb.to]) {
+                    visited[nb.to] = true;
+                    routedDist[nb.to] = routedDist[curr] + nb.dist;
+                    queue.push(nb.to);
+                }
+            }
+        }
+        // Actualizar distanciaOLT de cada NAP con el recorrido real de fibra
+        window.naps.forEach((nap, i) => {
+            nap.distanciaOLT = routedDist[i + 1]; // nodes[0] = OLT, nodes[1..] = NAPs
+        });
+        // Refrescar el panel de rendimiento con los datos reales
+        if (typeof updateOptimizationLabel === 'function') {
+            updateOptimizationLabel(window.naps, window.currentRadiusMeters || 500);
+        }
+    })();
 
     window.currentNetworkMetrics = {
 
@@ -16010,9 +16079,9 @@ function updateOptimizationLabel(naps, radiusMeters) {
 
     let withinRange = 0;
 
-    // Límite Técnico de la OLT (10km)
+    // Límite Técnico de la OLT (20km)
 
-    const OLT_TECH_LIMIT = 10000;
+    const OLT_TECH_LIMIT = 20000;
 
 
 
@@ -16074,7 +16143,7 @@ function updateOptimizationLabel(naps, radiusMeters) {
 
 
 
-    // Structural Coverage Status (Technical Baseline 10km)
+    // Structural Coverage Status (Technical Baseline 20km)
 
     const coverageStatusLabel = technicalReachPct >= 100 ?
 
@@ -16100,7 +16169,7 @@ function updateOptimizationLabel(naps, radiusMeters) {
 
                     <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; background: #f1f5f9; padding: 4px 10px; border-radius: 20px; border: 1px solid #e2e8f0;">
 
-                        Límite Técnico: 10km
+                        Límite Técnico: 20km
 
                     </div>
 
@@ -16140,26 +16209,40 @@ function updateOptimizationLabel(naps, radiusMeters) {
 
                     <div style="font-size: 14px; color: #0f172a;">${coverageStatusLabel}</div>
 
-                    <div style="font-size: 12px; color: #475569; margin-top: 2px;">Basado en límite de 10km.</div>
+                    <div style="font-size: 12px; color: #475569; margin-top: 2px;">Basado en límite de 20km.</div>
 
                 </div>
 
 
 
-                <!-- Uso de Nodos -->
-
+                <!-- Leyenda del Mapa -->
                 <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 12px; display: flex; flex-direction: column; justify-content: center;">
-
-                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">Aprovechamiento NAPs</div>
-
-                    <div style="font-size: 16px; font-weight: 800; color: #3b82f6; display: flex; align-items: baseline; gap: 4px;">
-
-                        ${withinRange} <span style="font-size: 12px; font-weight: 500; color: #64748b;">/ ${naps.length} Activos</span>
-
+                    <div style="font-size: 11px; font-weight: 800; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Leyenda del Mapa</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px; color: #475569; font-weight: 500;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="width: 8px; height: 8px; background: #ef4444; border-radius: 50%; display: inline-block;"></span> OLT
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="width: 8px; height: 8px; background: #3b82f6; border-radius: 50%; display: inline-block;"></span> NAP 48
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="width: 8px; height: 8px; background: #f97316; border-radius: 50%; display: inline-block;"></span> NAP 16
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="width: 14px; height: 3px; background: #3b82f6; display: inline-block;"></span> Fibra Dist.
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="width: 14px; height: 3px; background: #8b5cf6; display: inline-block;"></span> Fibra Tronc.
+                        </div>
                     </div>
-
                 </div>
 
+            </div>
+
+            <!-- Aviso de interactividad -->
+            <div style="margin-top: 12px; padding: 8px 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">↕️</span>
+                <span style="font-size: 11px; color: #0369a1; font-weight: 600;">Arrastra la OLT y los NAPs directamente en el mapa para ajustar su posición — la fibra y distancias se recalcularán automáticamente.</span>
             </div>
 
         </div>

@@ -373,6 +373,13 @@
         </div>
 
         <div id="page2" class="page content" style="display:none;">
+            <div style="margin-bottom: 20px;">
+                <button type="button" onclick="nextPage(1)"
+                    style="background: none; border: none; color: #64748b; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 0; transition: color 0.2s;"
+                    onmouseover="this.style.color='#1e293b'" onmouseout="this.style.color='#64748b'">
+                    <span style="font-size: 18px;">←</span> Volver
+                </button>
+            </div>
             <div class="section notice-card" style="background: #eff6ff; border-color: #3b82f6; margin-bottom: 25px;">
                 <h2 class="section-title" style="color: #1e293b;">📢 Inventario y Auditoría de Stock</h2>
                 <p style="font-size: 14px; color: #475569; line-height: 1.6; margin-bottom: 0;">
@@ -482,7 +489,7 @@
 
         <!-- NUEVA PÁGINA 3: ANÁLISIS DE IMAGEN -->
         <div id="page3" class="page content" style="display:none;">
-            <h2 class="main-title" style="text-align: center; margin-bottom: 16px;">📸 Análisis de Campo</h2>
+            <h2 class="main-title" style="text-align: center; margin-bottom: 16px;">Análisis de Campo</h2>
             <p style="text-align: center; color: #64748b; font-size: 14px; margin-bottom: 24px;">
                 Sube una foto del terreno y nuestro ingeniero AI te dará recomendaciones profesionales
             </p>
@@ -529,7 +536,7 @@
 
             <button class="btn-primary" id="analyzeBtn" onclick="analyzeImage()"
                 style="display: none; margin-bottom: 16px;">
-                🤖 Analizar con Ingeniero AI
+                Analizar con Ingeniero AI
             </button>
 
             <div id="analysisResult" style="display: none;" class="analysis-card">
@@ -687,7 +694,7 @@
                     <!-- BADGE: datos cargados desde arquitectura (oculto por defecto) -->
                     <div id="ob-arch-badge"
                         style="display:none; margin-bottom: 14px; padding: 8px 14px; background: #dcfce7; border: 1px solid #86efac; border-radius: 8px; font-size: 12px; color: #166534; font-weight: 700;">
-                        🔗 Datos cargados automáticamente desde la Arquitectura de Red — puedes ajustarlos manualmente
+                        Datos cargados automáticamente desde la Arquitectura de Red — puedes ajustarlos manualmente
                     </div>
 
                     <!-- INPUTS GRID -->
@@ -831,7 +838,7 @@
 
                     <button onclick="calcularPresupuestoOptico()"
                         style="width: 100%; padding: 12px; background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%); color: white; font-weight: 700; font-size: 14px; border: none; border-radius: 10px; cursor: pointer;">
-                        📐 Calcular Presupuesto Óptico
+                        Calcular Presupuesto Óptico
                     </button>
 
                     <!-- EARLY WARNING BANNER -->
@@ -852,7 +859,7 @@
                             <div id="ob-wl-1310"
                                 style="background: white; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px; text-align: center;">
                                 <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">1310
-                                    nm · Upstream ⬆ (Peor caso)</div>
+                                    nm · Upstream ⬆</div>
                                 <div id="ob-pbm-1310" style="font-size: 22px; font-weight: 900;"></div>
                                 <div style="font-size: 11px; color: #94a3b8;">PBM (dB)</div>
                             </div>
@@ -877,36 +884,61 @@
 
                         <!-- Formulas Container (Hidden by default) -->
                         <div id="ob-formulas-container"
-                            style="display: none; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 13px; color: #334155;">
-                            <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">Cálculos Paso a Paso
-                                (Peor caso: 1310 nm):</div>
+                            style="display: none; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; font-size: 13px; color: #334155;">
+                            <!-- Header -->
+                            <div
+                                style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0;">
+                                <span
+                                    style="background: #1e293b; color: white; border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px;">1310
+                                    nm · UPSTREAM</span>
+                                <span style="font-weight: 700; color: #0f172a; font-size: 13px;">Cálculos Paso a
+                                    Paso</span>
+                                <span style="margin-left: auto; font-size: 11px; color: #94a3b8; font-weight: 500;">⚠
+                                    Peor caso</span>
+                            </div>
                             <div id="ob-formulas-content"
-                                style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; line-height: 1.6;">
+                                style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space: pre-wrap; line-height: 1.8; font-size: 12px; background: white; border-radius: 8px; padding: 12px 14px; border: 1px solid #e2e8f0; color: #334155;">
                             </div>
                         </div>
 
                         <!-- Loss breakdown table -->
-                        <div style="border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0;">
+                        <div
+                            style="border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
                             <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                                 <thead>
-                                    <tr style="background: #1e293b; color: white;">
-                                        <th style="padding: 10px 12px; text-align: left;">Elemento</th>
-                                        <th style="padding: 10px 8px; text-align: center;">Cant.</th>
-                                        <th style="padding: 10px 8px; text-align: right;">Unit. (dB)</th>
-                                        <th style="padding: 10px 8px; text-align: right;">Total (dB)</th>
+                                    <tr
+                                        style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: white;">
+                                        <th
+                                            style="padding: 11px 14px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">
+                                            Elemento</th>
+                                        <th
+                                            style="padding: 11px 10px; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">
+                                            Cant.</th>
+                                        <th
+                                            style="padding: 11px 10px; text-align: right; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">
+                                            Unit. (dB)</th>
+                                        <th
+                                            style="padding: 11px 10px; text-align: right; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">
+                                            Total (dB)</th>
                                     </tr>
                                 </thead>
                                 <tbody id="ob-breakdown-body"></tbody>
                                 <tfoot>
-                                    <tr style="background: #f1f5f9; font-weight: 700; border-top: 2px solid #cbd5e1;">
-                                        <td colspan="3" style="padding: 10px 12px; text-align: right;">L<sub>total</sub>
-                                            (1310 nm)</td>
-                                        <td id="ob-ltotal-1310" style="padding: 10px 8px; text-align: right;"></td>
+                                    <tr style="background: #f8fafc; font-weight: 700; border-top: 2px solid #cbd5e1;">
+                                        <td colspan="3"
+                                            style="padding: 11px 14px; text-align: right; color: #475569; font-size: 12px;">
+                                            L<sub>total</sub> (1310 nm)</td>
+                                        <td id="ob-ltotal-1310"
+                                            style="padding: 11px 10px; text-align: right; font-size: 14px; color: #0f172a;">
+                                        </td>
                                     </tr>
                                     <tr style="background: #f1f5f9; font-weight: 700;">
-                                        <td colspan="3" style="padding: 10px 12px; text-align: right;">Budget Bruto
-                                            OLT–ONT</td>
-                                        <td id="ob-budget-bruto" style="padding: 10px 8px; text-align: right;"></td>
+                                        <td colspan="3"
+                                            style="padding: 11px 14px; text-align: right; color: #475569; font-size: 12px;">
+                                            Budget Bruto OLT–ONT</td>
+                                        <td id="ob-budget-bruto"
+                                            style="padding: 11px 10px; text-align: right; font-size: 14px; color: #0f172a;">
+                                        </td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -914,19 +946,22 @@
 
                         <!-- Class reference -->
                         <div
-                            style="margin-top: 12px; padding: 10px 14px; background: #eff6ff; border-radius: 8px; font-size: 12px; color: #1e40af;">
-                            📋 <strong>Referencia ITU-T G.984.2:</strong>&nbsp; Clase B+ = 28 dB &nbsp;|&nbsp; Clase C+
-                            = 32 dB &nbsp;|&nbsp; Clase C++ = 35 dB
+                            style="margin-top: 12px; padding: 10px 14px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border-radius: 10px; border: 1px solid #bfdbfe; font-size: 12px; color: #1e40af; display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 14px;">📋</span>
+                            <span><strong>Referencia ITU-T G.984.2:</strong>&nbsp; Clase B+ = 28 dB &nbsp;|&nbsp; Clase
+                                C+ = 32 dB &nbsp;|&nbsp; Clase C++ = 35 dB</span>
                         </div>
 
                         <!-- BOTONES DE EXPORTACION -->
-                        <div style="display:flex; gap:8px; margin-top:14px;">
+                        <div style="display:flex; gap:10px; margin-top:14px;">
                             <button onclick="exportarPresupuestoJSON()"
-                                style="flex:1; padding:10px; background:linear-gradient(135deg,#0f766e,#0d9488); color:white; font-weight:700; font-size:13px; border:none; border-radius:8px; cursor:pointer;">
+                                style="flex:1; padding:11px; background:linear-gradient(135deg,#0f766e,#0d9488); color:white; font-weight:700; font-size:13px; border:none; border-radius:10px; cursor:pointer; letter-spacing: 0.3px; transition: opacity 0.2s;"
+                                onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
                                 ⬇ Exportar JSON
                             </button>
                             <button onclick="exportarPresupuestoPDF()"
-                                style="flex:1; padding:10px; background:linear-gradient(135deg,#7c3aed,#6d28d9); color:white; font-weight:700; font-size:13px; border:none; border-radius:8px; cursor:pointer;">
+                                style="flex:1; padding:11px; background:linear-gradient(135deg,#7c3aed,#6d28d9); color:white; font-weight:700; font-size:13px; border:none; border-radius:10px; cursor:pointer; letter-spacing: 0.3px; transition: opacity 0.2s;"
+                                onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
                                 🖨 Exportar PDF
                             </button>
                         </div>
@@ -1268,7 +1303,6 @@
             if (badge) badge.textContent = loss.toFixed(1) + ' dB';
 
             window.validarCascadaSplitters();
-            if (typeof calcularPresupuestoOptico === 'function') calcularPresupuestoOptico();
         };
 
         window.onSplit2Change = function () {
@@ -1278,8 +1312,6 @@
             var loss = window.OPTICAL_CONSTANTS ? (window.OPTICAL_CONSTANTS.SPLIT_LOSS[val] || 0) : 0;
             var badge = document.getElementById('split2-loss-badge');
             if (badge) badge.textContent = loss.toFixed(1) + ' dB';
-
-            if (typeof calcularPresupuestoOptico === 'function') calcularPresupuestoOptico();
         };
 
         window.onSplit2CheckboxChange = function () {
@@ -1293,7 +1325,6 @@
 
             if (cb.checked) {
                 if (!window.validarCascadaSplitters()) {
-                    if (typeof calcularPresupuestoOptico === 'function') calcularPresupuestoOptico();
                     return;
                 }
                 var val = sel.value;
@@ -1303,8 +1334,6 @@
                 sel.value = '0';
                 if (badge) { badge.textContent = '0 dB'; badge.style.color = '#94a3b8'; badge.style.borderColor = '#e2e8f0'; badge.style.background = '#f8fafc'; }
             }
-
-            if (typeof calcularPresupuestoOptico === 'function') calcularPresupuestoOptico();
         };
 
         // ============================================================
@@ -1330,14 +1359,16 @@
         window.notifyArchitectureReady = function (data) {
             data = data || {};
 
-            // Normalizar estructura de conectores y empalmes (acepta formato legacy y nuevo)
-            var connTotal = (data.connectors && data.connectors.total) ? data.connectors.total
-                : (data.naps48 + data.naps16 > 0) ? Math.max(6, (data.naps48 + data.naps16) * 2 + 4) : 6;
-            var spliceTotal = (data.splices && data.splices.total) ? data.splices.total
-                : (data.naps48 + data.naps16 > 0) ? Math.max(4, data.naps48 + data.naps16) : 4;
-
             var feederKm = data.feederKm || 0;
             var distKm = data.distKm || 0;
+            var totalKm = feederKm + distKm;
+
+            // Normalizar estructura de conectores y empalmes para una ruta punto a punto (OLT -> ONT)
+            var connTotal = (data.connectors && data.connectors.total) ? data.connectors.total : 6;
+
+            // 2 fijos (ODF + FDT) + 1 empalme por cada 2.5 km, máximo 7 empalmes
+            var splicesCalc = 2 + Math.ceil(totalKm / 2.5);
+            var spliceTotal = (data.splices && data.splices.total) ? data.splices.total : Math.min(7, splicesCalc);
 
             // Fallback: si no hay desglose use totalFibraKm con regla 30/70
             if (!feederKm && window.arquitecturaData && window.arquitecturaData.totalFibraKm) {
@@ -1354,8 +1385,7 @@
 
             // ---- Detectar si usuario modificó manualmente ----
             if (!arqCambio && window.OB_STATE.parametrosManualmenteSobrescritos) {
-                // Misma arquitectura, usuario rechazó antes → respetar
-                window.calcularPresupuestoOptico();
+                // Misma arquitectura, usuario rechazó antes → respetar parámetros (sin recalcular auto)
                 return;
             }
 
@@ -1376,7 +1406,6 @@
                 var acepta = confirm(msg + '\n¿Actualizar automáticamente?');
                 if (!acepta) {
                     window.OB_STATE.parametrosManualmenteSobrescritos = true;
-                    window.calcularPresupuestoOptico();
                     return;
                 }
             }
@@ -1462,8 +1491,7 @@
             window.OB_STATE.arquitecturaActual = JSON.parse(JSON.stringify(
                 { feederKm: feederKm, distKm: distKm, connTotal: connTotal, spliceTotal: spliceTotal }
             ));
-
-            window.calcularPresupuestoOptico();
+            // El presupuesto óptico se calcula solo al presionar el botón "Calcular Presupuesto Óptico"
         };
 
         // ============================================================
@@ -1535,7 +1563,7 @@
         // Límites teóricos por estándares Clase OLT G.984
         window.DISTANCE_LIMITS = {
             'classBplus': 20,
-            'classCplus': 25,
+            'classCplus': 20,
             'classCplusplus': 60
         };
 
@@ -1547,11 +1575,12 @@
             var maxDist = window.DISTANCE_LIMITS[classKey] || 20;
 
             // Alerta 1: Distancia Operativa Crítica
-            if (distancia > 15 && distancia <= maxDist) {
+            var effectiveLimit = 20; // Límite real de los equipos Navigator (B+ y C+)
+            if (distancia > 15 && distancia <= effectiveLimit) {
                 var sugDist = [];
-                // Solo sugerir upgrade de clase si no es ya C++
+                // Solo sugerir upgrade a NAVGPT-16 si no es ya C++
                 if (classKey !== 'classCplusplus') {
-                    sugDist.push('• Considerar upgrading a OLT Clase C++ (distancia máx 60 km)');
+                    sugDist.push('• Considerar upgrading a OLT NAVGPT-16 Clase C++ (distancia máx 60 km)');
                 }
                 var margin = parseFloat(document.getElementById('ob-margin').value) || 0;
                 sugDist.push('• Considerar amplificador óptico (booster) después de NAP');
@@ -1561,7 +1590,7 @@
                     level: 'WARNING',
                     icon: '📏',
                     titulo: 'Distancia Elevada (' + distancia.toFixed(1) + ' km)',
-                    detalle: 'Cercano al límite de clase GPON (' + maxDist + ' km)',
+                    detalle: 'Cercano al límite de clase GPON (' + effectiveLimit + ' km)',
                     sugerencias: sugDist
                 });
             }
@@ -1785,22 +1814,63 @@
             document.getElementById('ob-budget-bruto').textContent = budgetBruto.toFixed(2) + ' dB';
 
             // Llenar Fórmulas Aplicadas
+            var oltModelLabel = document.getElementById('ob-olt-model') ? (document.getElementById('ob-olt-model').options[document.getElementById('ob-olt-model').selectedIndex] || {}).text || 'Navigator OLT' : 'Navigator OLT';
+            var ontModelLabel = document.getElementById('ob-ont-model') ? (document.getElementById('ob-ont-model').options[document.getElementById('ob-ont-model').selectedIndex] || {}).text || 'Navigator ONT' : 'Navigator ONT';
+            var split1Label = split1Key !== '0' ? split1Key : 'N/A';
+            var split2Label = (document.getElementById('ob-split2-enable') && document.getElementById('ob-split2-enable').checked && split2Key !== '0') ? split2Key : 'N/A';
+            var splitterDesc = split2Label !== 'N/A' ? (split1Label + ' → ' + split2Label + ' (cascada)') : split1Label;
+            var dTotal = dTrunk + dDist;
+            var marginWarning = margin < 3 ? '  ⚠ Recomendado: 3–5 dB para envejecimiento y temperatura' : '  ✔ Dentro del rango recomendado (3–5 dB)';
+            var pbmInterpret = wl1310.pbm >= 3 ? '✔ ENLACE VIABLE  (PBM ≥ 3 dB)' : '✘ ENLACE EN RIESGO  (PBM < 3 dB — revisar diseño)';
+
             var formulasText = [
-                '1. Presupuesto Bruto = P_TX - S_RX',
-                '   ' + pTx.toFixed(2) + ' dBm - (' + sRx.toFixed(2) + ' dBm) = ' + budgetBruto.toFixed(2) + ' dB',
+                '════════════════════════════════════════════════════',
+                '  PARÁMETROS DEL SISTEMA',
+                '════════════════════════════════════════════════════',
+                '  Estándar         : GPON  (ITU-T G.984.2)',
+                '  OLT              : ' + oltModelLabel,
+                '  ONT              : ' + ontModelLabel,
+                '  Fibra            : SMF · G.652.D  (monomodo estándar)',
+                '  Distancia total  : ' + dTotal.toFixed(2) + ' km  (troncal ' + dTrunk.toFixed(2) + ' + dist. ' + dDist.toFixed(2) + ')',
+                '  Split            : ' + splitterDesc,
+                '  P_TX (OLT)       : ' + pTx.toFixed(2) + ' dBm',
+                '  S_RX (ONT)       : ' + sRx.toFixed(2) + ' dBm',
                 '',
-                '2. Atenuación Total (L_total) = Fibra + Splitters + Conectores + Empalmes + Margen',
-                '   L_fibra_troncal (1310nm) : ' + dTrunk.toFixed(2) + ' km × ' + consts.ALPHA_1310.toFixed(2) + ' dB/km = ' + (dTrunk * consts.ALPHA_1310).toFixed(2) + ' dB',
-                '   L_fibra_distrib (1310nm) : ' + dDist.toFixed(2) + ' km × ' + consts.ALPHA_1310.toFixed(2) + ' dB/km = ' + (dDist * consts.ALPHA_1310).toFixed(2) + ' dB',
-                '   L_splitters              : ' + lSplit1.toFixed(2) + ' dB (N1) + ' + lSplit2.toFixed(2) + ' dB (N2) = ' + (lSplit1 + lSplit2).toFixed(2) + ' dB',
-                '   L_conectores             : ' + nConn + ' unid. × ' + consts.L_CON.toFixed(2) + ' dB = ' + lConn.toFixed(2) + ' dB',
-                '   L_empalmes               : ' + nSplice + ' unid. × ' + consts.L_SPLICE.toFixed(2) + ' dB = ' + lSplice.toFixed(2) + ' dB',
-                '   Margen de seguridad      : ' + margin.toFixed(2) + ' dB',
-                '   ------------------------------------------------------------',
-                '   L_total = ' + wl1310.lTotal.toFixed(2) + ' dB',
+                '════════════════════════════════════════════════════',
+                '  PASO 1 — PRESUPUESTO BRUTO',
+                '════════════════════════════════════════════════════',
+                '  Budget = P_TX − S_RX',
+                '         = ' + pTx.toFixed(2) + ' dBm − (' + sRx.toFixed(2) + ' dBm)',
+                '         = ' + budgetBruto.toFixed(2) + ' dB',
                 '',
-                '3. PBM (Power Budget Margin) = Presupuesto Bruto - L_total',
-                '   ' + budgetBruto.toFixed(2) + ' dB - ' + wl1310.lTotal.toFixed(2) + ' dB = ' + wl1310.pbm.toFixed(2) + ' dB'
+                '════════════════════════════════════════════════════',
+                '  PASO 2 — ATENUACIONES  (λ = 1310 nm · Upstream)',
+                '════════════════════════════════════════════════════',
+                '  L_fibra_troncal  : ' + dTrunk.toFixed(2) + ' km × ' + consts.ALPHA_1310.toFixed(3) + ' dB/km',
+                '                   = ' + (dTrunk * consts.ALPHA_1310).toFixed(2) + ' dB',
+                '  L_fibra_distrib  : ' + dDist.toFixed(2) + ' km × ' + consts.ALPHA_1310.toFixed(3) + ' dB/km',
+                '                   = ' + (dDist * consts.ALPHA_1310).toFixed(2) + ' dB',
+                '  L_splitters      : ' + splitterDesc,
+                '    Nivel 1 (' + split1Label + ')  = ' + lSplit1.toFixed(2) + ' dB',
+                (split2Label !== 'N/A' ? '    Nivel 2 (' + split2Label + ')  = ' + lSplit2.toFixed(2) + ' dB' : '    Nivel 2         = No aplica'),
+                '    Total splitters = ' + (lSplit1 + lSplit2).toFixed(2) + ' dB',
+                '  L_conectores     : ' + nConn + ' conect. × ' + consts.L_CON.toFixed(2) + ' dB/ud = ' + lConn.toFixed(2) + ' dB',
+                '                     (OLT + ODF + FDT/NAP + Roseta + ONT)',
+                '  L_empalmes       : ' + nSplice + ' empal. × ' + consts.L_SPLICE.toFixed(2) + ' dB/ud = ' + lSplice.toFixed(2) + ' dB',
+                '  Margen seguridad : ' + margin.toFixed(2) + ' dB',
+                marginWarning,
+                '  ─────────────────────────────────────────────────',
+                '  L_total          = ' + wl1310.lTotal.toFixed(2) + ' dB',
+                '',
+                '════════════════════════════════════════════════════',
+                '  PASO 3 — MARGEN DISPONIBLE (PBM)',
+                '════════════════════════════════════════════════════',
+                '  PBM = Budget − L_total',
+                '      = ' + budgetBruto.toFixed(2) + ' dB − ' + wl1310.lTotal.toFixed(2) + ' dB',
+                '      = ' + wl1310.pbm.toFixed(2) + ' dB',
+                '',
+                '  ' + pbmInterpret,
+                '════════════════════════════════════════════════════'
             ].join('\n');
             var formEl = document.getElementById('ob-formulas-content');
             if (formEl) formEl.textContent = formulasText;

@@ -65,7 +65,7 @@ window.NAVIGATOR_SPECS = {
                 classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
                 classCplusplus: { pTx_min: 6.0, pTx_max: 10.0, pTx_typical: 8.0, sRx: -32, pSat: -12, iturBudget: 35 },
                 defaultClass: 'classCplus',
-                maxDistKm: 60
+                maxDistKm: 20
             }
         }
     },
