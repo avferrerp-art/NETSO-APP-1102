@@ -6876,6 +6876,30 @@ function removeReportItem(id) {
 
 }
 
+function updateItemQuantity(id, newQty) {
+
+    const qty = parseFloat(newQty);
+
+    if (isNaN(qty) || qty < 0) return;
+
+    const item = window.finalReportState.find(i => i.id === id);
+
+    if (!item) return;
+
+    item.cantidad = qty;
+
+    // AUTO-SAVE to Firestore
+
+    if (typeof currentProjectDocId !== 'undefined' && currentProjectDocId) {
+
+        saveProjectRegistry({ reportData: window.finalReportState });
+
+    }
+
+    renderCotizacionTable();
+
+}
+
 
 
 function addManualItem() {
@@ -10664,6 +10688,149 @@ window.backToProjectSelect = function () {
 
 // --- COTIZADOR DIRECTO ---
 
+// State array for quote items
+window.directQuoteItems = window.directQuoteItems || [];
+
+// Search/autocomplete for direct quote
+window.searchDirectProduct = function () {
+    const query = (document.getElementById('direct-quote-search') || {}).value || '';
+    const resultsEl = document.getElementById('direct-search-results');
+    if (!resultsEl) return;
+
+    if (query.length < 2) {
+        resultsEl.style.display = 'none';
+        return;
+    }
+
+    const source = (window.allOdooProducts && window.allOdooProducts.length > 0)
+        ? window.allOdooProducts
+        : (window.allOdooProductsCache || []);
+
+    const matches = source.filter(p =>
+        (p.display_name || '').toLowerCase().includes(query.toLowerCase()) ||
+        (p.default_code || '').toLowerCase().includes(query.toLowerCase())
+    ).slice(0, 15);
+
+    if (matches.length === 0) {
+        resultsEl.style.display = 'none';
+        return;
+    }
+
+    resultsEl.innerHTML = matches.map(p => {
+        const price = p.list_price_usd || p.list_price || 0;
+        return `<div onclick="selectDirectProduct(${JSON.stringify(p.id)}, ${JSON.stringify(p.display_name)}, ${price})"
+            style="padding:10px 14px; cursor:pointer; border-bottom:1px solid #f1f5f9; font-size:13px;"
+            onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='white'">
+            <div style="font-weight:600; color:#1e293b;">${p.display_name}</div>
+            <div style="font-size:11px; color:#94a3b8;">$ ${price.toFixed(2)}</div>
+        </div>`;
+    }).join('');
+    resultsEl.style.display = 'block';
+};
+
+window.selectDirectProduct = function (id, name, price) {
+    const searchEl = document.getElementById('direct-quote-search');
+    if (searchEl) searchEl.value = name;
+    const resultsEl = document.getElementById('direct-search-results');
+    if (resultsEl) resultsEl.style.display = 'none';
+    window._selectedDirectProduct = { id, name, price };
+};
+
+window.addToQuote = function () {
+    const product = window._selectedDirectProduct;
+    const qtyEl = document.getElementById('direct-quote-qty');
+    const qty = parseFloat((qtyEl || {}).value) || 1;
+
+    if (!product) {
+        alert('Selecciona un producto del listado primero.');
+        return;
+    }
+
+    // Check if already in list, if so increment
+    const existing = window.directQuoteItems.find(i => i.id === product.id);
+    if (existing) {
+        existing.qty += qty;
+    } else {
+        window.directQuoteItems.push({ id: product.id, name: product.name, price: product.price, qty });
+    }
+
+    // Reset inputs
+    if (document.getElementById('direct-quote-search')) document.getElementById('direct-quote-search').value = '';
+    if (qtyEl) qtyEl.value = 1;
+    window._selectedDirectProduct = null;
+
+    renderQuoteTable();
+};
+
+window.removeQuoteItem = function (id) {
+    window.directQuoteItems = window.directQuoteItems.filter(i => i.id !== id);
+    renderQuoteTable();
+};
+
+window.updateQuoteItemQty = function (id, newQty) {
+    const qty = parseFloat(newQty);
+    if (isNaN(qty) || qty <= 0) return;
+    const item = window.directQuoteItems.find(i => i.id === id);
+    if (item) item.qty = qty;
+    // Only update totals without full re-render to preserve focus
+    updateQuoteTotals();
+    // Update the specific row total
+    const rowTotal = (item ? item.price * item.qty : 0);
+    const totalEl = document.getElementById('row-total-' + id);
+    if (totalEl) totalEl.textContent = '$ ' + rowTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+function updateQuoteTotals() {
+    const total = window.directQuoteItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
+    const el = document.getElementById('quote-total-display');
+    if (el) el.textContent = '$ ' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderQuoteTable() {
+    const tbody = document.getElementById('quote-table-body');
+    if (!tbody) return;
+
+    if (!window.directQuoteItems || window.directQuoteItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:30px;">Tu lista está vacía. Agrega productos arriba.</td></tr>`;
+        const totalEl = document.getElementById('quote-total-display');
+        if (totalEl) totalEl.textContent = '$ 0,00';
+        return;
+    }
+
+    let total = 0;
+    tbody.innerHTML = window.directQuoteItems.map((item, idx) => {
+        const rowTotal = item.price * item.qty;
+        total += rowTotal;
+        const bg = idx % 2 === 0 ? 'white' : '#f8fafc';
+        return `<tr style="background:${bg}; border-bottom:1px solid #f1f5f9;">
+            <td style="padding:12px 16px; font-size:13px; font-weight:600; color:#1e293b;">${item.name}</td>
+            <td style="padding:12px 10px; text-align:center;">
+                <input type="number" value="${item.qty}" min="1"
+                    onchange="updateQuoteItemQty(${JSON.stringify(item.id)}, this.value)"
+                    style="width:72px; padding:6px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-weight:700; color:#0f172a;"
+                    onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
+            </td>
+            <td style="padding:12px 10px; text-align:right; font-size:13px; color:#475569;">$ ${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td id="row-total-${item.id}" style="padding:12px 10px; text-align:right; font-size:13px; font-weight:700; color:#1e293b;">$ ${rowTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td style="padding:12px 10px; text-align:center;">
+                <button onclick="removeQuoteItem(${JSON.stringify(item.id)})" style="background:none; border:none; cursor:pointer; color:#ef4444; font-size:16px;" title="Eliminar">✕</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    const totalEl = document.getElementById('quote-total-display');
+    if (totalEl) totalEl.textContent = '$ ' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Close autocomplete on outside click
+document.addEventListener('click', function (e) {
+    const resultsEl = document.getElementById('direct-search-results');
+    const searchEl = document.getElementById('direct-quote-search');
+    if (resultsEl && searchEl && !searchEl.contains(e.target) && !resultsEl.contains(e.target)) {
+        resultsEl.style.display = 'none';
+    }
+});
+
 
 
 async function loadProductsForQuote() {
@@ -10994,15 +11161,20 @@ function renderQuoteTable() {
 
             <tr>
 
-                <td style="font-size: 13px; color: #334155;">${item.name}</td>
+                <td style="font-size: 13px; color: #334155; padding: 10px 14px;">${item.name}</td>
 
-                <td style="text-align: center; font-weight: 600;">${item.qty}</td>
+                <td style="text-align: center; padding: 10px 8px;">
+                    <input type="number" value="${item.qty}" min="1"
+                        onchange="updateQuoteItemQty(${index}, this.value)"
+                        style="width: 70px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 700; color: #0f172a; font-size: 13px;"
+                        onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
+                </td>
 
-                <td style="text-align: right; color: #64748b;">$ ${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align: right; color: #64748b; padding: 10px 8px;">$ ${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
 
-                <td style="text-align: right; font-weight: 700; color: #0f172a;">$ ${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+                <td id="row-total-${index}" style="text-align: right; font-weight: 700; color: #0f172a; padding: 10px 8px;">$ ${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
 
-                <td style="text-align: center;">
+                <td style="text-align: center; padding: 10px 8px;">
 
                     <button onclick="removeQuoteItem(${index})" style="color: #ef4444; background: none; border: none; cursor: pointer; font-size: 16px;">&times;</button>
 
@@ -11019,6 +11191,27 @@ function renderQuoteTable() {
     totalDisplay.innerText = "$ " + totalGlobal.toLocaleString('es-ES', { minimumFractionDigits: 2 });
 
 }
+
+window.updateQuoteItemQty = function (index, newQty) {
+
+    const qty = parseFloat(newQty);
+
+    if (isNaN(qty) || qty <= 0) return;
+
+    quoteItems[index].qty = qty;
+
+    quoteItems[index].total = quoteItems[index].price * qty;
+
+    // Update row total without full re-render (preserves input focus)
+    const rowTotalEl = document.getElementById('row-total-' + index);
+    if (rowTotalEl) rowTotalEl.textContent = '$ ' + quoteItems[index].total.toLocaleString('es-ES', { minimumFractionDigits: 2 });
+
+    // Update grand total
+    const grandTotal = quoteItems.reduce((sum, i) => sum + i.total, 0);
+    const totalDisplay = document.getElementById('quote-total-display');
+    if (totalDisplay) totalDisplay.innerText = '$ ' + grandTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 });
+
+};
 
 
 
@@ -11192,7 +11385,9 @@ window.generateDirectExcel = function () {
 
     const ispName = (currentUser && currentUser.company) ? currentUser.company : 'Cliente';
 
-    const dateStr = new Date().toLocaleDateString();
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('es-ES', { year: 'numeric', month: 'numeric', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 
 
@@ -11258,7 +11453,7 @@ window.generateDirectExcel = function () {
 
                     <td colspan="4" class="header" style="height: 50px;">
 
-                        COTIZACIÓN - ${projectName.toUpperCase()}
+                        COTIZACIÓN
 
                     </td>
 
@@ -11266,9 +11461,19 @@ window.generateDirectExcel = function () {
 
                 <tr>
 
-                    <td colspan="4" style="background-color: #e2e8f0; text-align: center; font-weight: bold;">
+                    <td colspan="4" style="background-color: #f1f5f9; text-align: center;">
 
-                        ${ispName} | Fecha: ${dateStr}
+                        Proyecto: <strong>${projectName}</strong> &nbsp;|&nbsp; Cliente: <strong>${ispName}</strong>
+
+                    </td>
+
+                </tr>
+
+                <tr>
+
+                    <td colspan="4" style="background-color: #ffffff; text-align: center; font-size: 11px; color: #64748b;">
+
+                        Generado: ${dateStr}, ${timeStr}
 
                     </td>
 
