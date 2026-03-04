@@ -6712,7 +6712,7 @@ function renderCotizacionTable() {
 
             <div style="display: flex; gap: 10px; align-items: center;">
 
-                <input type="text" id="manual-item-name" placeholder="Buscar producto en Odoo..." list="odoo-products-list"
+                <input type="text" id="manual-item-name" placeholder="Buscar producto..." list="odoo-products-list"
 
                     style="flex: 2; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px;">
 
@@ -11856,7 +11856,7 @@ window.downloadSavedReport = async function (id) {
 
             <table>
 
-                <tr><td colspan="8" class="header" style="font-size:18px;">🛒 PLAN DE COMPRA - INTEGRACIÓN ODOO</td></tr>
+                <tr><td colspan="8" class="header" style="font-size:18px;"> PLAN DE COMPRA</td></tr>
 
                 <tr><td colspan="8" style="text-align:center; background:#f1f5f9;">Proyecto: <strong>${projectName}</strong> - Cliente: <strong>${ispName}</strong></td></tr>
 
@@ -11868,9 +11868,9 @@ window.downloadSavedReport = async function (id) {
 
                 <tr style="height: 30px;">
 
-                    <td class="col-head" style="width:250px;">ITEM CALCULADO (INGENIERÍA)</td>
+                    <td class="col-head" style="width:250px;">ITEM CALCULADO</td>
 
-                    <td class="col-head" style="width:350px;">PRODUCTO ODOO (MATCH)</td>
+                    <td class="col-head" style="width:350px;">PRODUCTO INTERNO</td>
 
                     <td class="col-head" style="width:100px;">STOCK ISP</td>
 
@@ -12030,7 +12030,7 @@ window.downloadSavedReport = async function (id) {
 
         <tr style="background:#f1f5f9; font-weight:bold;">
 
-            <td colspan="7" style="text-align:right; padding:10px;">TOTAL ESTIMADO DE COMPRA (ODOO):</td>
+            <td colspan="7" style="text-align:right; padding:10px;">TOTAL ESTIMADO:</td>
 
             <td style="text-align:center; font-size:14px; color:#0f172a;">$ ${totalEstimadoGlobal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
 
