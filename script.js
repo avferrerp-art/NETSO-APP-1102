@@ -11369,7 +11369,9 @@ window.generateDirectPDF = function () {
 
 
 
-window.generateDirectExcel = function () {
+window.generateDirectExcel = async function () {
+    // Auto-guardado silencioso al exportar
+    silentSaveDirectQuote();
 
     if (quoteItems.length === 0) {
 
@@ -11594,331 +11596,189 @@ window.generateDirectExcel = function () {
 
 
 window.saveDirectQuote = async function () {
-
     if (quoteItems.length === 0) {
-
         alert("⚠️ Tu lista está vacía. Agrega items antes de guardar.");
-
         return;
-
     }
-
-
 
     const projectName = document.getElementById('projectName').value || "Cotización " + new Date().toLocaleDateString();
 
-
-
-    // Check Auth
-
     if (!auth.currentUser) {
-
         alert("⚠️ Debes iniciar sesión para guardar proyectos.");
-
         return;
-
     }
-
-
 
     const projectData = {
-
-        uid: auth.currentUser ? auth.currentUser.uid : 'anonymous',
-
-        userEmail: auth.currentUser ? (auth.currentUser.email || '') : '',
-
+        uid: auth.currentUser.uid,
+        userEmail: auth.currentUser.email || '',
         projectName: projectName,
-
         date: new Date().toISOString(),
-
-        type: 'direct', // Distinguir del asistente
-
+        type: 'direct',
         status: 'draft',
-
-        quoteItems: quoteItems, // Array de items
-
+        quoteItems: quoteItems,
         ispName: (currentUser && currentUser.company) ? currentUser.company : (currentUser && currentUser.name ? currentUser.name : 'Cliente')
-
     };
 
-
-
     const btn = event.target;
-
     const originalText = btn.innerHTML;
-
     btn.innerHTML = '⏳ Guardando...';
-
     btn.disabled = true;
 
+    try {
+        await db.collection("projects").add(projectData);
+        alert("✅ Cotización guardada exitosamente en 'Mis Proyectos'.");
+        quoteItems = []; // Limpiar tras guardar manual
+        renderQuoteTable();
+    } catch (e) {
+        console.error("Error saving quote:", e);
+        alert("❌ Error al guardar: " + e.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+};
 
+// Función para guardado silencioso (sin alertas ni limpiar lista)
+async function silentSaveDirectQuote() {
+    if (quoteItems.length === 0 || !auth.currentUser) return;
+
+    const projectName = document.getElementById('projectName').value || "Cotización " + new Date().toLocaleDateString();
+
+    const projectData = {
+        uid: auth.currentUser.uid,
+        userEmail: auth.currentUser.email || '',
+        projectName: projectName,
+        date: new Date().toISOString(),
+        type: 'direct',
+        status: 'exported',
+        quoteItems: quoteItems,
+        ispName: (currentUser && currentUser.company) ? currentUser.company : (currentUser && currentUser.name ? currentUser.name : 'Cliente')
+    };
 
     try {
-
         await db.collection("projects").add(projectData);
-
-        alert("✅ Cotización guardada exitosamente en 'Mis Proyectos'.");
-
-        quoteItems = []; // Limpiar tras guardar
-
-        renderQuoteTable();
-
+        console.log("Cotización auto-guardada por exportación Excel.");
     } catch (e) {
-
-        console.error("Error saving quote:", e);
-
-        alert("❌ Error al guardar: " + e.message);
-
-    } finally {
-
-        btn.innerHTML = originalText;
-
-        btn.disabled = false;
-
+        console.error("Error en auto-guardado silencioso:", e);
     }
-
-};
+}
 
 
 
 
 
 window.downloadDirectQuoteFromHistory = async function (id) {
-
     const project = allProjectsCache.find(p => p.id === id);
 
-
-
     if (!project || !project.quoteItems) {
-
         alert("❌ Error: Datos del proyecto no encontrados.");
-
         return;
-
     }
-
-
-
-    // Ensure Odoo Products are loaded for mapping
-
-    if (!allOdooProducts || allOdooProducts.length === 0) {
-
-        console.log("No Odoo products loaded. Fetching...");
-
-        try {
-
-            await fetchOdooProducts();
-
-        } catch (e) {
-
-            console.warn("Could not fetch Odoo products for report:", e);
-
-        }
-
-    }
-
-
 
     const items = project.quoteItems;
-
     const projectName = project.projectName || "Cotización";
-
     const ispName = project.ispName || "Cliente";
 
-    const dateStr = new Date(project.date).toLocaleDateString();
-
-
+    const now = new Date(project.date);
+    const dateStr = now.toLocaleDateString('es-ES', { year: 'numeric', month: 'numeric', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     let excelContent = `
-
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-
         <head>
-
             <meta charset="UTF-8">
-
+            <!--[if gte mso 9]>
+            <xml>
+                <x:ExcelWorkbook>
+                    <x:ExcelWorksheets>
+                        <x:ExcelWorksheet>
+                            <x:Name>Cotización Netso</x:Name>
+                            <x:WorksheetOptions>
+                                <x:DisplayGridlines/>
+                            </x:WorksheetOptions>
+                        </x:ExcelWorksheet>
+                    </x:ExcelWorksheets>
+                </x:ExcelWorkbook>
+            </xml>
+            <![endif]-->
             <style>
-
-                body { font-family: Calibri, Arial, sans-serif; }
-
-                td { border: 1px solid #cbd5e1; padding: 5px; vertical-align: middle; }
-
-                .header { background-color: #1e293b; color: white; font-weight: bold; text-align: center; }
-
-                .col-head { background-color: #334155; color: white; font-weight: bold; text-align: center; }
-
-                .text-center { text-align: center; }
-
+                body { font-family: Arial, sans-serif; }
+                .header { background-color: #0f172a; color: #ffffff; font-size: 18px; font-weight: bold; text-align: center; }
+                .subheader { background-color: #f1f5f9; color: #334155; font-weight: bold; border-bottom: 2px solid #cbd5e1; }
+                td { padding: 8px; border: 1px solid #e2e8f0; vertical-align: middle; }
                 .amount { text-align: right; }
-
-                .bg-header { background-color: #f1f5f9; font-weight: bold; }
-
-                .odoo-match { color: #0f172a; font-weight: 600; }
-
-                .no-match { color: #94a3b8; font-style: italic; }
-
+                .total-row { background-color: #f1f5f9; font-weight: bold; font-size: 14px; }
             </style>
-
         </head>
-
         <body>
-
-            <table>
-
-                <tr><td colspan="6" class="header" style="font-size:18px;">COTIZACIÓN DIRECTA - NETSO</td></tr>
-
-                <tr><td colspan="6" class="bg-header" style="text-align:center;">${ispName} | ${projectName.toUpperCase()}</td></tr>
-
-                <tr><td colspan="6" style="text-align:center; font-size:11px;">Generado: ${dateStr}</td></tr>
-
-                <tr><td colspan="6"></td></tr>
-
-
-
-                <tr style="height: 30px;">
-
-                    <td class="col-head" style="width:300px;">PRODUCTO / MATERIAL</td>
-
-                    <td class="col-head" style="width:300px;">PRODUCTO ODOO (MATCH)</td>
-
-                    <td class="col-head" style="width:100px;">CANTIDAD</td>
-
-                    <td class="col-head" style="width:120px;">UNITARIO ($)</td>
-
-                    <td class="col-head" style="width:120px;">TOTAL ($)</td>
-
-                    <td class="col-head" style="width:120px; background:#15803d;">STOCK DISP.</td>
-
+            <table border="1" style="border-collapse: collapse; width: 100%;">
+                <tr>
+                    <td colspan="4" class="header" style="height: 50px;">
+                        COTIZACIÓN
+                    </td>
                 </tr>
+                <tr>
+                    <td colspan="4" style="background-color: #f1f5f9; text-align: center;">
+                        Proyecto: <strong>${projectName}</strong> &nbsp;|&nbsp; Cliente: <strong>${ispName}</strong>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="4" style="background-color: #ffffff; text-align: center; font-size: 11px; color: #64748b;">
+                        Generado: ${dateStr}, ${timeStr}
+                    </td>
+                </tr>
+                <tr><td colspan="4" style="border:none; height:10px;"></td></tr>
 
+                <tr class="subheader">
+                    <td style="width: 400px; background-color: #1e293b; color: white;">PRODUCTO / DESCRIPCIÓN</td>
+                    <td style="width: 100px; background-color: #1e293b; color: white; text-align: center;">CANTIDAD</td>
+                    <td style="width: 150px; background-color: #1e293b; color: white; text-align: right;">UNITARIO ($)</td>
+                    <td style="width: 150px; background-color: #1e293b; color: white; text-align: right;">TOTAL ($)</td>
+                </tr>
     `;
-
-
 
     let totalGlobal = 0;
 
-
-
-    items.forEach(item => {
-
+    items.forEach((item, index) => {
         totalGlobal += item.total;
-
-
-
-        // Odoo Matching Logic
-
-        let odooName = '---';
-
-        let netsoStock = 0;
-
-
-
-        if (allOdooProducts.length > 0) {
-
-            const searchName = item.name.toLowerCase();
-
-            let bestMatch = allOdooProducts.find(p => p.name.toLowerCase() === searchName); // Exact first
-
-
-
-            if (!bestMatch) {
-
-                // Fuzzy Fallback
-
-                bestMatch = allOdooProducts.find(p => {
-
-                    const pName = p.name.toLowerCase();
-
-                    return pName.includes(searchName);
-
-                });
-
-            }
-
-
-
-            if (bestMatch) {
-
-                odooName = bestMatch.name;
-
-                netsoStock = bestMatch.qty_available;
-
-            }
-
-        }
-
-
-
-        const matchClass = odooName !== '---' ? 'odoo-match' : 'no-match';
-
-
+        const bg = index % 2 === 0 ? '#ffffff' : '#f8fafc';
 
         excelContent += `
-
-            <tr>
-
+            <tr style="background-color: ${bg};">
                 <td>${item.name}</td>
-
-                <td class="${matchClass}">${odooName}</td>
-
-                <td class="text-center" style="font-weight:bold;">${item.qty}</td>
-
-                <td class="amount">$ ${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-
-                <td class="amount" style="font-weight:bold;">$ ${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-
-                <td class="text-center" style="font-weight:bold; color:#15803d;">${netsoStock}</td>
-
+                <td style="text-align: center;">${item.qty}</td>
+                <td class="amount">${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+                <td class="amount" style="font-weight: 600;">${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
             </tr>
-
         `;
-
     });
 
-
-
     excelContent += `
-
-        <tr><td colspan="6" style="border:none; height:10px;"></td></tr>
-
-        <tr style="background-color: #f1f5f9; font-weight: bold;">
-
-            <td colspan="4" style="text-align: right; padding-right: 15px;">TOTAL GENERAL:</td>
-
+        <tr><td colspan="4" style="border:none; height:10px;"></td></tr>
+        <tr class="total-row">
+            <td colspan="3" style="text-align: right; padding-right: 15px;">TOTAL GENERAL:</td>
             <td class="amount" style="color: #0f172a; font-size: 16px;">$ ${totalGlobal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-
-            <td></td>
-
         </tr>
-
     `;
 
+    excelContent += `
+            </table>
+            <div style="margin-top:20px; color:#94a3b8; font-size:11px; text-align:center;">
+                Generado por Netso Platform
+            </div>
+        </body>
+        </html>
+    `;
 
-
-    excelContent += `</table></body></html>`;
-
-
-
-    const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
-
-    const filename = `${safeProjectName}_Cotizacion.xls`;
-
+    const filename = `${projectName.replace(/\s+/g, '_')}_Cotizacion.xls`;
     const blob = new Blob(['\uFEFF', excelContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
-
     const url = URL.createObjectURL(blob);
-
     const link = document.createElement("a");
-
     link.href = url;
-
     link.download = filename;
-
     document.body.appendChild(link);
-
     link.click();
-
     setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
-
 };
 
 

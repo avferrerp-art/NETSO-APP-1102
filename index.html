@@ -48,6 +48,18 @@
                         <span class="f-icon">🗺️</span>
                         <span>Mapeo Inteligente</span>
                     </div>
+                    <div class="feature-item">
+                        <span class="f-icon">🛒</span>
+                        <span>Generador de Plan de Compra</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="f-icon">📝</span>
+                        <span>Cotizador Directo</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="f-icon">📡</span>
+                        <span>Presupuesto Óptico ITU-T</span>
+                    </div>
                 </div>
             </div>
             <div class="intro-footer">
@@ -181,6 +193,12 @@
 
         <!-- VISTA HISTORIAL ISP -->
         <div id="isp-history-view" class="history-view-container">
+            <div style="margin-bottom: 20px;">
+                <button class="btn-secondary" onclick="toggleIspHistory()"
+                    style="width: auto; padding: 10px 20px; display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 18px;">←</span> Volver
+                </button>
+            </div>
             <div class="history-header">
                 <h1 class="history-title">📂 Mis Proyectos Guardados</h1>
                 <button onclick="toggleIspHistory()" class="btn-primary history-btn-new">➕ Nuevo Diseño</button>
@@ -1824,9 +1842,9 @@
             var pbmInterpret = wl1310.pbm >= 3 ? '✔ ENLACE VIABLE  (PBM ≥ 3 dB)' : '✘ ENLACE EN RIESGO  (PBM < 3 dB — revisar diseño)';
 
             var formulasText = [
-                
+
                 '  PARÁMETROS DEL SISTEMA',
-                
+
                 '  Estándar                              : GPON  (ITU-T G.984.2)',
                 '  OLT                                   : ' + oltModelLabel,
                 '  ONT                                   : ' + ontModelLabel,
@@ -1836,16 +1854,16 @@
                 '  Potencia de Transmisión (P_TX)        : ' + pTx.toFixed(2) + ' dBm',
                 '  Sensibilidad del Receptor (S_RX)      : ' + sRx.toFixed(2) + ' dBm',
                 '',
-                
+
                 '   PRESUPUESTO BRUTO',
-                
+
                 '  Presupuesto Bruto (Budget) = P_TX − S_RX',
                 '    = ' + pTx.toFixed(2) + ' dBm − (' + sRx.toFixed(2) + ' dBm)',
                 '    = ' + budgetBruto.toFixed(2) + ' dB',
                 '',
-                
+
                 '   ATENUACIONES  (λ = 1310 nm · Upstream)',
-                
+
                 '  Pérd. Fibra Troncal (L_fibra_troncal) : ' + dTrunk.toFixed(2) + ' km × ' + consts.ALPHA_1310.toFixed(3) + ' dB/km',
                 '                                          = ' + (dTrunk * consts.ALPHA_1310).toFixed(2) + ' dB',
                 '  Pérd. Fibra Distribución (L_fibra_dist): ' + dDist.toFixed(2) + ' km × ' + consts.ALPHA_1310.toFixed(3) + ' dB/km',
@@ -1859,18 +1877,18 @@
                 '  Pérd. Empalmes (L_empalmes)           : ' + nSplice + ' empal. × ' + consts.L_SPLICE.toFixed(2) + ' dB/ud = ' + lSplice.toFixed(2) + ' dB',
                 '  Margen de Seguridad                   : ' + margin.toFixed(2) + ' dB',
                 marginWarning,
-                
+
                 '  Pérd. Total (L_total)                 = ' + wl1310.lTotal.toFixed(2) + ' dB',
                 '',
-                
+
                 '  MARGEN DISPONIBLE (PBM)',
-                
+
                 '  Margen de Presupuesto de Potencia (PBM) = Budget − L_total',
                 '    = ' + budgetBruto.toFixed(2) + ' dB − ' + wl1310.lTotal.toFixed(2) + ' dB',
                 '    = ' + wl1310.pbm.toFixed(2) + ' dB',
                 '',
                 '  ' + pbmInterpret,
-                
+
             ].join('\n');
             var formEl = document.getElementById('ob-formulas-content');
             if (formEl) formEl.textContent = formulasText;
