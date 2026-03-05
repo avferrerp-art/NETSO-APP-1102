@@ -3818,35 +3818,25 @@ function renderAiSuggestions(suggestions, imageIndex) {
 
 
         card.innerHTML = `
-
             <div style="flex: 1;">
-
                 <div style="font-size:13px; font-weight:600; color:#1e293b;">${item.product}</div>
-
-                <div style="font-size:11px; color:#64748b;">Cant: ${item.qty} • ${item.reason}</div>
-
+                <div style="font-size:11px; color:#64748b; display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                    <span>Cant:</span>
+                    <input type="number" id="${itemId}-qty" value="${item.qty || 1}" min="1" 
+                        style="width: 50px; padding: 2px 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 11px; outline: none;">
+                    <span>• ${item.reason}</span>
+                </div>
             </div>
-
             <div style="display:flex; gap:5px;">
-
-                <button onclick="acceptSuggestion('${itemId}', '${item.product}', ${item.qty})" 
-
+                <button onclick="const q = document.getElementById('${itemId}-qty').value; acceptSuggestion('${itemId}', '${item.product}', q)" 
                     style="background:#10b981; color:white; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600;">
-
                     ✓
-
                 </button>
-
                  <button onclick="dismissSuggestion('${itemId}')" 
-
                     style="background:#ef4444; color:white; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600;">
-
-                    ✕
-
+                    ×
                 </button>
-
             </div>
-
         `;
 
         suggestionsDiv.appendChild(card);
@@ -4002,37 +3992,33 @@ async function acceptSuggestion(elementId, productName, qty) {
 
 
     // 2. Agregar a la tabla de cotización
-
     if (typeof quoteItems !== 'undefined') {
-
-        const quantity = parseFloat(qty); // Use parseFloat for decimal quantities
-
-        quoteItems.push({
-
-            id: match ? match.id : ('ai-sugg-' + Date.now()),
-
-            name: finalName,
-
-            price: price,
-
-            qty: quantity,
-
-            total: price * quantity,
-
-            ...match // Include all other props like default_code
-
-        });
-
-
-
-        // Renderizar tabla
-
-        if (typeof renderQuoteTable === 'function') {
-
-            renderQuoteTable();
-
+        const quantity = parseFloat(qty);
+        if (isNaN(quantity) || quantity <= 0) {
+            console.error("[acceptSuggestion] Cantidad inválida:", qty);
+            return;
         }
 
+        // Buscar si ya existe para sumar cantidad
+        const existingIndex = quoteItems.findIndex(i => i.name === finalName);
+        if (existingIndex >= 0) {
+            quoteItems[existingIndex].qty += quantity;
+            quoteItems[existingIndex].total = quoteItems[existingIndex].qty * quoteItems[existingIndex].price;
+        } else {
+            quoteItems.push({
+                id: match ? match.id : ('ai-sugg-' + Date.now()),
+                name: finalName,
+                price: price,
+                qty: quantity,
+                total: price * quantity,
+                ...match
+            });
+        }
+
+        // Renderizar tabla
+        if (typeof renderQuoteTable === 'function') {
+            renderQuoteTable();
+        }
     }
 
 
@@ -10718,41 +10704,7 @@ function updateQuoteTotals() {
     if (el) el.textContent = '$ ' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function renderQuoteTable() {
-    const tbody = document.getElementById('quote-table-body');
-    if (!tbody) return;
-
-    if (!window.directQuoteItems || window.directQuoteItems.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:30px;">Tu lista está vacía. Agrega productos arriba.</td></tr>`;
-        const totalEl = document.getElementById('quote-total-display');
-        if (totalEl) totalEl.textContent = '$ 0,00';
-        return;
-    }
-
-    let total = 0;
-    tbody.innerHTML = window.directQuoteItems.map((item, idx) => {
-        const rowTotal = item.price * item.qty;
-        total += rowTotal;
-        const bg = idx % 2 === 0 ? 'white' : '#f8fafc';
-        return `<tr style="background:${bg}; border-bottom:1px solid #f1f5f9;">
-            <td style="padding:12px 16px; font-size:13px; font-weight:600; color:#1e293b;">${item.name}</td>
-            <td style="padding:12px 10px; text-align:center;">
-                <input type="number" value="${item.qty}" min="1"
-                    onchange="updateQuoteItemQty(${JSON.stringify(item.id)}, this.value)"
-                    style="width:72px; padding:6px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-weight:700; color:#0f172a;"
-                    onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='#cbd5e1'">
-            </td>
-            <td style="padding:12px 10px; text-align:right; font-size:13px; color:#475569;">$ ${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td id="row-total-${item.id}" style="padding:12px 10px; text-align:right; font-size:13px; font-weight:700; color:#1e293b;">$ ${rowTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td style="padding:12px 10px; text-align:center;">
-                <button onclick="removeQuoteItem(${JSON.stringify(item.id)})" style="background:none; border:none; cursor:pointer; color:#ef4444; font-size:16px;" title="Eliminar">✕</button>
-            </td>
-        </tr>`;
-    }).join('');
-
-    const totalEl = document.getElementById('quote-total-display');
-    if (totalEl) totalEl.textContent = '$ ' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+// Se eliminó la función duplicada renderQuoteTable para usar la versión global consistente.
 
 // Close autocomplete on outside click
 document.addEventListener('click', function (e) {
