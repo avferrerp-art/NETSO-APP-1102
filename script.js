@@ -1847,24 +1847,24 @@ async function consultProjectStock(projectId) {
 
 
 
-        // Usar todos los productos del reporte
+        // Adaptar origen de datos (IA vs Directa)
+        let sourceData = [];
+        if (project.type === 'direct' && project.quoteItems) {
+            sourceData = project.quoteItems;
+        } else if (project.reportData) {
+            sourceData = project.reportData;
+        }
 
-        const reportData = (project.reportData || []).map(item => ({
-
+        // Usar todos los productos
+        const itemData = sourceData.map(item => ({
             ...item,
-
-            name: item.item || item.name
-
+            name: item.item || item.name,
+            cantidad: item.cantidad || item.quantity || item.needed || 1 // Múltiples fallbacks
         }));
 
-
-
-        if (reportData.length === 0) {
-
-            if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 40px; color: #64748b;">⚠️ Este proyecto no tiene datos de ingeniería registrados.</td></tr>';
-
+        if (itemData.length === 0) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 40px; color: #64748b;">⚠️ Este proyecto no tiene productos registrados.</td></tr>';
             return;
-
         }
 
 
@@ -1882,49 +1882,27 @@ async function consultProjectStock(projectId) {
 
 
         // Realizar Matching robusto (Igual que en Ingeniería)
-
-        const matchedItems = reportData.map(item => {
-
+        const matchedItems = itemData.map(item => {
             const searchName = item.name.toLowerCase();
-
             const exactMappedName = PRODUCT_MAPPING[item.name];
-
             let bestMatch = null;
 
-
-
             if (exactMappedName) {
-
                 bestMatch = allOdooProducts.find(p =>
-
                     (p.display_name && p.display_name === exactMappedName) ||
-
                     (p.name === exactMappedName)
-
                 );
-
             }
-
-
 
             if (!bestMatch) {
-
                 bestMatch = allOdooProducts.find(p => {
-
                     const pName = (p.display_name || p.name || "").toLowerCase();
-
                     const searchLower = searchName.toLowerCase();
-
                     return pName.includes(searchLower) || searchLower.includes(pName);
-
                 });
-
             }
 
-
-
             return { ...item, odooMatch: bestMatch };
-
         });
 
 
