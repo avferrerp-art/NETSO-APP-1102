@@ -12,7 +12,34 @@ let googleApiKey = window.NETSO_CONFIG ? window.NETSO_CONFIG.GEMINI_KEY : null;
 
 let currentUser = null; // { name, role, company? }
 
+// Funciones globales compartidas
+function extractAndParseJSON(text) {
+    let jsonStr = null;
+    let markdownText = text;
 
+    let jsonMatch = text.match(/```(?:\s*json\s*)?([\s\S]*?)\s*```/i);
+    if (!jsonMatch) {
+        jsonMatch = text.match(/(\[\s*\{[\s\S]*\}\s*\])/);
+    }
+
+    if (jsonMatch && (jsonMatch[1] || jsonMatch[0])) {
+        jsonStr = jsonMatch[1] || jsonMatch[0];
+        markdownText = text.replace(jsonMatch[0], "").trim();
+    } else {
+        jsonStr = text;
+    }
+
+    let parsed = [];
+    try {
+        jsonStr = jsonStr.replace(/,\s*([\]}])/g, "$1");
+        jsonStr = jsonStr.replace(/[\u0000-\u0019]+/g, " ");
+        parsed = JSON.parse(jsonStr);
+    } catch (e) {
+        console.warn("⚠️ Error parseando JSON:", e);
+    }
+
+    return { markdownText, jsonSuggestions: parsed };
+}
 
 // FIREBASE CONFIG
 
@@ -1268,100 +1295,77 @@ function renderCatalogHelpers() {
 // Versión Firestore de saveProjectRegistry
 
 function saveProjectRegistry(projectData, isNew = false) {
+    console.log("--- DEBUG: saveProjectRegistry START ---");
 
-    // Inyectar UID del usuario actual para asociar el proyecto
-
-    if (currentUser || auth.currentUser) {
-
-        // DEFENSIVE: Firestore rejects 'undefined'. Ensure all fields are null or string.
-
-        projectData.uid = (currentUser && currentUser.uid) || (auth.currentUser ? auth.currentUser.uid : null) || 'anonymous';
-
-        projectData.userEmail = (currentUser && currentUser.email) || (auth.currentUser ? auth.currentUser.email : '') || '';
-
-
-
-        // Ensure static contact info is saved with the project
-
-        projectData.contactName = (currentUser && currentUser.name) || (auth.currentUser ? auth.currentUser.displayName : '') || 'Usuario';
-
-        projectData.contactPhone = (currentUser && currentUser.phone) || '';
-
-        projectData.ispName = (currentUser && currentUser.company) || 'ISP Externo';
-
-
-
-        // Ensure inputs are saved if not already
-
-        if (!projectData.clients) {
-
-            const censo = document.getElementById('censo');
-
-            projectData.clients = censo ? censo.value : 0;
-
-        }
-
-        if (!projectData.radius) {
-
-            const radius = document.getElementById('coverageRadius');
-
-            projectData.radius = radius ? radius.value : 0;
-
-        }
-
+    // Check Auth State first
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser && (!currentUser || !currentUser.uid)) {
+        console.error("❌ ERROR: No hay sesión activa. Firestore rechazará la escritura.");
+        alert("⚠️ No has iniciado sesión. Por favor, reingresa para guardar el proyecto.");
+        return;
     }
 
+    // Inyectar UID del usuario actual para asociar el proyecto
+    projectData.uid = (currentUser && currentUser.uid) || (firebaseUser ? firebaseUser.uid : 'anonymous');
+    projectData.userEmail = (currentUser && currentUser.email) || (firebaseUser ? firebaseUser.email : '') || '';
 
+    // Ensure static contact info is saved with the project
+    projectData.contactName = (currentUser && currentUser.name) || (firebaseUser ? firebaseUser.displayName : '') || 'Usuario';
+    projectData.contactPhone = (currentUser && currentUser.phone) || '';
+    projectData.ispName = (currentUser && currentUser.company) || 'ISP Externo';
 
-    // Auto-inject date if not set by caller (so any save always has a timestamp)
+    // Ensure inputs are saved if not already
+    if (!projectData.clients) {
+        const censo = document.getElementById('censo');
+        projectData.clients = censo ? censo.value : 0;
+    }
+    if (!projectData.radius) {
+        const radius = document.getElementById('coverageRadius');
+        projectData.radius = radius ? radius.value : 0;
+    }
+
+    // Auto-inject date if not set by caller
     if (!projectData.date) {
         projectData.date = new Date().toISOString();
     }
 
+    // SANITIZACIÓN CRÍTICA: Firestore no acepta 'undefined'
+    const sanitizedData = sanitizeForFirestore(projectData);
+    console.log("--- DEBUG: Datos a guardar (Sanitizados) ---", sanitizedData);
+
     if (currentProjectDocId && !isNew) {
-
         // ACTUALIZAR proyecto existente
-
-        db.collection("projects").doc(currentProjectDocId).set(projectData, { merge: true })
-
+        console.log(`Intentando actualizar proyecto: ${currentProjectDocId}`);
+        db.collection("projects").doc(currentProjectDocId).set(sanitizedData, { merge: true })
             .then(() => {
-
-                console.log("Proyecto actualizado: ", currentProjectDocId);
-
+                console.log("✅ Proyecto actualizado con éxito: ", currentProjectDocId);
             })
-
             .catch((error) => {
-
-                console.error("Error al actualizar proyecto: ", error);
-
+                console.error("❌ Error al actualizar proyecto: ", error);
+                if (error.code === 'permission-denied') {
+                    alert("⚠️ Error de permisos: Verifica que tu sesión sea válida y que las reglas de Firebase no hayan expirado.");
+                } else {
+                    alert("Error al actualizar en la nube: " + error.message);
+                }
             });
-
     } else {
-
         // CREAR nuevo proyecto
-
-        db.collection("projects").add(projectData)
-
+        console.log("Intentando crear nuevo proyecto...");
+        db.collection("projects").add(sanitizedData)
             .then((docRef) => {
-
-                console.log("Nuevo proyecto registrado con ID: ", docRef.id);
-
+                console.log("✅ Nuevo proyecto registrado con ID: ", docRef.id);
                 currentProjectDocId = docRef.id;
-
                 localStorage.setItem('currentProjectDocId', currentProjectDocId);
-
             })
-
             .catch((error) => {
-
-                console.error("Error al registrar proyecto: ", error);
-
-                alert("Error al guardar en la nube: " + error.message);
-
+                console.error("❌ Error al registrar proyecto: ", error);
+                if (error.code === 'permission-denied') {
+                    alert("⚠️ Error de permisos: Verifica que tu sesión sea válida y que las reglas de Firebase no hayan expirado.");
+                } else {
+                    alert("Error al guardar en la nube: " + error.message);
+                }
             });
-
     }
-
 }
 
 
@@ -2804,9 +2808,8 @@ async function testAPIKey() {
 
         // Hacer una petición simple para verificar la API key
 
-        // Usamos gemini-flash-latest
-
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${googleApiKey}`, {
+        // Usamos gemini-2.5-flash-lite
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${googleApiKey}`, {
 
             method: 'POST',
 
@@ -3062,67 +3065,10 @@ async function analyzeImage() {
 
 
 
-                // SEPARAR TEXTO Y JSON (Misma lógica que Direct Quote PERO MEJORADA)
-
-                let markdownText = analysis;
-
-                let jsonSuggestions = [];
-
-
-
-                // 1. Intentar buscar bloque de código ```json ... ```
-
-                let jsonMatch = analysis.match(/```json\s*([\s\S]*?)\s*```/);
-
-
-
-                // 2. Si no encuentra, buscar bloque genérico ``` ... ``` que parezca array
-
-                if (!jsonMatch) {
-
-                    jsonMatch = analysis.match(/```\s*(\[\s*\{[\s\S]*\}\s*\])\s*```/);
-
-                }
-
-
-
-                // 3. Last resort: Buscar array explícito [ { ... } ] en el texto crudo
-
-                if (!jsonMatch) {
-
-                    const rawMatch = analysis.match(/(\[\s*\{[\s\S]*\}\s*\])/);
-
-                    if (rawMatch) {
-
-                        jsonMatch = [rawMatch[0], rawMatch[1]]; // Simular estructura de match
-
-                    }
-
-                }
-
-
-
-                if (jsonMatch && jsonMatch[1]) {
-
-                    try {
-
-                        jsonSuggestions = JSON.parse(jsonMatch[1]);
-
-                        // Eliminar el JSON del texto visible para que no se vea feo
-
-                        // Solo si es un bloque grande, si es inline a veces mejor dejarlo, 
-
-                        // pero por clean UX intentamos quitarlo.
-
-                        markdownText = analysis.replace(jsonMatch[0], "").trim();
-
-                    } catch (e) {
-
-                        console.error("Error parsing JSON suggestions:", e);
-
-                    }
-
-                }
+                // SEPARAR TEXTO Y JSON MEJORADO
+                const extraction = extractAndParseJSON(analysis);
+                let markdownText = extraction.markdownText;
+                let jsonSuggestions = extraction.jsonSuggestions;
 
 
 
@@ -3714,35 +3660,10 @@ async function analyzeDirectImage() {
 
 
 
-                // SEPARAR TEXTO Y JSON
-
-                let markdownText = analysisResult;
-
-                let jsonSuggestions = [];
-
-
-
-                // Buscar bloque JSON al final
-
-                const jsonMatch = analysisResult.match(/```json\s*([\s\S]*?)\s*```/);
-
-                if (jsonMatch && jsonMatch[1]) {
-
-                    try {
-
-                        jsonSuggestions = JSON.parse(jsonMatch[1]);
-
-                        // Eliminar el JSON del texto visible para que no se vea feo
-
-                        markdownText = analysisResult.replace(jsonMatch[0], "").trim();
-
-                    } catch (e) {
-
-                        console.error("Error parsing JSON suggestions:", e);
-
-                    }
-
-                }
+                // SEPARAR TEXTO Y JSON MEJORADO
+                const extraction = extractAndParseJSON(analysisResult);
+                let markdownText = extraction.markdownText;
+                let jsonSuggestions = extraction.jsonSuggestions;
 
 
 
@@ -3862,7 +3783,7 @@ function renderAiSuggestions(suggestions, imageIndex) {
 
 
 
-    suggestionsDiv.innerHTML = `<div style="font-size:14px; font-weight:700; color:#0f172a; margin-bottom:10px;">✨ Materiales Sugeridos (Haz clic para agregar)</div>`;
+    suggestionsDiv.innerHTML = `<div style="font-size:14px; font-weight:700; color:#0f172a; margin-bottom:10px;"> Materiales Sugeridos (Haz clic para agregar)</div>`;
 
 
 
@@ -3980,7 +3901,7 @@ async function acceptSuggestion(elementId, productName, qty) {
 
     if (typeof allOdooProductsCache === 'undefined' || allOdooProductsCache.length === 0) {
 
-        alert("⚠️ No se han podido cargar los productos de Odoo. Verifica tu conexión.");
+        alert("⚠️ No se han podido cargar los productos del catalogo interno. Verifica tu conexión.");
 
         return;
 
@@ -4210,28 +4131,39 @@ ${JSON.stringify(catalogoNetso, null, 2)}`;
 
 
 
-    const prompt = `Eres un ingeniero experto en redes FTTH. Realiza una auditoría técnica DETALLADA de esta imagen.
+    const prompt = `
+Rol: Actúa como un Asesor Técnico Comercial de NETSO. Tu función es convertir imágenes de infraestructura o necesidades del cliente en una propuesta de solución FTTH clara, profesional y fácil de entender. Eres la cara experta de NETSO que ayuda al cliente a visualizar su red.
 
+Tono y Estilo:
+- Empático y Asesor: No uses lenguaje excesivamente árido; explica el "porqué" de las cosas.
+- Identidad: Eres Asesoría NETSO, no un consultor externo.
+- Claridad: El cliente debe entender que su inversión está respaldada por cálculos de ingeniería precisos.
 
+Estructura de Respuesta para el Cliente:
+- Saludo de Bienvenida: Inicia con: "Estimado cliente, es un gusto saludarle. Desde el equipo de Asesoría NETSO, he analizado la información proporcionada para presentarle la mejor solución de conectividad para su zona..."
+- Análisis de su Entorno: Describe de forma sencilla la infraestructura que ves. Ejemplo: "Se observa una disposición de postes ideal para un despliegue aéreo, lo que nos permite una instalación limpia y eficiente..."
+- Nuestra Propuesta Tecnológica: Explica la solución recomendada.
 
-INSTRUCCIONES:
+Tu Kit de Solución (Catálogo NETSO): Lista los equipos necesarios como una "lista de deseos" o carrito sugerido:
+- Para la distribución: (Cables ADSS).
+- Para la conexión en su zona: (Cajas NAP y Splitters).
+- Para su hogar/empresa: (Equipos ONT de la línea Navigator).
 
-1. **Análisis técnico**: Explica exhaustivamente la infraestructura visible (postes, saturación, herrajes). Sé descriptivo y profesional.
+Reglas de Oro:
+- Sencillez: Si hablas de los -28 dBm o de 1310 nm, explícalo como "el estándar de calidad para que su internet no falle".
+- Marca: Prioriza siempre los productos de la marca Navigator (ONTs) y el ecosistema de NETSO.
+- Acción: Incentiva al cliente a validar los datos con un levantamiento en campo para generar el presupuesto final.
 
-2. **Materiales**: Sugiere los componentes necesarios del catálogo.
-
-
-
-REGLAS:
-
-- NO hables de JSON en el texto visible.
-
-- Incluye al final el bloque json con el formato: [\`\`\`json [ { "product": "...", "qty": 1, "reason": "..." } ] \`\`\`]
-
-
+REGLAS DE FORMATO (CRÍTICO PARA LA APP):
+1. NO hables de JSON en el texto que leerá el cliente.
+2. Al FINAL de todo tu texto, añade un bloque de código JSON con este formato EXACTO: 
+[\`\`\`json 
+[
+  { "product": "NOMBRE_PRODUCTO", "qty": 1, "reason": "MOTIVO_BREVE" }
+]
+\`\`\`]
 
 ${catalogContext}
-
 `;
 
     const base64Data = base64Str.split(',')[1];
@@ -4244,7 +4176,7 @@ ${catalogContext}
 
 
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${googleApiKey}`;
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${googleApiKey}`;
 
 
 
@@ -4394,7 +4326,7 @@ ${catalogContext}
 
             if (error.name === 'AbortError' || error === "TIMEOUT") {
 
-                const timeoutErr = new Error("⏳ El análisis está tomando demasiado tiempo (Timeout de 75s). Reintenta con una imagen más ligera.");
+                const timeoutErr = new Error(" El análisis está tomando demasiado tiempo (Timeout de 75s). Reintenta con una imagen más ligera.");
 
                 timeoutErr.name = 'AbortError';
 
@@ -6408,13 +6340,13 @@ function renderCotizacionTable() {
 
                 <h3 style="font-size: 16px; font-weight: 800; color: #1e293b; margin: 0;">
 
-                    📋 Ingeniería de Proyecto (Netso Expert)
+                    Planificación de Materiales 
 
                 </h3>
 
                 <p style="font-size: 12px; color: #64748b; margin: 4px 0 0 0;">
 
-                    Personaliza las cantidades y verifica la disponibilidad en Odoo antes de descargar.
+                    Personaliza los materiales y cantidades antes de descargar. Al final de la página puedes agregar productos extra.
 
                 </p>
 
@@ -6444,7 +6376,7 @@ function renderCotizacionTable() {
 
                         <th class="col-product" style="text-align: left; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Producto</th>
 
-                        <th class="col-ref" style="text-align: left; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Ref. Netso (Odoo)</th>
+                        <th class="col-ref" style="text-align: left; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Ref. Netso</th>
 
                         <th class="col-qty" style="text-align: center; padding: 12px 16px; font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Unidades Recomendadas</th>
 
@@ -11789,6 +11721,29 @@ function generateId() {
 
 }
 
+/**
+ * Recurse through an object to remove undefined values and ensure Firestore compatibility.
+ */
+function sanitizeForFirestore(obj) {
+    if (obj === null || typeof obj !== 'object') {
+        return obj === undefined ? null : obj;
+    }
+
+    if (Array.isArray(obj)) {
+        return obj.map(sanitizeForFirestore);
+    }
+
+    const sanitized = {};
+    for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            const val = obj[key];
+            if (val !== undefined) {
+                sanitized[key] = sanitizeForFirestore(val);
+            }
+        }
+    }
+    return sanitized;
+}
 
 
 
@@ -16238,12 +16193,6 @@ function updateOptimizationLabel(naps, radiusMeters) {
 
                     </div>
 
-                    <div style="font-size: 10px; color: #0ea5e9; font-weight: 700; text-transform: uppercase; background: #f0f9ff; padding: 4px 10px; border-radius: 20px; border: 1px solid #bae6fd;">
-
-                        Radio Com.: ${radiusMeters}m
-
-                    </div>
-
                 </div>
 
             </div>
@@ -16294,10 +16243,10 @@ function updateOptimizationLabel(naps, radiusMeters) {
                             <span style="width: 8px; height: 8px; background: #f97316; border-radius: 50%; display: inline-block;"></span> NAP 16
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="width: 14px; height: 3px; background: #3b82f6; display: inline-block;"></span> Fibra Dist.
+                            <span style="width: 14px; height: 3px; background: #f09b3aff; display: inline-block;"></span> Fibra Dist.
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="width: 14px; height: 3px; background: #8b5cf6; display: inline-block;"></span> Fibra Tronc.
+                            <span style="width: 14px; height: 3px; background: #0400ffff; display: inline-block;"></span> Fibra Tronc.
                         </div>
                     </div>
                 </div>
