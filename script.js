@@ -308,38 +308,22 @@ function initAuthListener() {
 
                     } else {
 
-                        // Usuario sin documento (Legacy Netso o Registro en proceso)
-
-                        console.warn("⚠️ Usuario sin perfil en Firestore. Verificando dominio/email para fallback.");
-
-
-
+                        const fallbackName = user.email ? user.email.split('@')[0] : 'Usuario';
                         const isNetsoEmail = user.email.endsWith('@netso.com') ||
-
                             (user.email.includes('netso') && user.email.includes('@gmail.com'));
 
-
-
                         if (isNetsoEmail) {
-
                             console.log("Fallback: Usuario identificado como Personal Netso (Legacy/Dev).");
-
-                            currentUser = { name: user.email.split('@')[0], role: 'netso', email: user.email, uid: user.uid };
-
+                            currentUser = { name: fallbackName, role: 'netso', email: user.email, uid: user.uid };
                             localStorage.setItem('netsoUser', JSON.stringify(currentUser));
-
+                            updateProfileUI(currentUser);
                             showNetsoDashboard();
-
                         } else {
-
-                            // Si no hay doc, es un error o registro incompleto
-
-                            console.error("❌ Error: Perfil de usuario no encontrado y no califica para fallback.");
-
-                            auth.signOut();
-
-                            alert("❌ Error: No se encontró tu perfil de usuario. Si te acabas de registrar, espera un momento o intenta registrarte de nuevo.");
-
+                            console.warn("⚠️ Usuario ISP sin perfil en Firestore. Redirigiendo a registro/login.");
+                            currentUser = { name: fallbackName, role: 'isp', email: user.email, uid: user.uid };
+                            localStorage.setItem('netsoUser', JSON.stringify(currentUser));
+                            updateProfileUI(currentUser);
+                            showMainApp();
                         }
 
                     }
@@ -765,23 +749,20 @@ async function handleLogin(explicitRole = null) {
             updateProfileUI(userData);
 
         } else {
-
+            console.warn("⚠️ Usuario sin perfil en Firestore. Verificando fallback por email...");
             const fallbackName = user.email ? user.email.split('@')[0] : 'Usuario';
+            const isNetsoEmail = user.email.endsWith('@netso.com') ||
+                (user.email.includes('netso') && user.email.includes('@gmail.com'));
 
             currentUser = {
-
                 uid: user.uid,
-
                 email: user.email,
-
                 name: fallbackName,
-
-                role: 'isp'
-
+                role: isNetsoEmail ? 'netso' : 'isp'
             };
 
-            updateProfileUI({ name: fallbackName, role: 'isp' });
-
+            localStorage.setItem('netsoUser', JSON.stringify(currentUser));
+            updateProfileUI(currentUser);
         }
 
 
@@ -791,17 +772,13 @@ async function handleLogin(explicitRole = null) {
 
 
         // REDIRECTION LOGIC
-
-        // Prioritize explicit role from form over stored profile to allow admins to test ISP view
-
-        if (role === 'netso') {
-
+        // Always prioritize the official role from Firestore to ensure security and correct view
+        if (currentUser && currentUser.role === 'netso') {
+            console.log("Admin detected. Redirecting to Netso Dashboard...");
             showNetsoDashboard();
-
         } else {
-
+            console.log("ISP user detected. Redirecting to Main App...");
             showMainApp();
-
         }
 
 
@@ -1612,11 +1589,11 @@ function renderProjectRows(projects) {
         let downloadBtn = '';
 
         if (p.type === 'direct' && p.quoteItems) {
-
-            downloadBtn = `<div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
-                <a href="#" onclick="downloadDirectQuoteFromHistory('${p.id}'); return false;" style="color: #10b981; text-decoration: none; font-weight: 600;">📊 Cotización Excel</a>
-            </div>`;
-
+            downloadBtn = `
+                <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
+                    <a href="#" onclick="downloadDirectQuoteFromHistory('${p.id}'); return false;" style="color: #10b981; text-decoration: none; font-weight: 600;">📊 Reporte de Cotización</a>
+                </div>
+            `;
         } else if (p.reportData && p.reportData.length > 0) {
 
             downloadBtn = `<div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
@@ -1745,29 +1722,21 @@ function renderDashboardTable() {
 
 
                 // Descargables (Nombres)
-
                 let downloadablesHtml = '<span style="color: #cbd5e1; font-size: 11px;">Pendiente</span>';
-
                 if (p.type === 'direct' && p.quoteItems) {
-
-                    downloadablesHtml = `<button onclick="downloadDirectQuoteFromHistory('${p.id}')" class="btn-secondary" title="Descargar Excel" style="padding: 4px 8px; font-size: 14px; background-color: #10b981; border-color: #059669; color: white;">📊 Excel</button>`;
-
-                } else if (p.reportData && p.reportData.length > 0) {
-
                     downloadablesHtml = `
-
                         <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
-
-                            <a href="#" onclick="downloadSavedReport('${p.id}'); return false;" style="color: #0ea5e9; text-decoration: none; font-weight: 600;">📥 Reporte de Compras</a>
-
-                            <a href="#" onclick="downloadPdfReport('${p.id}'); return false;" style="color: #ef4444; text-decoration: none; font-weight: 600;">📄 Propuesta PDF</a>
-
-                            ${p.kmlData ? `<a href="#" onclick="downloadProjectKML('${p.id}'); return false;" style="color: #16a34a; text-decoration: none; font-weight: 600;">🗺️ Archivo KML</a>` : ''}
-
+                            <a href="#" onclick="downloadDirectQuoteFromHistory('${p.id}'); return false;" style="color: #10b981; text-decoration: none; font-weight: 600;">📊 Reporte de Cotización</a>
                         </div>
-
                     `;
-
+                } else if (p.reportData && p.reportData.length > 0) {
+                    downloadablesHtml = `
+                        <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
+                            <a href="#" onclick="downloadSavedReport('${p.id}'); return false;" style="color: #0ea5e9; text-decoration: none; font-weight: 600;">📥 Reporte de Compras</a>
+                            <a href="#" onclick="downloadPdfReport('${p.id}'); return false;" style="color: #ef4444; text-decoration: none; font-weight: 600;">📄 Propuesta PDF</a>
+                            ${p.kmlData ? `<a href="#" onclick="downloadProjectKML('${p.id}'); return false;" style="color: #16a34a; text-decoration: none; font-weight: 600;">🗺️ Archivo KML</a>` : ''}
+                        </div>
+                    `;
                 }
 
 
