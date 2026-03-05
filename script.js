@@ -3261,19 +3261,15 @@ function renderAiSuggestionsForProject(suggestions, imgIndex, container) {
 
                 <div style="font-size:14px; font-weight:700; color:#1e293b; line-height: 1.2;">${item.product}</div>
 
-                <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
-
-                    <span style="background:#f1f5f9; color:#475569; font-size:10px; font-weight:800; padding:1px 6px; border-radius:4px; text-transform:uppercase;">Cant: ${item.qty}</span>
-
+                <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                    <span style="font-size:11px; font-weight:700; color:#475569;">CANT:</span>
+                    <input type="number" id="${itemId}-qty" value="${item.qty}" min="1" 
+                        style="width: 50px; padding: 2px 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 11px; outline: none; text-align: center; font-weight: 600; color: #0f172a; font-family: 'Inter', sans-serif;">
                     <span style="font-size:12px; color:#64748b; line-height:1.4;">• ${item.reason}</span>
-
                 </div>
-
             </div>
-
             <div style="display:flex; gap:8px; flex-shrink:0;">
-
-                <button onclick="acceptProjectSuggestionFromPage3('${itemId}', '${item.product.replace(/'/g, "\\'")}', ${item.qty}, ${imgIndex})"
+                <button onclick="const q = document.getElementById('${itemId}-qty').value; acceptProjectSuggestionFromPage3('${itemId}', '${item.product.replace(/'/g, "\\'")}', q, ${imgIndex})"
 
                     onmouseover="this.style.background='#059669';"
 
@@ -3330,49 +3326,28 @@ function renderAiSuggestionsForProject(suggestions, imgIndex, container) {
  */
 
 function acceptProjectSuggestionFromPage3(elementId, productName, qty, imgIndex) {
-
     const card = document.getElementById(elementId);
-
-
+    const parsedQty = parseInt(qty, 10) || 1;
 
     // Mark suggestion as accepted in the global data structure
-
     if (currentAnalysisImages[imgIndex]) {
-
         const img = currentAnalysisImages[imgIndex];
-
         if (!img.acceptedProducts) img.acceptedProducts = [];
-
-        img.acceptedProducts.push({ product: productName, qty: qty, reason: 'Seleccionado en Análisis de Campo' });
-
-        console.log(`[Page3 Suggestion] Aceptado: ${productName} (x${qty}) -> imgIndex ${imgIndex}`);
-
+        img.acceptedProducts.push({ product: productName, qty: parsedQty, reason: 'Seleccionado en Análisis de Campo' });
+        console.log(`[Page3 Suggestion] Aceptado: ${productName} (x${parsedQty}) -> imgIndex ${imgIndex}`);
     }
-
-
 
     // Visual feedback on the card
-
     if (card) {
-
         card.style.backgroundColor = '#dcfce7';
-
         card.style.borderColor = '#86efac';
-
         card.innerHTML = `
-
             <div style="width:100%; display:flex; align-items:center; gap:8px; color:#166534; font-size:13px; font-weight:700; padding:4px;">
-
                 <span>✓</span>
-
-                <span>Agregado al presupuesto: ${productName} (x${qty})</span>
-
+                <span>Agregado al presupuesto: ${productName} (x${parsedQty})</span>
             </div>
-
         `;
-
     }
-
 }
 
 
@@ -6268,21 +6243,21 @@ function renderCotizacionTable() {
     let html = `
 
         <div style="margin-bottom: 25px; border-left: 4px solid #3b82f6; padding-left: 15px; display: flex; justify-content: space-between; align-items: start;">
-
             <div>
-
                 <h3 style="font-size: 16px; font-weight: 800; color: #1e293b; margin: 0;">
-
                     Planificación de Materiales 
-
                 </h3>
-
                 <p style="font-size: 12px; color: #64748b; margin: 4px 0 0 0;">
-
-                    Personaliza los materiales y cantidades antes de descargar. Al final de la página puedes agregar productos extra.
-
+                    ${selectedProjectType === 'assistant'
+            ? (() => {
+                const pName = document.getElementById('projectName').value.trim() || 'Proyecto sin nombre';
+                const clients = document.getElementById('censo').value.trim() || '0';
+                const radius = document.getElementById('coverageRadius').value || '0';
+                return `Lista de materiales generada para <b>${pName}</b> considerando <b>${clients} clientes</b> para un radio de cobertura de <b>${radius}m</b>.`;
+            })()
+            : "Personaliza los materiales y cantidades antes de descargar. Al final de la página puedes agregar productos extra."
+        }
                 </p>
-
             </div>
 
             <button onclick="fetchOdooProducts()" title="Refrescar datos"
