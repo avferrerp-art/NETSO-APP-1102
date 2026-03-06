@@ -368,12 +368,22 @@
                         </div>
                     </div>
 
+                    <!-- Contenedor de Notas Adicionales -->
+                    <div id="kmz-notes-container" style="display:none; margin-top: 20px; margin-bottom: 15px;">
+                        <label class="field-label" style="display: block; margin-bottom: 8px;">
+                            <span style="font-size: 16px; margin-right: 5px;">📝</span> Notas o Requisitos Específicos
+                            (Opcional)
+                        </label>
+                        <textarea id="kmz-user-notes"
+                            placeholder="Ej: Considerar terreno montañoso, priorizar divisores 1:8, utilizar cable auto-soportado..."
+                            style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; min-height: 80px; resize: vertical; font-family: var(--font-main);"></textarea>
+                    </div>
+
                     <!-- Botón para Iniciar Análisis IA del KMZ -->
                     <button class="btn-primary" id="btn-analyze-kmz" onclick="analyzeKMZTopology()"
-                        style="display:none; width: 100%; margin-top: 10px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                        style="display:none; width: 100%; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
                         ✨ Analizar Topología y Sugerir Equipos
                     </button>
-
                     <!-- Resultados del Análisis KMZ (Tarjetas Seleccionables) -->
                     <div id="kmz-analysis-loading" style="display: none; text-align: center; padding: 30px;">
                         <div class="loading-spinner" style="margin: 0 auto;"></div>

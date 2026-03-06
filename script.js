@@ -16374,10 +16374,11 @@ function renderKMZMap(features) {
     });
 
     if (bounds.isValid()) kmzMap.fitBounds(bounds, { padding: [30, 30] });
+    document.getElementById('kmz-notes-container').style.display = 'block';
     document.getElementById('btn-analyze-kmz').style.display = 'block';
 }
 
-window.updateKMZValue = function(key, val) {
+window.updateKMZValue = function (key, val) {
     if (key === 'olts' || key === 'naps' || key === 'clients') {
         kmzTelemetry[key] = parseInt(val) || 0;
     } else if (key === 'trunkDist' || key === 'distDist') {
@@ -16431,7 +16432,8 @@ async function analyzeKMZTopology() {
     }
 
     try {
-        const prompt = `Analiza esta topología de red FTTH extraída de un archivo KMZ y sugiere materiales NETSO.
+        const userNotes = document.getElementById('kmz-user-notes').value.trim();
+        let prompt = `Analiza esta topología de red FTTH extraída de un archivo KMZ y sugiere materiales NETSO.
         DATOS EXTRAÍDOS DEL KMZ:
         - OLTs detectadas: ${kmzTelemetry.olts}
         - Cajas NAP/CTO detectadas: ${kmzTelemetry.naps}
@@ -16446,7 +16448,13 @@ async function analyzeKMZTopology() {
         3. ACCESORIOS: Sugiere 1 splitter 1:16 por cada NAP si no se especifica.
         
         ${catalogContext}
-        
+        `;
+
+        if (userNotes) {
+            prompt += `\nINSTRUCCIONES ADICIONALES DEL USUARIO:\n"${userNotes}"\n(Por favor, prioriza estas instrucciones al hacer tus recomendaciones).`;
+        }
+
+        prompt += `
         FORMATO DE RESPUESTA:
         Explica brevemente tu razonamiento técnico y finalmente entrega un JSON así:
         \u0060\u0060\u0060json
