@@ -9,65 +9,81 @@
 window.NAVIGATOR_SPECS = {
 
     // ================================================================
-    // OLT — OPTICAL LINE TERMINAL
-    // Serie NAVGPT | ITU-T G.984/G.988 | FSAN
+    // SFP MÓDULOS ÓPTICOS (NUEVA TABLA 1)
     // ================================================================
-    OLT: {
-        // Interfaz PON: SC/APC, SMF 9/125µm, velocidad 2.5G down / 1.25G up
-        // Longitud de onda TX: 1490nm | RX: 1310nm
+    SFP: {
         models: {
-            'NAVGPT-01P': {
-                label: 'Navigator NAVGPT-01P (1 puerto GPON)',
-                gponPorts: 1,
-                maxSubs: 128,
-                supportedClasses: ['classBplus', 'classCplus'],
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
-                defaultClass: 'classBplus',
-                maxDistKm: 20
+            'SFP GPON C+++': {
+                manufacturer: 'Huawei', tech: 'GPON', version: 'C+++', speedGbps: 2.5,
+                pTx_min: 5.0, pTx_max: 10.0, pTx_typical: 7.5, sRx: -31,
+                maxDistKm: 60
             },
-            'NAVGPT-02P': {
-                label: 'Navigator NAVGPT-02P (2 puertos GPON)',
-                gponPorts: 2,
-                maxSubs: 256,
-                supportedClasses: ['classBplus', 'classCplus'],
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
-                defaultClass: 'classBplus',
-                maxDistKm: 20
+            'SFP GPON C++': {
+                manufacturer: 'Huawei', tech: 'GPON', version: 'C++', speedGbps: 2.5,
+                pTx_min: 4.0, pTx_max: 9.0, pTx_typical: 6.5, sRx: -29,
+                maxDistKm: 40
             },
-            'NAVGPT-04P': {
-                label: 'Navigator NAVGPT-04P (4 puertos GPON)',
-                gponPorts: 4,
-                maxSubs: 512,
-                supportedClasses: ['classBplus', 'classCplus'],
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
-                defaultClass: 'classBplus',
-                maxDistKm: 20
+            'SFP GPON C+': {
+                manufacturer: 'Huawei', tech: 'GPON', version: 'C+', speedGbps: 2.5,
+                pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -27,
+                maxDistKm: 30
             },
-            'NAVGPT-08P': {
-                label: 'Navigator NAVGPT-08P (8 puertos GPON)',
-                gponPorts: 8,
-                maxSubs: 1024,
-                supportedClasses: ['classBplus', 'classCplus'],
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
-                defaultClass: 'classBplus',
-                maxDistKm: 20
-            },
-            'NAVGPT-16': {
-                label: 'Navigator NAVGPT-16 (16 puertos GPON)',
-                gponPorts: 16,
-                maxSubs: 2048,
-                supportedClasses: ['classBplus', 'classCplus', 'classCplusplus'],
-                classBplus: { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, pSat: -8, iturBudget: 28 },
-                classCplus: { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -30, pSat: -12, iturBudget: 32 },
-                classCplusplus: { pTx_min: 6.0, pTx_max: 10.0, pTx_typical: 8.0, sRx: -32, pSat: -12, iturBudget: 35 },
-                defaultClass: 'classCplus',
-                maxDistKm: 20
+            'SFP 10G GPON C+': {
+                manufacturer: 'Huawei', tech: 'XGS-PON/GPON', version: 'C+', speedGbps: 10.0,
+                pTx_min: 5.0, pTx_max: 7.0, pTx_typical: 6.0, sRx: -28,
+                maxDistKm: 35
             }
         }
+    },
+
+    // ================================================================
+    // OLT — OPTICAL LINE TERMINAL (NUEVA TABLA 2)
+    // ================================================================
+    OLT: {
+        models: {
+            'NAVGPT-01P': {
+                label: 'Navigator NAVGPT-01P (1 puerto GPON)', manufacturer: 'SUMEC/Navigator',
+                gponPorts: 1, xgsPonPorts: 0, tech: 'GPON', maxSpeedGbps: 2.5, maxSubs: 128
+            },
+            'NAVGPT-02P': {
+                label: 'Navigator NAVGPT-02P (2 puertos GPON)', manufacturer: 'SUMEC/Navigator',
+                gponPorts: 2, xgsPonPorts: 0, tech: 'GPON', maxSpeedGbps: 2.5, maxSubs: 256
+            },
+            'NAVGPT-04P': {
+                label: 'Navigator NAVGPT-04P (4 puertos GPON)', manufacturer: 'SUMEC/Navigator',
+                gponPorts: 4, xgsPonPorts: 0, tech: 'GPON', maxSpeedGbps: 2.5, maxSubs: 512
+            },
+            'NAVGPT-08P': {
+                label: 'Navigator NAVGPT-08P (8 puertos GPON)', manufacturer: 'SUMEC/Navigator',
+                gponPorts: 8, xgsPonPorts: 0, tech: 'GPON', maxSpeedGbps: 2.5, maxSubs: 1024
+            },
+            'NAVGPT-16P': {
+                label: 'Navigator NAVGPT-16P (16 puertos GPON)', manufacturer: 'SUMEC/Navigator',
+                gponPorts: 16, xgsPonPorts: 0, tech: 'GPON', maxSpeedGbps: 2.5, maxSubs: 2048
+            },
+            'MA5800-X7': {
+                label: 'Huawei MA5800-X7 (Distribuida 6U)', manufacturer: 'Huawei',
+                gponPorts: 112, xgsPonPorts: 56, tech: 'GPON + XGS-PON', maxSpeedGbps: 10.0, maxSubs: 7000
+            },
+            'MA5800-X17': {
+                label: 'Huawei MA5800-X17 (Distribuida 11U)', manufacturer: 'Huawei',
+                gponPorts: 272, xgsPonPorts: 136, tech: 'GPON + XGS-PON', maxSpeedGbps: 10.0, maxSubs: 17000
+            },
+            'ZTE-C620': {
+                label: 'ZTE C620 10G AC (Combo)', manufacturer: 'ZTE',
+                gponPorts: 16, xgsPonPorts: 16, tech: 'GPON + XGS-PON Combo', maxSpeedGbps: 10.0, maxSubs: 4096
+            }
+        }
+    },
+
+    // ================================================================
+    // MATRIZ DE COMPATIBILIDAD Y CRITERIOS (TABLAS 3 y 4)
+    // ================================================================
+    RULES: {
+        marginAging: 2.0,      // dB envejecimiento
+        marginWeather: 1.5,    // dB clima
+        marginInterference: 0.5, // dB interferencia
+        overSubscriptionFactor: 2.5
     },
 
     // ================================================================

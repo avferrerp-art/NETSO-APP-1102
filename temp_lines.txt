@@ -1,0 +1,5 @@
+                    <td data-fill-color="1E293B" data-f-color="FFFFFF" data-f-bold="true" data-a-h="left" data-b-a-s="thin" style="width: 400px; background-color: #1e293b; color: #ffffff; font-weight: bold; padding: 10px; border: 1px solid #e2e8f0;">PRODUCTO / DESCRIPCIÓN</td>
+                    <td data-fill-color="1E293B" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" style="width: 100px; background-color: #1e293b; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #e2e8f0; padding: 10px;">CANTIDAD</td>
+                    <td data-fill-color="1E293B" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" style="width: 150px; background-color: #1e293b; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">UNITARIO ($)</td>
+                    <td data-fill-color="1E293B" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" style="width: 150px; background-color: #1e293b; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">TOTAL ($)</td>
+                </tr>

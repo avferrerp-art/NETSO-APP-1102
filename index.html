@@ -13,9 +13,12 @@
         rel="stylesheet">
 
     <link rel="stylesheet" href="style.css">
+    <!-- Leaflet.js for KMZ Mapping -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
     <!-- MapLibre GL JS -->
-    <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
-    <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
 </head>
 
 <body>
@@ -314,7 +317,7 @@
                         <tbody id="quote-table-body">
                             <tr>
                                 <td colspan="5" style="text-align: center; color: #94a3b8; padding: 30px;">
-                                    Tu lista está vacía. Agrega productos arriba.
+                                    Tu lista está vacía. Agrega productos arriba o carga un archivo KMZ.
                                 </td>
                             </tr>
                         </tbody>
@@ -327,6 +330,61 @@
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+
+                <!-- NUEVA SECCIÓN: ANÁLISIS INTELIGENTE CON KMZ -->
+                <div class="section"
+                    style="margin-top: 40px; border-top: 2px solid var(--netso-green); padding-top: 30px; background: #f0fdf4; border-radius: 16px; border: 1px solid #dcfce7;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 0 10px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span style="font-size: 28px;">🌐</span>
+                            <h2 class="section-title" style="margin: 0; color: #166534;">Análisis Inteligente con KMZ
+                            </h2>
+                        </div>
+                        <button class="btn-primary" onclick="document.getElementById('kmzFileInput').click()"
+                            style="width: auto; background: #166534; border-color: #14532d; padding: 10px 20px; display: flex; align-items: center; gap: 8px;">
+                            📁 Cargar Archivo KMZ
+                        </button>
+                        <input type="file" id="kmzFileInput" accept=".kmz" style="display: none;"
+                            onchange="handleKMZUpload(event)">
+                    </div>
+
+                    <p style="color: #374151; font-size: 14px; margin-bottom: 20px; padding: 0 10px;">
+                        Carga la topología de tu red en formato KMZ. El sistema analizará automáticamente las
+                        distancias, cantidad de NAPs y sugerirá el equipamiento óptico ideal.
+                    </p>
+
+                    <!-- Mapa Interactiva KMZ -->
+                    <div id="kmz-map-container" style="display:none; margin-bottom: 20px;">
+                        <div id="kmz-map"
+                            style="width: 100%; height: 400px; border-radius: 12px; border: 2px solid #cbd5e1; background: #e2e8f0; z-index: 1;">
+                        </div>
+
+                        <!-- Panel de Telemetría KMZ -->
+                        <div id="kmz-telemetry-panel"
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 15px;">
+                            <!-- Se llena dinámicamente -->
+                        </div>
+                    </div>
+
+                    <!-- Botón para Iniciar Análisis IA del KMZ -->
+                    <button class="btn-primary" id="btn-analyze-kmz" onclick="analyzeKMZTopology()"
+                        style="display:none; width: 100%; margin-top: 10px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                        ✨ Analizar Topología y Sugerir Equipos
+                    </button>
+
+                    <!-- Resultados del Análisis KMZ (Tarjetas Seleccionables) -->
+                    <div id="kmz-analysis-loading" style="display: none; text-align: center; padding: 30px;">
+                        <div class="loading-spinner" style="margin: 0 auto;"></div>
+                        <p style="margin-top: 15px; font-weight: 600; color: #166534;">IA analizando topología y
+                            catálogo...</p>
+                    </div>
+
+                    <div id="kmz-ai-suggestions"
+                        style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
+                        <!-- Aquí se renderizan las tarjetas seleccionables -->
+                    </div>
                 </div>
 
                 <!-- SECCIÓN SUGERENCIAS IA (COTIZADOR DIRECTO) -->
@@ -385,7 +443,7 @@
                     <button class="btn-secondary" onclick="saveDirectQuote()"
                         style="background: #3b82f6; border-color: #2563eb; color: white;"> Guardar</button>
                     <button class="btn-primary" onclick="generateDirectExcel()"
-                        style="background: #10b981; border-color: #059669;">Generar Excel (.xls)</button>
+                        style="background: #10b981; border-color: #059669;">Generar Excel (.xlsx)</button>
                 </div>
             </div>
         </div>
@@ -719,34 +777,58 @@
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px;">
 
                         <div style="grid-column: span 2;">
-                            <label class="field-label">Modelo OLT Navigator</label>
-                            <select id="ob-olt-model" class="input-field" style="padding: 9px 12px;"
-                                onchange="onOltModelChange()">
-                                <option value="NAVGPT-01P">NAVGPT-01P — 1 puerto GPON (max 128 subs)</option>
-                                <option value="NAVGPT-02P">NAVGPT-02P — 2 puertos GPON (max 256 subs)</option>
-                                <option value="NAVGPT-04P">NAVGPT-04P — 4 puertos GPON (max 512 subs)</option>
-                                <option value="NAVGPT-08P" selected>NAVGPT-08P — 8 puertos GPON (max 1024 subs)</option>
-                                <option value="NAVGPT-16">NAVGPT-16 — 16 puertos GPON (max 2048 subs)</option>
-                            </select>
+                            <h4
+                                style="margin: 0 0 5px 0; color: #334155; font-size: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
+                                Requisitos del Proyecto</h4>
                         </div>
-                        <div>
-                            <label class="field-label">Clase GPON</label>
-                            <select id="ob-olt-class" class="input-field" style="padding: 9px 12px;"
-                                onchange="onOltModelChange()">
-                                <option value="classBplus">Clase B+ (P_TX +1.5~+5 dBm)</option>
-                                <option value="classCplus" selected>Clase C+ (P_TX +3~+7 dBm)</option>
-                                <option value="classCplusplus">Clase C++ (P_TX +6~+10 dBm) — solo NAVGPT-16</option>
-                            </select>
-                            <div id="ob-class-warning"
-                                style="display:none; margin-top:5px; font-size:11px; color:#b45309; font-weight:600;">
-                                ⚠️ Clase C++ solo disponible en NAVGPT-16. Se aplicó C+ como máximo para este modelo.
+                        <div
+                            style="grid-column: span 2; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 12px; margin-bottom: 5px;">
+                            <div style="display: flex; align-items: start; gap: 10px;">
+                                <span style="font-size: 20px;">📋</span>
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                                        Resumen del Proyecto (Diseño)</div>
+                                    <div id="ob-design-summary"
+                                        style="font-size: 12px; color: #475569; line-height: 1.5;">
+                                        Cargando parámetros de diseño...
+                                    </div>
+                                    <!-- Hidden input for script compatibility -->
+                                    <input type="hidden" id="ob-req-clients" value="100">
+                                </div>
                             </div>
                         </div>
-                        <div>
-                            <label class="field-label">Potencia OLT — P<sub>TX</sub> (dBm)</label>
-                            <input type="number" id="ob-ptx" value="5" step="0.1" class="input-field"
-                                style="padding: 9px 12px;" title="Auto-rellenado según modelo y clase. Puedes ajustar.">
+
+                        <div style="grid-column: span 2;">
+                            <h4
+                                style="margin: 10px 0 5px 0; color: #334155; font-size: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">
+                                Equipamiento Óptico</h4>
                         </div>
+
+                        <div>
+                            <label class="field-label">Modelo OLT</label>
+                            <select id="ob-olt-model" class="input-field" style="padding: 9px 12px;"
+                                onchange="onOltModelChange()">
+                                <option value="NAVGPT-01P">NAVGPT-01P — 1 puerto GPON</option>
+                                <option value="NAVGPT-02P">NAVGPT-02P — 2 puertos GPON</option>
+                                <option value="NAVGPT-04P">NAVGPT-04P — 4 puertos GPON</option>
+                                <option value="NAVGPT-08P" selected>NAVGPT-08P — 8 puertos GPON</option>
+                                <option value="NAVGPT-16P">NAVGPT-16P — 16 puertos GPON</option>
+                                <option value="MA5800-X7">Huawei MA5800-X7 — GPON + XGS-PON</option>
+                                <option value="MA5800-X17">Huawei MA5800-X17 — High Capacity</option>
+                                <option value="ZTE-C620">ZTE C620 10G AC — Combo</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">Módulo SFP</label>
+                            <select id="ob-sfp-model" class="input-field" style="padding: 9px 12px;"
+                                onchange="onOltModelChange()">
+                                <option value="SFP GPON C+">SFP GPON C+ (hasta 30km)</option>
+                                <option value="SFP GPON C++" selected>SFP GPON C++ (hasta 40km)</option>
+                                <option value="SFP GPON C+++">SFP GPON C+++ (hasta 60km)</option>
+                                <option value="SFP 10G GPON C+">SFP 10G XGS-PON C+ (hasta 35km)</option>
+                            </select>
+                        </div>
+
                         <div style="grid-column: span 2;">
                             <label class="field-label">Modelo ONT Navigator</label>
                             <select id="ob-ont-model" class="input-field" style="padding: 9px 12px;"
@@ -755,6 +837,12 @@
                                     Play, WiFi, POTS)</option>
                                 <option value="SM16101-T10">SM16101-GHZ-T10 — ONT Simple / Datos (1x GigE)</option>
                             </select>
+                        </div>
+
+                        <div>
+                            <label class="field-label">Potencia OLT — P<sub>TX</sub> (dBm)</label>
+                            <input type="number" id="ob-ptx" value="5" step="0.1" class="input-field"
+                                style="padding: 9px 12px;" title="Auto-rellenado según SFP. Puedes ajustar.">
                         </div>
                         <div>
                             <label class="field-label">Sensibilidad ONT — S<sub>RX</sub> (dBm)</label>
@@ -1182,13 +1270,17 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-    <script src="config.js?v=1.2"></script>
-    <script src="data.js?v=1.2"></script>
-    <script src="products_data.js?v=1.2"></script>
+    <!-- Excel Generation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/linways/table-to-excel@v1.0.4/dist/tableToExcel.js"></script>
+
+    <script src="config.js?v=2.1"></script>
+    <script src="data.js?v=2.1"></script>
+    <script src="products_data.js?v=2.1"></script>
     <!-- Módulos de Despliegue -->
-    <script src="fibraDespliegue.js?v=2.0"></script>
-    <script src="script.js?v=2.0"></script>
-    <script src="navigator_specs.js?v=1.0"></script>
+    <script src="fibraDespliegue.js?v=2.1"></script>
+    <script src="script.js?v=2.1"></script>
+    <script src="navigator_specs.js?v=2.1"></script>
     <script>
         // ============================================================
         //   PRESUPUESTO OPTICO GPON  -  Motor completo
@@ -1199,36 +1291,99 @@
             var arrow = document.getElementById('optical-panel-arrow');
             if (!body) return;
             var isOpen = body.style.display === 'block';
+
+            // Al abrir el panel, sincronizar valores de diseño general
+            if (!isOpen) {
+                if (typeof window.syncOpticalBudgetWithDesign === 'function') {
+                    window.syncOpticalBudgetWithDesign();
+                }
+            }
+
             body.style.display = isOpen ? 'none' : 'block';
             arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
         };
 
-        // Auto-rellena P_TX segun el modelo OLT y clase seleccionados
+        window.syncOpticalBudgetWithDesign = function () {
+            try {
+                // Fuentes de Clientes
+                var censoObj = document.getElementById('censo');
+                var archCensoObj = document.getElementById('arch-censo');
+
+                // Prioridad al valor del censo en el arquitecto (Paso 4), luego el general (Paso 2)
+                var globalClients = 100;
+                if (archCensoObj && archCensoObj.value && parseInt(archCensoObj.value) > 0) {
+                    globalClients = parseInt(archCensoObj.value);
+                } else if (censoObj && censoObj.value && parseInt(censoObj.value) > 0) {
+                    globalClients = parseInt(censoObj.value);
+                }
+
+                // Sincronizar input oculto para compatibilidad con cálculos de otros scripts
+                var reqClientsObj = document.getElementById('ob-req-clients');
+                if (reqClientsObj) reqClientsObj.value = globalClients;
+
+                // Fuentes de Radio de Cobertura
+                var coverageObj = document.getElementById('coverageRadius');
+                var archRadiusObj = document.getElementById('arch-radius');
+
+                var radiusMeters = 500;
+                if (archRadiusObj && archRadiusObj.value && parseInt(archRadiusObj.value) > 0) {
+                    radiusMeters = parseInt(archRadiusObj.value);
+                } else if (coverageObj && coverageObj.value && parseInt(coverageObj.value) > 0) {
+                    radiusMeters = parseInt(coverageObj.value);
+                }
+
+                // Sincronizar Distancia Troncal (m -> km)
+                var trunkDistObj = document.getElementById('ob-d-trunk');
+                if (trunkDistObj) trunkDistObj.value = (radiusMeters / 1000).toFixed(2);
+
+                // Actualizar Recuadro de Resumen Descriptivo
+                var summaryObj = document.getElementById('ob-design-summary');
+                if (summaryObj) {
+                    var coverageValue = radiusMeters; // Usar el valor directo del parámetro
+                    summaryObj.innerHTML = 'Presupuesto óptico generado para <strong>' + globalClients + ' clientes</strong> ' +
+                        'con una zona de cobertura de aproximadamente <strong>' + coverageValue.toLocaleString() + ' metros cuadrados</strong>.';
+                }
+
+                // Sincronizar Recomendación de OLT - REMOVIDO POR SOLICITUD
+            } catch (err) {
+                console.error("Budget Sync Error:", err);
+            }
+        };
+
+        // Escucha activa de cambios en los parámetros del proyecto
+        function setupBudgetAutoSync() {
+            var inputs = ['censo', 'coverageRadius', 'arch-censo', 'arch-radius'];
+            inputs.forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('input', window.syncOpticalBudgetWithDesign);
+                    el.addEventListener('change', window.syncOpticalBudgetWithDesign);
+                }
+            });
+            window.syncOpticalBudgetWithDesign(); // Sincronización inicial
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupBudgetAutoSync);
+        } else {
+            setupBudgetAutoSync();
+        }
+        // Segundo intento por si el DOM cambia dinámicamente
+        setTimeout(setupBudgetAutoSync, 3000);
+
         window.onOltModelChange = function () {
             var specs = window.NAVIGATOR_SPECS;
             if (!specs) return;
-            var modelKey = document.getElementById('ob-olt-model').value;
-            var classKey = document.getElementById('ob-olt-class').value;
-            var model = specs.OLT.models[modelKey];
-            var warnEl = document.getElementById('ob-class-warning');
-            if (!model) return;
 
-            var cls = model[classKey];
-            var usedFallback = false;
+            // 1. Recomendador de SFP basado en Compatibilidad OLT - REMOVIDO POR SOLICITUD
 
-            if (!cls) {
-                // C++ no disponible en este modelo — caer a C+ (no a B+)
-                cls = model['classCplus'] || model[model.defaultClass];
-                usedFallback = true;
-                // Reajustar el selector a C+ visualmente
-                document.getElementById('ob-olt-class').value = 'classCplus';
-            }
-
-            if (warnEl) warnEl.style.display = usedFallback ? 'block' : 'none';
-            if (!cls) return;
+            // 2. Actualizar PTX Máximo asumiendo peor escenario
+            var sfpKey = document.getElementById('ob-sfp-model').value;
+            var opt = specs.SFP.models[sfpKey];
+            if (!opt) return;
 
             // Usar el valor máximo del rango (más conservador para el peor caso)
-            var pTxMax = parseFloat(cls.pTx_max.toFixed(1));
+            var pTxMax = parseFloat(opt.pTx_max.toFixed(1));
             document.getElementById('ob-ptx').value = pTxMax;
         };
 
@@ -1247,24 +1402,14 @@
         // FASE 2: FUNCIONES DE SPECS DINAMICAS
         // ============================================================
 
-        // Retorna specs completas de OLT para modelo y clase dados
-        window.getOLTSpecs = function (modelo, clase) {
-            var DEFAULTS = { pTx_min: 1.5, pTx_max: 5.0, pTx_typical: 3.5, sRx: -28, iturBudget: 28, maxDistKm: 20 };
+        // Retorna specs completas de SFP
+        window.getSFPSpecs = function (modelo) {
+            var DEFAULTS = { pTx_min: 3.0, pTx_max: 7.0, pTx_typical: 5.0, sRx: -27, maxDistKm: 30 };
             var specs = window.NAVIGATOR_SPECS;
-            if (!specs || !specs.OLT) return DEFAULTS;
-            var model = specs.OLT.models[modelo];
-            if (!model) return DEFAULTS;
-            var claseData = model[clase] || model[model.defaultClass];
-            if (!claseData) return DEFAULTS;
-            return {
-                pTx_min: claseData.pTx_min,
-                pTx_max: claseData.pTx_max,
-                pTx_typical: claseData.pTx_typical || ((claseData.pTx_min + claseData.pTx_max) / 2),
-                sRx: claseData.sRx,
-                iturBudget: claseData.iturBudget || 28,
-                maxDistKm: model.maxDistKm || 20,
-                supportedClasses: model.supportedClasses || ['classBplus', 'classCplus']
-            };
+            if (!specs || !specs.SFP) return DEFAULTS;
+            var opt = specs.SFP.models[modelo];
+            if (!opt) return DEFAULTS;
+            return opt;
         };
 
         // Retorna specs de ONT para modelo dado
@@ -1365,10 +1510,10 @@
         // ============================================================
         // SUGIERE CLASE GPON OPTIMA SEGUN ESTANDAR ITU-T G.984
         // ============================================================
-        window.sugerirClaseGPON = function (distancia_total, numero_usuarios) {
-            if (distancia_total > 25) return 'classCplusplus';
-            if (distancia_total > 20 || numero_usuarios > 256) return 'classCplus';
-            return 'classBplus';
+        window.sugerirSFPModule = function (distancia_total, numero_usuarios) {
+            if (distancia_total > 40) return 'SFP GPON C+++';
+            if (distancia_total > 30 || numero_usuarios > 512) return 'SFP GPON C++';
+            return 'SFP GPON C+';
         };
 
         // ============================================================
@@ -1441,18 +1586,17 @@
                 window.onOltModelChange();
             }
 
-            // ---- Auto-poblar con getOLTSpecs / getONTSpecs ----
-            var oltModel = document.getElementById('ob-olt-model').value;
-            var numUsuarios = parseInt((document.getElementById('censo') || {}).value) || 0;
-            var claseRecomendada = window.sugerirClaseGPON(feederKm + distKm, numUsuarios);
-            var claseEl = document.getElementById('ob-olt-class');
-            if (claseEl) claseEl.value = claseRecomendada;
+            // ---- Auto-poblar con getSFPSpecs / getONTSpecs ----
+            var numUsuarios = parseInt((document.getElementById('censo') || {}).value) || parseInt((document.getElementById('ob-req-clients') || {}).value) || 0;
+            var sfpRecomendado = window.sugerirSFPModule(feederKm + distKm, numUsuarios);
+            var sfpEl = document.getElementById('ob-sfp-model');
+            if (sfpEl) sfpEl.value = sfpRecomendado;
 
-            var oltSpecs = window.getOLTSpecs(oltModel, claseRecomendada);
+            var sfpSpecs = window.getSFPSpecs(sfpRecomendado);
             var ontModel = document.getElementById('ob-ont-model').value;
             var ontSpecs = window.getONTSpecs(ontModel);
 
-            document.getElementById('ob-ptx').value = oltSpecs.pTx_typical;
+            document.getElementById('ob-ptx').value = sfpSpecs.pTx_typical;
             document.getElementById('ob-srx').value = ontSpecs.sRx;
             document.getElementById('ob-d-trunk').value = feederKm.toFixed(2);
             document.getElementById('ob-d-dist').value = distKm.toFixed(2);
@@ -1517,8 +1661,10 @@
         // ============================================================
         window.exportarPresupuestoJSON = function () {
             var oltModel = (document.getElementById('ob-olt-model') || {}).value || 'N/A';
-            var oltClass = (document.getElementById('ob-olt-class') || {}).value || 'N/A';
+            var sfpModel = (document.getElementById('ob-sfp-model') || {}).value || 'N/A';
             var ontModel = (document.getElementById('ob-ont-model') || {}).value || 'N/A';
+            var reqClients = parseInt((document.getElementById('ob-req-clients') || {}).value) || 0;
+            var reqSpeed = parseInt((document.getElementById('ob-req-speed') || {}).value) || 0;
             var pTx = parseFloat((document.getElementById('ob-ptx') || {}).value) || 0;
             var sRx = parseFloat((document.getElementById('ob-srx') || {}).value) || 0;
             var dTrunk = parseFloat((document.getElementById('ob-d-trunk') || {}).value) || 0;
@@ -1528,18 +1674,25 @@
             var split2 = split2En ? ((document.getElementById('ob-split2') || {}).value || '0') : '0';
             var nConn = parseInt((document.getElementById('ob-connectors') || {}).value) || 0;
             var nSplice = parseInt((document.getElementById('ob-splices') || {}).value) || 0;
-            var margin = parseFloat((document.getElementById('ob-margin') || {}).value) || 0;
+            var margin = parseFloat((document.getElementById('ob-margin') || {}).value) || 4.0;
             var pbm1310 = (document.getElementById('ob-pbm-1310') || {}).textContent || 'N/A';
             var pbm1490 = (document.getElementById('ob-pbm-1490') || {}).textContent || 'N/A';
             var estado = (document.getElementById('ob-status-badge') || {}).textContent || 'N/A';
 
             var alertasActivas = [];
             var alertEls = document.querySelectorAll('#ob-early-warning [data-alert-level]');
-            alertEls.forEach(function (el) { alertasActivas.push(el.textContent.trim()); });
+            if (alertEls.length > 0) {
+                alertEls.forEach(function (el) { alertasActivas.push(el.textContent.trim()); });
+            } else {
+                var earlyEl = document.getElementById('ob-early-warning');
+                if (earlyEl && earlyEl.innerText.length > 5) alertasActivas.push("Existen alertas activas");
+            }
 
             var reporte = {
                 fecha: new Date().toISOString(),
-                olt: { modelo: oltModel, clase: oltClass },
+                requisitos: { clientes: reqClients },
+                olt: { modelo: oltModel },
+                sfp: { modelo: sfpModel },
                 ont: { modelo: ontModel },
                 parametros: {
                     pTx_dBm: pTx, sRx_dBm: sRx,
@@ -1569,7 +1722,7 @@
             window.print();
         };
 
-        // Constantes estéticas físicas globales GPON extraídas para mejor mantenibilidad
+        // Constantes estéticas físicas globales GPON
         window.OPTICAL_CONSTANTS = {
             ALPHA_1310: 0.35,  // dB/km a 1310nm (upstream)
             ALPHA_1490: 0.20,  // dB/km a 1490nm (downstream)
@@ -1578,42 +1731,27 @@
             SPLIT_LOSS: { '0': 0, '1:2': 3.7, '1:4': 7.2, '1:8': 10.5, '1:16': 13.5, '1:32': 16.8, '1:64': 20.0 }
         };
 
-        // Límites teóricos por estándares Clase OLT G.984
-        window.DISTANCE_LIMITS = {
-            'classBplus': 20,
-            'classCplus': 20,
-            'classCplusplus': 60
-        };
-
         // Framework Multinivel Analizador de Riesgo Físico GPON
-        window.analizarAlertas = function (pbm, distancia, conectores, splitters) {
+        window.analizarAlertas = function (pbm, distancia, conectores, splitters, reqClients, reqSpeed, sfpSpecs, oltSpecs, capaEstimada) {
             var alertas = [];
             var consts = window.OPTICAL_CONSTANTS;
-            var classKey = document.getElementById('ob-olt-class').value || 'classCplus';
-            var maxDist = window.DISTANCE_LIMITS[classKey] || 20;
+            var maxDist = sfpSpecs.maxDistKm || 20;
 
             // Alerta 1: Distancia Operativa Crítica
-            var effectiveLimit = 20; // Límite real de los equipos Navigator (B+ y C+)
-            if (distancia > 15 && distancia <= effectiveLimit) {
+            if (distancia > (maxDist - 5) && distancia <= maxDist) {
                 var sugDist = [];
-                // Solo sugerir upgrade a NAVGPT-16 si no es ya C++
-                if (classKey !== 'classCplusplus') {
-                    sugDist.push('• Considerar upgrading a OLT NAVGPT-16 Clase C++ (distancia máx 60 km)');
-                }
-                var margin = parseFloat(document.getElementById('ob-margin').value) || 0;
-                sugDist.push('• Considerar amplificador óptico (booster) después de NAP');
-                sugDist.push('• Con margen de envejecimiento actual de ' + margin.toFixed(1) + ' dB, el PBM real es ' + pbm.toFixed(2) + ' dB');
-                sugDist.push('• Revisar ubicación de NAP central para acortar distancia');
+                sugDist.push('• Estás muy cerca del límite máximo soportado por tu SFP (' + maxDist + ' km).');
+                sugDist.push('• Considerar módulo de mayor alcance (ej. SFP GPON C+++ 60km).');
+                sugDist.push('• Revisar ubicación de NAP central para acortar distancia.');
                 alertas.push({
-                    level: 'WARNING',
-                    icon: '📏',
-                    titulo: 'Distancia Elevada (' + distancia.toFixed(1) + ' km)',
-                    detalle: 'Cercano al límite de clase GPON (' + effectiveLimit + ' km)',
+                    level: 'WARNING', icon: '📏',
+                    titulo: 'Distancia Elevada (' + distancia.toFixed(1) + ' km / ' + maxDist + ' km)',
+                    detalle: 'Cercano al límite del SFP ' + sfpSpecs.version,
                     sugerencias: sugDist
                 });
             }
 
-            // Alerta 2: Conectores Mecánicos
+            // Alerta 2: Conectores Mecánicos (igual)
             if (conectores > 10) {
                 var perdida_actual = conectores * consts.L_CON;
                 var conectores_a_reemplazar = Math.floor(conectores / 2);
@@ -1624,53 +1762,43 @@
                     sugConn.push('• Ganancia potencial: ~' + ganancia_potencial.toFixed(2) + ' dB');
                 }
                 alertas.push({
-                    level: 'WARNING',
-                    icon: '🔌',
+                    level: 'WARNING', icon: '🔌',
                     titulo: 'Exceso de Conectores (' + conectores + ' unidades)',
                     detalle: conectores + ' × ' + consts.L_CON.toFixed(2) + ' dB = ' + perdida_actual.toFixed(2) + ' dB pérdida',
                     sugerencias: sugConn
                 });
             }
 
-            // Alerta 3: PBM Ajustado
+            // Alerta 3: PBM Ajustado (Regla 2 Marginal)
             if (pbm < 6 && pbm >= 3) {
                 alertas.push({
-                    level: 'WARNING',
-                    icon: '⚡',
-                    titulo: 'Margen de Budget Ajustado',
-                    detalle: 'PBM = ' + pbm.toFixed(2) + ' dB (riesgo por envejecimiento)',
+                    level: 'WARNING', icon: '⚡',
+                    titulo: 'Estado Marginal de PBM',
+                    detalle: 'PBM = ' + pbm.toFixed(2) + ' dB (funciona pero ajustado)',
                     sugerencias: [
-                        '• Usar empalmes fusionados en la FdT para mejorar estabilidad',
-                        '• Plan de monitoreo de atenuación preventivo cada 6 meses'
+                        '• Usar SFP GPON C+++ (en lugar de C++) si aún es posible.',
+                        '• Revisar conectores en NAP para garantizar menos pérdidas.',
+                        '• Monitoreo frecuente de atenuación.'
                     ]
                 });
             }
 
-            // Alerta 4: PBM Crítico / Inviable
+            // Alerta 4: PBM Crítico (Regla 2 < 3dB)
             if (pbm < 3) {
                 var split2Key = document.getElementById('ob-split2').value;
-                var km_necesarios = Math.abs(pbm < 0 ? pbm : 3 - pbm) / consts.ALPHA_1310;
                 var sugCrit = [];
-
-                // Solo sugerir upgrade si no es ya la clase máxima
-                if (classKey !== 'classCplusplus') {
-                    sugCrit.push('• CAMBIO OBLIGATORIO: Actualizar a OLT Clase superior (C++)');
+                if (sfpSpecs.version !== 'C+++') {
+                    sugCrit.push('• CAMBIO OBLIGATORIO: Actualizar a SFP GPON C+++ para mejorar el presupuesto.');
                 }
-
-                // Solo sugerir eliminar split2 si realmente existe
                 if (split2Key && split2Key !== '0' && split2Key !== 'Sin splitter') {
-                    var perdida_split2 = consts.SPLIT_LOSS[split2Key] || 0;
-                    sugCrit.push('• Eliminar Splitter Nivel 2 ' + split2Key + ' (ahorro ' + perdida_split2.toFixed(1) + ' dB)');
+                    sugCrit.push('• Eliminar Splitter Nivel 2 ' + split2Key + ' (ahorro ' + consts.SPLIT_LOSS[split2Key].toFixed(1) + ' dB)');
                 }
-
-                // Siempre ofrecer la opción de acortar distancia
-                sugCrit.push('• O: Acortar distancia en ~' + km_necesarios.toFixed(1) + ' km para ser viable');
+                sugCrit.push('• Reducir infraestructura pasiva u optimizar la distribución.');
 
                 alertas.push({
-                    level: pbm < 0 ? 'CRITICAL' : 'WARNING',
-                    icon: '❌',
-                    titulo: 'Presupuesto INSUFICIENTE',
-                    detalle: 'PBM = ' + pbm.toFixed(2) + ' dB — Enlace marginal, requiere intervención',
+                    level: 'CRITICAL', icon: '❌',
+                    titulo: 'Presupuesto CRÍTICO',
+                    detalle: 'PBM = ' + pbm.toFixed(2) + ' dB (< 3dB es inviable a largo plazo)',
                     sugerencias: sugCrit
                 });
             }
@@ -1714,6 +1842,7 @@
 
         window.calcularPresupuestoOptico = function () {
             var consts = window.OPTICAL_CONSTANTS;
+            var specs = window.NAVIGATOR_SPECS;
 
             var pTx = parseFloat(document.getElementById('ob-ptx').value);
             var sRx = parseFloat(document.getElementById('ob-srx').value);
@@ -1723,7 +1852,18 @@
             var split2Key = document.getElementById('ob-split2').value;
             var nConn = parseInt(document.getElementById('ob-connectors').value) || 0;
             var nSplice = parseInt(document.getElementById('ob-splices').value) || 0;
-            var margin = parseFloat(document.getElementById('ob-margin').value) || 0;
+
+            var reqClients = parseInt(document.getElementById('ob-req-clients').value) || 0;
+            var sfpKey = document.getElementById('ob-sfp-model').value || 'SFP GPON C++';
+            var oltKey = document.getElementById('ob-olt-model').value || 'NAVGPT-08P';
+
+            // Márgenes de seguridad (Reglas 5 y 7)
+            var rules = specs.RULES;
+            var recommendedMargin = rules.marginAging + rules.marginWeather + rules.marginInterference;
+            var marginInput = document.getElementById('ob-margin');
+            var customMargin = parseFloat((marginInput || {}).value);
+            var margin = isNaN(customMargin) ? recommendedMargin : customMargin;
+            if (marginInput && isNaN(customMargin)) marginInput.value = margin; // update visual if empty
 
             var errEl = document.getElementById('ob-input-error');
             function showError(msg) {
@@ -1731,35 +1871,38 @@
                 document.getElementById('ob-results').style.display = 'none';
                 return;
             }
+            if (errEl) errEl.style.display = 'none';
 
             if (isNaN(pTx) || isNaN(sRx)) return showError('Verifica que P_TX y S_RX tengan valores numéricos.');
             if (pTx <= sRx) return showError('Error: P_TX debe ser mayor que S_RX para que el enlace sea viable.');
 
-            // Validaciones Estrictas basadas en el Estándar
-            // Validaciones Estrictas Dinámicas
+            var sfpSpecs = specs.SFP.models[sfpKey];
+            var oltSpecs = specs.OLT.models[oltKey];
             var dTotal = dTrunk + dDist;
-            var classKey = document.getElementById('ob-olt-class').value || 'classCplus';
-            var maxDist = window.DISTANCE_LIMITS[classKey] || 20;
+            var maxDist = sfpSpecs.maxDistKm || 20;
 
             if (dTrunk < 0.1 && dTrunk !== 0) return showError('Distancia troncal inválida (mínimo 0.1 km).');
             if (dDist < 0.1) return showError('Distancia distribución inválida. (mínimo 0.1 km).');
-            if (dTotal > maxDist) return showError('Distancia total (' + dTotal.toFixed(1) + ' km) excede el máximo permitido para ' + classKey.replace('class', '') + ' (' + maxDist + ' km).');
-
-            if (nConn < 4 || nConn > 100) return showError('Conectores SC/APC: mínimo 4 (2 en OLT + 2 en NAP) y máximo 100.');
+            if (nConn < 4 || nConn > 100) return showError('Conectores SC/APC: mínimo 4 y máximo 100.');
             if (nSplice < 1 || nSplice > 50) return showError('Empalmes fusionados: al menos 1 por seguridad, máximo 50.');
-            if (margin < 0 || margin > 10) return showError('Margen de envejecimiento debe estar entre 0 y 10 dB.');
 
-            // Regla de Coherencia Topológica (Regla del 50%)
-            var ratio = parseInt(split1Key.split(':')[1]) || 0;
-            var numNaps = parseInt(document.getElementById('ob-splices').value) || nSplice;
-            var censoActual = parseInt(document.getElementById('censo').value) || 0;
+            //==============================================================
+            // EJECUCIÓN DEL ALGORITMO - PARTE 3
+            //==============================================================
 
-            if (ratio > 0 && censoActual > 0 && censoActual < (ratio * 0.5)) {
-                return showError('Incoherencia Topológica: Un splitter ' + split1Key + ' requiere al menos ' + Math.ceil(ratio * 0.5) + ' usuarios (regla del 50%). Tienes ' + censoActual + '.');
+            // Regla 1: Compatibilidad OLT y SFP
+            var isOltGponOnly = oltSpecs.tech === 'GPON';
+            var isSfpXgs = sfpSpecs.tech.indexOf('XGS-PON') !== -1;
+            if (isOltGponOnly && isSfpXgs) {
+                return showError('⚠️ INCOMPATIBLE (Regla 1): OLT ' + oltSpecs.label + ' no acepta módulos SFP XGS-PON. Elige SFP GPON C++ o GPON C+++, o cambia la OLT a Huawei MA5800.');
             }
 
-            if (errEl) errEl.style.display = 'none';
+            // Regla 5: Distancia Excedida (Bloqueante Fuerte)
+            if (dTotal > maxDist) return showError('🚫 DISTANCIA EXCEDIDA (Regla 5): La distancia configurada (' + dTotal.toFixed(1) + ' km) excede la cobertura garantizada por el SFP ' + sfpSpecs.version + ' (' + maxDist + ' km). Selecciona "GPON C+++" para llegar hasta 60km.');
 
+
+
+            // CONTINUAMOS CON EL PRESUPUESTO
             var lSplit1 = consts.SPLIT_LOSS[split1Key] || 0;
             var lSplit2 = consts.SPLIT_LOSS[split2Key] || 0;
             var lConn = nConn * consts.L_CON;
@@ -1775,18 +1918,19 @@
             var wl1310 = calcWL(consts.ALPHA_1310);
             var wl1490 = calcWL(consts.ALPHA_1490);
 
+            // Regla 2: Niveles de Evaluación de Presupuesto
             function classify(pbm) {
-                if (pbm >= 6) return { label: '\u2705 Estado: OPTIMO', bg: '#dcfce7', color: '#15803d' };
-                if (pbm >= 3) return { label: '\u26a0\ufe0f Estado: ACEPTABLE', bg: '#fef9c3', color: '#92400e' };
-                if (pbm >= 0) return { label: '\ud83d\udd34 Estado: CRITICO', bg: '#fee2e2', color: '#b91c1c' };
-                return { label: '\u274c Estado: INVIABLE', bg: '#fca5a5', color: '#7f1d1d' };
+                if (pbm > 8.0) return { label: '🌟 EXCELENTE (>8 dB)', bg: '#dcfce7', color: '#15803d' };
+                if (pbm >= 6.0) return { label: '✅ ACEPTABLE (6-8 dB)', bg: '#fef9c3', color: '#15803d' };
+                if (pbm >= 3.0) return { label: '⚠️ MARGINAL (3-5 dB)', bg: '#fef3c7', color: '#b45309' };
+                return { label: '❌ CRÍTICO (<3 dB)', bg: '#fee2e2', color: '#b91c1c' };
             }
 
             function pbmColor(pbm) {
-                if (pbm >= 6) return '#15803d';
-                if (pbm >= 3) return '#b45309';
-                if (pbm >= 0) return '#b91c1c';
-                return '#7f1d1d';
+                if (pbm > 8.0) return '#15803d';
+                if (pbm >= 6.0) return '#16a34a';
+                if (pbm >= 3.0) return '#b45309';
+                return '#b91c1c';
             }
 
             var status = classify(wl1310.pbm);
@@ -1832,22 +1976,18 @@
             document.getElementById('ob-budget-bruto').textContent = budgetBruto.toFixed(2) + ' dB';
 
             // Llenar Fórmulas Aplicadas
-            var oltModelLabel = document.getElementById('ob-olt-model') ? (document.getElementById('ob-olt-model').options[document.getElementById('ob-olt-model').selectedIndex] || {}).text || 'Navigator OLT' : 'Navigator OLT';
-            var ontModelLabel = document.getElementById('ob-ont-model') ? (document.getElementById('ob-ont-model').options[document.getElementById('ob-ont-model').selectedIndex] || {}).text || 'Navigator ONT' : 'Navigator ONT';
             var split1Label = split1Key !== '0' ? split1Key : 'N/A';
             var split2Label = (document.getElementById('ob-split2-enable') && document.getElementById('ob-split2-enable').checked && split2Key !== '0') ? split2Key : 'N/A';
             var splitterDesc = split2Label !== 'N/A' ? (split1Label + ' → ' + split2Label + ' (cascada)') : split1Label;
-            var dTotal = dTrunk + dDist;
-            var marginWarning = margin < 3 ? '  ⚠ Recomendado: 3–5 dB para envejecimiento y temperatura' : '  ✔ Dentro del rango recomendado (3–5 dB)';
-            var pbmInterpret = wl1310.pbm >= 3 ? '✔ ENLACE VIABLE  (PBM ≥ 3 dB)' : '✘ ENLACE EN RIESGO  (PBM < 3 dB — revisar diseño)';
+
+            var pbmInterpret = wl1310.pbm >= 3 ? '✔ ENLACE VIABLE (PBM ≥ 3 dB)' : '✘ ESTADO CRÍTICO (PBM < 3 dB — Inviable a largo plazo)';
 
             var formulasText = [
 
-                '  PARÁMETROS DEL SISTEMA',
+                '  PARÁMETROS DEL SISTEMA / INFRAESTRUCTURA',
 
-                '  Estándar                              : GPON  (ITU-T G.984.2)',
-                '  OLT                                   : ' + oltModelLabel,
-                '  ONT                                   : ' + ontModelLabel,
+                '  SFP Módulo                            : ' + sfpSpecs.version + ' (' + sfpSpecs.tech + ')',
+                '  OLT                                   : ' + oltSpecs.label,
                 '  Fibra                                 : SMF · G.652.D  (monomodo estándar)',
                 '  Distancia total                       : ' + dTotal.toFixed(2) + ' km  (troncal ' + dTrunk.toFixed(2) + ' + dist. ' + dDist.toFixed(2) + ')',
                 '  Configuración de split                : ' + splitterDesc,
@@ -1875,8 +2015,8 @@
                 '  Pérd. Conectores (L_conectores)       : ' + nConn + ' conect. × ' + consts.L_CON.toFixed(2) + ' dB/ud = ' + lConn.toFixed(2) + ' dB',
                 '                                          (OLT + ODF + FDT/NAP + Roseta + ONT)',
                 '  Pérd. Empalmes (L_empalmes)           : ' + nSplice + ' empal. × ' + consts.L_SPLICE.toFixed(2) + ' dB/ud = ' + lSplice.toFixed(2) + ' dB',
-                '  Margen de Seguridad                   : ' + margin.toFixed(2) + ' dB',
-                marginWarning,
+                '  Margen de Seguridad (Regla 7)         : ' + margin.toFixed(2) + ' dB aplicados',
+                '                                          (Env: ' + rules.marginAging + ' + Clima: ' + rules.marginWeather + ' + Interf: ' + rules.marginInterference + ')',
 
                 '  Pérd. Total (L_total)                 = ' + wl1310.lTotal.toFixed(2) + ' dB',
                 '',
@@ -1893,8 +2033,8 @@
             var formEl = document.getElementById('ob-formulas-content');
             if (formEl) formEl.textContent = formulasText;
 
-            // Visualizacion de advertencias multinivel
-            var alertas = window.analizarAlertas(wl1310.pbm, dTotal, nConn, split1Key);
+            // Visualizacion de advertencias multinivel con las nuevas reglas
+            var alertas = window.analizarAlertas(wl1310.pbm, dTotal, nConn, split1Key, reqClients, 0, sfpSpecs, oltSpecs, 0);
             window.renderizarAlertas(alertas);
 
             document.getElementById('ob-results').style.display = 'block';

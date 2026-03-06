@@ -5624,37 +5624,59 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
 
 
-    // OLT Logic
+    // OLT Logic & Sync with Optical Budget
     const puertosPONRounded = Math.ceil(clientes / 128);
     const sStock = stock.activos;
 
-    // Default to 8 ports if undefined
-    let oltModelKey = "NAVGPT-08P";
+    // Check if there is an active OLT explicitly selected on the Optical Budget Form
+    let obOltModel = document.getElementById('ob-olt-model') ? document.getElementById('ob-olt-model').value : null;
+    let obSfpModel = document.getElementById('ob-sfp-model') ? document.getElementById('ob-sfp-model').value : null;
 
-    // Check OLT
-    if (sStock.olt === 'buy') {
-        let modelo;
-        let capacity;
-        if (puertosPONRounded <= 4) { modelo = "OLT Navigator 4 Puertos"; capacity = 4; oltModelKey = "NAVGPT-04P"; }
-        else if (puertosPONRounded <= 8) { modelo = "OLT Navigator 8 Puertos"; capacity = 8; oltModelKey = "NAVGPT-08P"; }
-        else { modelo = "OLT Navigator 16 Puertos"; capacity = 16; oltModelKey = "NAVGPT-16"; }
+    // We will favor the Optical Budget OLT selection if present, to sync the BOM with the optical planning.
+    if (obOltModel && obOltModel !== "NAVGPT-08P") {
+        let specs = window.NAVIGATOR_SPECS;
+        let curOlt = (specs && specs.OLT && specs.OLT.models) ? specs.OLT.models[obOltModel] : null;
+        let modeloLabel = curOlt ? curOlt.label : obOltModel;
 
-        const qtyOlt = Math.ceil(puertosPONRounded / capacity) || 1;
-        processReq("⚡ Equipos Activos", modelo, qtyOlt, "unidades", "crítica", null);
+        // Calculate OLT unit count based on needed ports vs OLT capacity
+        let capacity = curOlt ? curOlt.gponPorts : 8;
+        let qtyOlt = Math.ceil(puertosPONRounded / capacity) || 1;
 
-        // SFP C++ as conservative default
-        processReq("⚡ Equipos Activos", "Módulos SFP C++", puertosPONRounded, "unidades", "crítica", null);
+        processReq("⚡ Equipos Activos", modeloLabel, qtyOlt, "unidades", "crítica", null);
+
+        // Add the selected SFP module as well (quantity = 1 per PON port needed)
+        let qtySfp = puertosPONRounded || 1;
+        let sfpLabel = obSfpModel || "Módulos SFP C++";
+        processReq("⚡ Equipos Activos", sfpLabel, qtySfp, "unidades", "crítica", null);
+
     } else {
-        let cap = 0;
-        if (sStock.olt.includes('2') || sStock.olt.includes('4')) { cap = 4; oltModelKey = "NAVGPT-04P"; }
-        if (sStock.olt.includes('8')) { cap = 8; oltModelKey = "NAVGPT-08P"; }
-        if (sStock.olt.includes('32') || sStock.olt.includes('16')) { cap = 16; oltModelKey = "NAVGPT-16"; }
+        // Default Logic if no specific Optical Budget override
+        let oltModelKey = "NAVGPT-08P";
 
-        if (puertosPONRounded > cap) {
-            processReq("⚡ Equipos Activos", `Upgrade OLT Requerido (Necesitas ${puertosPONRounded} puertos)`, Math.ceil(puertosPONRounded / 16) || 1, "sistema", "crítica", null);
-        }
-        if (sStock.sfp === 'none') {
+        if (sStock.olt === 'buy') {
+            let modelo;
+            let capacity;
+            if (puertosPONRounded <= 4) { modelo = "OLT Navigator 4 Puertos"; capacity = 4; oltModelKey = "NAVGPT-04P"; }
+            else if (puertosPONRounded <= 8) { modelo = "OLT Navigator 8 Puertos"; capacity = 8; oltModelKey = "NAVGPT-08P"; }
+            else { modelo = "OLT Navigator 16 Puertos"; capacity = 16; oltModelKey = "NAVGPT-16"; }
+
+            const qtyOlt = Math.ceil(puertosPONRounded / capacity) || 1;
+            processReq("⚡ Equipos Activos", modelo, qtyOlt, "unidades", "crítica", null);
+
+            // SFP C++ as conservative default
             processReq("⚡ Equipos Activos", "Módulos SFP C++", puertosPONRounded, "unidades", "crítica", null);
+        } else {
+            let cap = 0;
+            if (sStock.olt.includes('2') || sStock.olt.includes('4')) { cap = 4; oltModelKey = "NAVGPT-04P"; }
+            if (sStock.olt.includes('8')) { cap = 8; oltModelKey = "NAVGPT-08P"; }
+            if (sStock.olt.includes('32') || sStock.olt.includes('16')) { cap = 16; oltModelKey = "NAVGPT-16"; }
+
+            if (puertosPONRounded > cap) {
+                processReq("⚡ Equipos Activos", `Upgrade OLT Requerido (Necesitas ${puertosPONRounded} puertos)`, Math.ceil(puertosPONRounded / 16) || 1, "sistema", "crítica", null);
+            }
+            if (sStock.sfp === 'none') {
+                processReq("⚡ Equipos Activos", "Módulos SFP C++", puertosPONRounded, "unidades", "crítica", null);
+            }
         }
     }
 
@@ -7408,27 +7430,16 @@ async function downloadComparisonReport() {
                 <![endif]-->
 
                 <style>
-
                     body { font-family: Calibri, Arial, sans-serif; }
-
-                    td { border: 1px solid #cbd5e1; padding: 5px; vertical-align: middle; }
-
                     .header { background-color: #1e293b; color: white; font-weight: bold; text-align: center; }
-
                     .col-head { background-color: #334155; color: white; font-weight: bold; text-align: center; }
-
                     .text-center { text-align: center; }
-
                     .buy-yes { background-color: #fee2e2; color: #b91c1c; font-weight: bold; }
-
                     .buy-no { background-color: #f0fdf4; color: #15803d; }
-
                     .odoo-match { color: #0f172a; font-weight: 600; }
-
                     .no-match { color: #94a3b8; font-style: italic; }
-
                     .stock-netso { font-weight: bold; color: #0f172a; }
-
+                    td { border: 1px solid #cbd5e1; padding: 5px; vertical-align: middle; }
                 </style>
 
             </head>
@@ -7436,35 +7447,31 @@ async function downloadComparisonReport() {
             <body>
 
                 <table>
-
-                    <tr><td colspan="8" class="header" style="font-size:18px;"> PLAN DE COMPRA</td></tr>
-
-                    <tr><td colspan="8" style="text-align:center; background:#f1f5f9;">Proyecto: <strong>${projectName}</strong> - Cliente: <strong>${ispName}</strong></td></tr>
-
-                    <tr><td colspan="8" style="text-align:center; font-size:11px;">Generado: ${new Date().toLocaleString()}</td></tr>
+                    <colgroup>
+                        <col width="300">
+                        <col width="500">
+                        <col width="120">
+                        <col width="120">
+                        <col width="130">
+                        <col width="130">
+                        <col width="140">
+                        <col width="140">
+                    </colgroup>
+                    <tr><td colspan="8" data-fill-color="1E293B" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-a-v="middle" style="background-color: #1e293b; color: #ffffff; font-weight: bold; text-align: center; font-size: 18px; padding: 10px; border: 1px solid #cbd5e1;"> PLAN DE COMPRA</td></tr>
+                    <tr><td colspan="8" data-fill-color="F1F5F9" data-a-h="center" data-f-bold="true" style="text-align:center; background:#f1f5f9; border: 1px solid #cbd5e1; padding: 5px;">Proyecto: <strong>${projectName}</strong> - Cliente: <strong>${ispName}</strong></td></tr>
+                    <tr><td colspan="8" data-fill-color="FFFFFF" data-f-color="64748B" data-a-h="center" data-f-sz="9" style="text-align:center; font-size:11px; border: 1px solid #cbd5e1; padding: 3px; color: #64748b;">Generado: ${new Date().toLocaleString()}</td></tr>
 
                     <tr><td colspan="8"></td></tr>
 
-                    
-
                     <tr style="height: 30px;">
-
-                        <td class="col-head" style="width:250px;">ITEM CALCULADO</td>
-
-                        <td class="col-head" style="width:350px;">PRODUCTO CATALOGO INTERNO</td>
-
-                        <td class="col-head" style="width:100px;">STOCK ISP</td>
-
-                        <td class="col-head" style="width:100px;">SUGERIDO</td>
-
-                        <td class="col-head" style="width:120px; background:#b91c1c;">A COMPRAR</td>
-
-                        <td class="col-head" style="width:100px; background:#15803d;">STOCK NETSO</td>
-
-                        <td class="col-head" style="width:120px;">PRECIO UNIT. ($)</td>
-
-                        <td class="col-head" style="width:120px; background:#f8fafc; color:#0f172a;">TOTAL ($)</td>
-
+                        <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="300" data-w-px="300" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">ITEM CALCULADO</td>
+                        <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="500" data-w-px="500" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">PRODUCTO CATALOGO INTERNO</td>
+                        <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">STOCK ISP</td>
+                        <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">SUGERIDO</td>
+                        <td data-fill-color="B91C1C" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="130" data-w-px="130" style="background-color: #b91c1c; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">A COMPRAR</td>
+                        <td data-fill-color="15803D" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="130" data-w-px="130" style="background-color: #15803d; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">STOCK NETSO</td>
+                        <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="140" data-w-px="140" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">PRECIO UNIT. ($)</td>
+                        <td data-fill-color="F1F5F9" data-f-color="010101" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="140" data-w-px="140" style="background-color: #f1f5f9; color: #010101; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">TOTAL ($)</td>
                     </tr>
 
         `;
@@ -7576,23 +7583,14 @@ async function downloadComparisonReport() {
             excelContent += `
 
                 <tr>
-
-                    <td>${item.item}</td>
-
-                    <td class="${matchClass}">${odooMatch.name}</td>
-
-                    <td class="text-center">${stockUser}</td>
-
-                    <td class="text-center" style="font-weight:bold;">${reqQty}</td>
-
-                    <td class="text-center ${buyClass}" style="${toBuy > 0 ? 'background-color: #fee2e2;' : ''}">${toBuy}</td>
-
-                    <td class="text-center stock-netso">${odooMatch.qty}</td>
-
-                    <td class="text-center">$ ${odooMatch.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-
-                    <td class="text-center" style="font-weight:bold;">$ ${itemTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-
+                    <td data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px;">${item.item}</td>
+                    <td data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; color: ${odooMatch.name !== '---' ? '#0f172a' : '#94a3b8'}; font-weight: ${odooMatch.name !== '---' ? '600' : 'normal'}; font-style: ${odooMatch.name !== '---' ? 'normal' : 'italic'};">${odooMatch.name}</td>
+                    <td data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center;">${stockUser}</td>
+                    <td data-a-h="center" data-f-bold="true" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center; font-weight:bold;">${reqQty}</td>
+                    <td data-fill-color="${toBuy > 0 ? 'FEE2E2' : 'F0FDF4'}" data-f-color="${toBuy > 0 ? 'B91C1C' : '15803D'}" data-f-bold="${toBuy > 0 ? 'true' : 'false'}" data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center; background-color: ${toBuy > 0 ? '#fee2e2' : '#f0fdf4'}; color: ${toBuy > 0 ? '#b91c1c' : '#15803d'}; font-weight: ${toBuy > 0 ? 'bold' : 'normal'};">${toBuy}</td>
+                    <td data-f-bold="true" data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center; font-weight: bold; color: #0f172a;">${odooMatch.qty}</td>
+                    <td data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center;">$ ${odooMatch.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td data-f-bold="true" data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center; font-weight:bold;">$ ${itemTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                 </tr>
 
             `;
@@ -7608,11 +7606,8 @@ async function downloadComparisonReport() {
             <tr><td colspan="8" style="border:none; height:10px;"></td></tr>
 
             <tr style="background:#f1f5f9; font-weight:bold;">
-
-                <td colspan="7" style="text-align:right; padding:10px;">TOTAL ESTIMADO DE COMPRA (ODOO):</td>
-
-                <td style="text-align:center; font-size:14px; color:#0f172a;">$ ${totalEstimadoGlobal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-
+                <td colspan="7" data-fill-color="F1F5F9" data-f-bold="true" data-a-h="right" data-b-a-s="thin" style="text-align:right; padding:10px;">TOTAL ESTIMADO DE COMPRA (ODOO):</td>
+                <td data-fill-color="F1F5F9" data-f-bold="true" data-a-h="center" data-b-a-s="thin" style="text-align:center; font-size:14px; color:#0f172a;">$ ${totalEstimadoGlobal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
             </tr>
 
         `;
@@ -7625,28 +7620,25 @@ async function downloadComparisonReport() {
 
         const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
 
-        const filename = `Plan_Compra_${safeProjectName}.xls`;
+        const filename = `Plan_Compra_${safeProjectName}.xlsx`;
 
         // Save the exact generated Excel to Firestore so Mis Proyectos and panel download the same file
         saveProjectRegistry({ excelData: excelContent, excelName: filename });
 
-        const blob = new Blob(['\uFEFF', excelContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const tempDiv = document.createElement("div");
+        tempDiv.style.display = "none";
+        tempDiv.innerHTML = excelContent;
+        document.body.appendChild(tempDiv);
+        const table = tempDiv.querySelector("table");
 
-        const url = URL.createObjectURL(blob);
+        TableToExcel.convert(table, {
+            name: filename,
+            sheet: {
+                name: "Plan de Compra"
+            }
+        });
 
-        const link = document.createElement("a");
-
-        link.href = url;
-
-        link.download = filename;
-
-        document.body.appendChild(link);
-
-        link.click();
-
-
-
-        setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
+        document.body.removeChild(tempDiv);
 
 
 
@@ -11256,51 +11248,38 @@ window.generateDirectExcel = async function () {
         <body>
 
             <table border="1" style="border-collapse: collapse; width: 100%;">
+                <colgroup>
+                    <col width="550">
+                    <col width="120">
+                    <col width="170">
+                    <col width="170">
+                </colgroup>
 
                 <tr>
-
-                    <td colspan="4" class="header" style="height: 50px;">
-
+                    <td colspan="4" data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-f-sz="14" data-a-h="center" data-a-v="middle" style="background-color: #0f172a; color: #ffffff; font-size: 18px; font-weight: bold; text-align: center; height: 50px; border: 1px solid #e2e8f0;">
                         COTIZACIÓN
-
                     </td>
-
                 </tr>
 
                 <tr>
-
-                    <td colspan="4" style="background-color: #f1f5f9; text-align: center;">
-
+                    <td colspan="4" data-fill-color="FFFFFF" data-a-h="center" data-f-bold="true" style="background-color: #ffffff; text-align: center; border: 1px solid #e2e8f0; padding: 8px;">
                         Proyecto: <strong>${projectName}</strong> &nbsp;|&nbsp; Cliente: <strong>${ispName}</strong>
-
                     </td>
-
                 </tr>
 
                 <tr>
-
-                    <td colspan="4" style="background-color: #ffffff; text-align: center; font-size: 11px; color: #64748b;">
-
+                    <td colspan="4" data-fill-color="FFFFFF" data-f-color="64748B" data-a-h="center" style="background-color: #ffffff; text-align: center; font-size: 11px; color: #64748b; border: 1px solid #e2e8f0; padding: 5px;">
                         Generado: ${dateStr}, ${timeStr}
-
                     </td>
-
                 </tr>
 
                 <tr><td colspan="4" style="border:none; height:10px;"></td></tr>
 
-
-
-                <tr class="subheader">
-
-                    <td style="width: 400px; background-color: #1e293b; color: white;">PRODUCTO / DESCRIPCIÓN</td>
-
-                    <td style="width: 100px; background-color: #1e293b; color: white; text-align: center;">CANTIDAD</td>
-
-                    <td style="width: 150px; background-color: #1e293b; color: white; text-align: right;">UNITARIO ($)</td>
-
-                    <td style="width: 150px; background-color: #1e293b; color: white; text-align: right;">TOTAL ($)</td>
-
+                <tr>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="left" data-b-a-s="thin" width="550" data-w-px="550" style="background-color: #0f172a; color: #ffffff; font-weight: bold; padding: 10px; border: 1px solid #e2e8f0;">PRODUCTO / DESCRIPCIÓN</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #e2e8f0; padding: 10px;">CANTIDAD</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="170" data-w-px="170" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">UNITARIO ($)</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="170" data-w-px="170" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">TOTAL ($)</td>
                 </tr>
 
     `;
@@ -11312,51 +11291,28 @@ window.generateDirectExcel = async function () {
 
 
     quoteItems.forEach((item, index) => {
-
         totalGlobal += item.total;
-
         const bg = index % 2 === 0 ? '#ffffff' : '#f8fafc';
 
-
-
         excelContent += `
-
             <tr style="background-color: ${bg};">
-
-                <td>${item.name}</td>
-
-                <td style="text-align: center;">${item.qty}</td>
-
-                <td class="amount">${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-
-                <td class="amount" style="font-weight: 600;">${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-
+                <td data-fill-color="${bg.replace('#', '')}" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0;">${item.name}</td>
+                <td data-fill-color="${bg.replace('#', '')}" data-a-h="center" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;">${item.qty}</td>
+                <td data-fill-color="${bg.replace('#', '')}" data-a-h="right" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+                <td data-fill-color="${bg.replace('#', '')}" data-a-h="right" data-f-bold="true" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600;">${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
             </tr>
-
         `;
-
     });
 
-
-
     excelContent += `
-
         <tr><td colspan="4" style="border:none; height:10px;"></td></tr>
-
-        <tr class="total-row">
-
-            <td colspan="3" style="text-align: right; padding-right: 15px;">TOTAL GENERAL:</td>
-
-            <td class="amount" style="color: #0f172a; font-size: 16px;">$ ${totalGlobal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-
+        <tr style="background-color: #f1f5f9; font-weight: bold;">
+            <td colspan="3" data-fill-color="F1F5F9" data-f-bold="true" data-a-h="right" data-b-a-s="thin" style="text-align: right; padding-right: 15px; border: 1px solid #cbd5e1; padding: 10px;">TOTAL GENERAL:</td>
+            <td data-fill-color="F1F5F9" data-f-bold="true" data-a-h="right" data-f-color="0F172A" data-b-a-s="thin" style="text-align: right; color: #0f172a; font-size: 16px; border: 1px solid #cbd5e1; padding: 10px;">$ ${totalGlobal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
         </tr>
-
     `;
 
-
-
     excelContent += `
-
             </table>
 
             <div style="margin-top:20px; color:#94a3b8; font-size:11px; text-align:center;">
@@ -11373,30 +11329,22 @@ window.generateDirectExcel = async function () {
 
 
 
-    const filename = `${projectName.replace(/\s+/g, '_')}_Cotizacion.xls`;
+    const filename = `${projectName.replace(/\s+/g, '_')}_Cotizacion.xlsx`;
 
-    const blob = new Blob(['\uFEFF', excelContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const tempDiv = document.createElement("div");
+    tempDiv.style.display = "none";
+    tempDiv.innerHTML = excelContent;
+    document.body.appendChild(tempDiv);
+    const table = tempDiv.querySelector("table");
 
-    const url = URL.createObjectURL(blob);
+    TableToExcel.convert(table, {
+        name: filename,
+        sheet: {
+            name: "Cotizacion"
+        }
+    });
 
-    const link = document.createElement("a");
-
-    link.href = url;
-
-    link.download = filename;
-
-    document.body.appendChild(link);
-
-    link.click();
-
-    setTimeout(() => {
-
-        document.body.removeChild(link);
-
-        URL.revokeObjectURL(url);
-
-    }, 100);
-
+    document.body.removeChild(tempDiv);
 };
 
 
@@ -11518,28 +11466,34 @@ window.downloadDirectQuoteFromHistory = async function (id) {
         </head>
         <body>
             <table border="1" style="border-collapse: collapse; width: 100%;">
+                <colgroup>
+                    <col width="550">
+                    <col width="120">
+                    <col width="170">
+                    <col width="170">
+                </colgroup>
                 <tr>
-                    <td colspan="4" class="header" style="height: 50px;">
+                    <td colspan="4" data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-f-sz="14" data-a-h="center" data-a-v="middle" style="background-color: #0f172a; color: #ffffff; font-size: 18px; font-weight: bold; text-align: center; height: 50px; border: 1px solid #e2e8f0;">
                         COTIZACIÓN
                     </td>
                 </tr>
                 <tr>
-                    <td colspan="4" style="background-color: #f1f5f9; text-align: center;">
+                    <td colspan="4" data-fill-color="FFFFFF" data-a-h="center" data-f-bold="true" style="background-color: #ffffff; text-align: center; border: 1px solid #e2e8f0; padding: 8px;">
                         Proyecto: <strong>${projectName}</strong> &nbsp;|&nbsp; Cliente: <strong>${ispName}</strong>
                     </td>
                 </tr>
                 <tr>
-                    <td colspan="4" style="background-color: #ffffff; text-align: center; font-size: 11px; color: #64748b;">
+                    <td colspan="4" data-fill-color="FFFFFF" data-f-color="64748B" data-a-h="center" style="background-color: #ffffff; text-align: center; font-size: 11px; color: #64748b; border: 1px solid #e2e8f0; padding: 5px;">
                         Generado: ${dateStr}, ${timeStr}
                     </td>
                 </tr>
                 <tr><td colspan="4" style="border:none; height:10px;"></td></tr>
 
-                <tr class="subheader">
-                    <td style="width: 400px; background-color: #1e293b; color: white;">PRODUCTO / DESCRIPCIÓN</td>
-                    <td style="width: 100px; background-color: #1e293b; color: white; text-align: center;">CANTIDAD</td>
-                    <td style="width: 150px; background-color: #1e293b; color: white; text-align: right;">UNITARIO ($)</td>
-                    <td style="width: 150px; background-color: #1e293b; color: white; text-align: right;">TOTAL ($)</td>
+                <tr>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="left" data-b-a-s="thin" width="550" data-w-px="550" style="background-color: #0f172a; color: #ffffff; font-weight: bold; padding: 10px; border: 1px solid #e2e8f0;">PRODUCTO / DESCRIPCIÓN</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #e2e8f0; padding: 10px;">CANTIDAD</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="170" data-w-px="170" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">UNITARIO ($)</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="170" data-w-px="170" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">TOTAL ($)</td>
                 </tr>
     `;
 
@@ -11551,19 +11505,19 @@ window.downloadDirectQuoteFromHistory = async function (id) {
 
         excelContent += `
             <tr style="background-color: ${bg};">
-                <td>${item.name}</td>
-                <td style="text-align: center;">${item.qty}</td>
-                <td class="amount">${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-                <td class="amount" style="font-weight: 600;">${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+                <td data-fill-color="${bg.replace('#', '')}" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0;">${item.name}</td>
+                <td data-fill-color="${bg.replace('#', '')}" data-a-h="center" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;">${item.qty}</td>
+                <td data-fill-color="${bg.replace('#', '')}" data-a-h="right" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+                <td data-fill-color="${bg.replace('#', '')}" data-a-h="right" data-f-bold="true" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600;">${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
             </tr>
         `;
     });
 
     excelContent += `
         <tr><td colspan="4" style="border:none; height:10px;"></td></tr>
-        <tr class="total-row">
-            <td colspan="3" style="text-align: right; padding-right: 15px;">TOTAL GENERAL:</td>
-            <td class="amount" style="color: #0f172a; font-size: 16px;">$ ${totalGlobal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
+        <tr style="background-color: #f1f5f9; font-weight: bold;">
+            <td colspan="3" data-fill-color="F1F5F9" data-f-bold="true" data-a-h="right" data-b-a-s="thin" style="text-align: right; padding-right: 15px; border: 1px solid #cbd5e1; padding: 10px;">TOTAL GENERAL:</td>
+            <td data-fill-color="F1F5F9" data-f-bold="true" data-a-h="right" data-f-color="0F172A" data-b-a-s="thin" style="text-align: right; color: #0f172a; font-size: 16px; border: 1px solid #cbd5e1; padding: 10px;">$ ${totalGlobal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
         </tr>
     `;
 
@@ -11576,15 +11530,21 @@ window.downloadDirectQuoteFromHistory = async function (id) {
         </html>
     `;
 
-    const filename = `${projectName.replace(/\s+/g, '_')}_Cotizacion.xls`;
-    const blob = new Blob(['\uFEFF', excelContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
+    const filename = `${projectName.replace(/\s+/g, '_')}_Cotizacion.xlsx`;
+    const tempDiv = document.createElement("div");
+    tempDiv.style.display = "none";
+    tempDiv.innerHTML = excelContent;
+    document.body.appendChild(tempDiv);
+    const table = tempDiv.querySelector("table");
+
+    TableToExcel.convert(table, {
+        name: filename,
+        sheet: {
+            name: "Cotizacion"
+        }
+    });
+
+    document.body.removeChild(tempDiv);
 };
 
 
@@ -11638,8 +11598,8 @@ window.downloadSavedReport = async function (id) {
 
     // If the project has a cached Excel from Page 4, use it directly (same file as downloaded there)
     if (project.excelData) {
-        const safeName = project.excelName || `Plan_Compra_${(project.projectName || 'proyecto').replace(/\s/g, '_')}.xls`;
-        const blob = new Blob(['\uFEFF', project.excelData], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const safeName = project.excelName || `Plan_Compra_${(project.projectName || 'proyecto').replace(/\s/g, '_')}.xlsx`;
+        const blob = new Blob(['\uFEFF', project.excelData], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -11749,35 +11709,31 @@ window.downloadSavedReport = async function (id) {
         <body>
 
             <table>
-
-                <tr><td colspan="8" class="header" style="font-size:18px;"> PLAN DE COMPRA</td></tr>
-
-                <tr><td colspan="8" style="text-align:center; background:#f1f5f9;">Proyecto: <strong>${projectName}</strong> - Cliente: <strong>${ispName}</strong></td></tr>
-
-                <tr><td colspan="8" style="text-align:center; font-size:11px;">Generado: ${dateStr}</td></tr>
+                <colgroup>
+                    <col width="300">
+                    <col width="500">
+                    <col width="120">
+                    <col width="120">
+                    <col width="130">
+                    <col width="130">
+                    <col width="140">
+                    <col width="140">
+                </colgroup>
+                <tr><td colspan="8" data-fill-color="1E293B" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-a-v="middle" style="background-color: #1e293b; color: #ffffff; font-weight: bold; text-align: center; font-size: 18px; padding: 10px; border: 1px solid #cbd5e1;"> PLAN DE COMPRA</td></tr>
+                <tr><td colspan="8" data-fill-color="F1F5F9" data-a-h="center" data-f-bold="true" style="text-align:center; background:#f1f5f9; border: 1px solid #cbd5e1; padding: 5px;">Proyecto: <strong>${projectName}</strong> - Cliente: <strong>${ispName}</strong></td></tr>
+                <tr><td colspan="8" data-fill-color="FFFFFF" data-f-color="64748B" data-a-h="center" data-f-sz="9" style="text-align:center; font-size:11px; border: 1px solid #cbd5e1; padding: 3px; color: #64748b;">Generado: ${dateStr}</td></tr>
 
                 <tr><td colspan="8"></td></tr>
 
-                
-
                 <tr style="height: 30px;">
-
-                    <td class="col-head" style="width:250px;">ITEM CALCULADO</td>
-
-                    <td class="col-head" style="width:350px;">PRODUCTO INTERNO</td>
-
-                    <td class="col-head" style="width:100px;">STOCK ISP</td>
-
-                    <td class="col-head" style="width:100px;">SUGERIDO</td>
-
-                    <td class="col-head" style="width:120px; background:#b91c1c;">A COMPRAR</td>
-
-                    <td class="col-head" style="width:100px; background:#15803d;">STOCK NETSO</td>
-
-                    <td class="col-head" style="width:120px;">PRECIO UNIT. ($)</td>
-
-                    <td class="col-head" style="width:120px; background:#f8fafc; color:#0f172a;">TOTAL ($)</td>
-
+                    <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="300" data-w-px="300" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">ITEM CALCULADO</td>
+                    <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="500" data-w-px="500" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">PRODUCTO INTERNO</td>
+                    <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">STOCK ISP</td>
+                    <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">SUGERIDO</td>
+                    <td data-fill-color="B91C1C" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="130" data-w-px="130" style="background-color: #b91c1c; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">A COMPRAR</td>
+                    <td data-fill-color="15803D" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="130" data-w-px="130" style="background-color: #15803d; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">STOCK NETSO</td>
+                    <td data-fill-color="334155" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="140" data-w-px="140" style="background-color: #334155; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">PRECIO UNIT. ($)</td>
+                    <td data-fill-color="F1F5F9" data-f-color="010101" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="140" data-w-px="140" style="background-color: #f1f5f9; color: #010101; font-weight: bold; text-align: center; border: 1px solid #cbd5e1;">TOTAL ($)</td>
                 </tr>
 
     `;
@@ -11891,23 +11847,14 @@ window.downloadSavedReport = async function (id) {
         excelContent += `
 
             <tr>
-
-                <td>${item.item || item.name}</td>
-
-                <td class="${matchClass}">${odooName}</td>
-
-                <td class="text-center">${stock}</td>
-
-                <td class="text-center" style="font-weight:bold;">${qty}</td>
-
-                <td class="text-center ${buyClass}" style="${toBuy > 0 ? 'background-color: #fee2e2;' : ''}">${toBuy}</td>
-
-                <td class="text-center stock-netso">${netsoStock}</td>
-
-                <td class="text-center">$ ${price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-
-                <td class="text-center" style="font-weight:bold;">$ ${itemTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-
+                <td data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px;">${item.item || item.name}</td>
+                <td data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; color: ${odooName !== '---' ? '#0f172a' : '#94a3b8'}; font-weight: ${odooName !== '---' ? '600' : 'normal'}; font-style: ${odooName !== '---' ? 'normal' : 'italic'};">${odooName}</td>
+                <td data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center;">${stock}</td>
+                <td data-a-h="center" data-f-bold="true" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center; font-weight:bold;">${qty}</td>
+                <td data-fill-color="${toBuy > 0 ? 'FEE2E2' : 'F0FDF4'}" data-f-color="${toBuy > 0 ? 'B91C1C' : '15803D'}" data-f-bold="${toBuy > 0 ? 'true' : 'false'}" data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center; background-color: ${toBuy > 0 ? '#fee2e2' : '#f0fdf4'}; color: ${toBuy > 0 ? '#b91c1c' : '#15803d'}; font-weight: ${toBuy > 0 ? 'bold' : 'normal'};">${toBuy}</td>
+                <td data-f-bold="true" data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center; font-weight: bold; color: #0f172a;">${netsoStock}</td>
+                <td data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center;">$ ${price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                <td data-f-bold="true" data-a-h="center" data-b-a-s="thin" style="border: 1px solid #cbd5e1; padding: 5px; text-align: center; font-weight:bold;">$ ${itemTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
             </tr>
 
         `;
@@ -11923,11 +11870,8 @@ window.downloadSavedReport = async function (id) {
         <tr><td colspan="8" style="border:none; height:10px;"></td></tr>
 
         <tr style="background:#f1f5f9; font-weight:bold;">
-
-            <td colspan="7" style="text-align:right; padding:10px;">TOTAL ESTIMADO:</td>
-
-            <td style="text-align:center; font-size:14px; color:#0f172a;">$ ${totalEstimadoGlobal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-
+            <td colspan="7" data-fill-color="F1F5F9" data-f-bold="true" data-a-h="right" data-b-a-s="thin" style="text-align:right; padding:10px;">TOTAL ESTIMADO:</td>
+            <td data-fill-color="F1F5F9" data-f-bold="true" data-a-h="center" data-b-a-s="thin" style="text-align:center; font-size:14px; color:#0f172a;">$ ${totalEstimadoGlobal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
         </tr>
 
     `;
@@ -11939,23 +11883,22 @@ window.downloadSavedReport = async function (id) {
 
 
     const safeProjectName = projectName.replace(/[\/\\:*?"<>|\s]/g, '_');
+    const filename = `${safeProjectName}_Ingenieria.xlsx`;
 
-    const blob = new Blob(['\uFEFF', excelContent], { type: 'application/vnd.ms-excel' });
+    const tempDiv = document.createElement("div");
+    tempDiv.style.display = "none";
+    tempDiv.innerHTML = excelContent;
+    document.body.appendChild(tempDiv);
+    const table = tempDiv.querySelector("table");
 
-    const url = URL.createObjectURL(blob);
+    TableToExcel.convert(table, {
+        name: filename,
+        sheet: {
+            name: "Reporte Ingenieria"
+        }
+    });
 
-    const link = document.createElement("a");
-
-    link.href = url;
-
-    link.download = `${safeProjectName}_Ingenieria.xls`;
-
-    document.body.appendChild(link);
-
-    link.click();
-
-    setTimeout(() => { document.body.removeChild(link); URL.revokeObjectURL(url); }, 100);
-
+    document.body.removeChild(tempDiv);
 };
 
 
@@ -16270,6 +16213,394 @@ async function calculateRouteOSRM(start, end) {
     return null;
 
 }
+
+// ============================================
+// MODULO DE ANÁLISIS INTELIGENTE KMZ (FTTH)
+// ============================================
+
+let kmzMap = null;
+let kmzTelemetry = {
+    olts: 0,
+    naps: 0,
+    clients: 0,
+    trunkDist: 0,
+    distDist: 0,
+    dropDist: 0,
+    area: 0,
+    tech: 'GPON'
+};
+let latestKMZSuggestions = [];
+
+async function handleKMZUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const zip = await JSZip.loadAsync(arrayBuffer);
+
+        let kmlFile = zip.file("doc.kml");
+        if (!kmlFile) {
+            const kmlFiles = Object.keys(zip.files).filter(name => name.toLowerCase().endsWith('.kml'));
+            if (kmlFiles.length > 0) kmlFile = zip.file(kmlFiles[0]);
+        }
+
+        if (!kmlFile) {
+            alert("No se encontró un archivo KML dentro del KMZ.");
+            return;
+        }
+
+        const kmlText = await kmlFile.async("text");
+        processKML(kmlText);
+
+    } catch (err) {
+        console.error("Error procesando KMZ:", err);
+        alert("Error al procesar el archivo KMZ: " + err.message);
+    }
+}
+
+function processKML(kmlText) {
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(kmlText, "text/xml");
+
+    kmzTelemetry = { olts: 0, naps: 0, clients: 0, trunkDist: 0, distDist: 0, dropDist: 0, area: 0, tech: 'GPON' };
+    const placemarks = xml.getElementsByTagName("Placemark");
+    const features = [];
+
+    for (let placemark of placemarks) {
+        const name = (placemark.getElementsByTagName("name")[0]?.textContent || "").toUpperCase();
+
+        // Puntos
+        const point = placemark.getElementsByTagName("Point")[0];
+        if (point) {
+            const coordsStr = point.getElementsByTagName("coordinates")[0]?.textContent.trim();
+            if (coordsStr) {
+                const coords = coordsStr.split(",");
+                const lng = parseFloat(coords[0]);
+                const lat = parseFloat(coords[1]);
+
+                let type = 'OTHER';
+                if (name.includes("OLT")) { type = 'OLT'; kmzTelemetry.olts++; }
+                else if (name.includes("NAP") || name.includes("CTO") || name.includes("CAJA")) { type = 'NAP'; kmzTelemetry.naps++; }
+                else if (name.includes("CLIENTE") || name.includes("USUARIO") || name.includes("CASA")) { type = 'CLIENT'; kmzTelemetry.clients++; }
+
+                features.push({ type: 'POINT', subType: type, name, lat, lng });
+            }
+        }
+
+        // Líneas
+        const line = placemark.getElementsByTagName("LineString")[0];
+        if (line) {
+            const coordStr = line.getElementsByTagName("coordinates")[0]?.textContent.trim();
+            if (coordStr) {
+                const coordPairs = coordStr.split(/\s+/);
+                const path = coordPairs.map(p => {
+                    const c = p.split(",");
+                    return [parseFloat(c[1]), parseFloat(c[0])];
+                }).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
+
+                if (path.length > 1) {
+                    const length = calculatePathLength(path);
+                    let subType = 'DISTRIBUTION';
+                    if (name.includes("TRONCAL") || name.includes("FEEDER") || name.includes("PRINCIPAL")) {
+                        subType = 'TRUNK';
+                        kmzTelemetry.trunkDist += length;
+                    } else if (name.includes("DROP") || name.includes("ACOMETIDA") || length < 0.1) {
+                        subType = 'DROP';
+                        kmzTelemetry.dropDist += length;
+                    } else {
+                        kmzTelemetry.distDist += length;
+                    }
+                    features.push({ type: 'LINE', subType, name, path, length });
+                }
+            }
+        }
+    }
+
+    if (kmzTelemetry.clients === 0 && kmzTelemetry.naps > 0) kmzTelemetry.clients = kmzTelemetry.naps * 8;
+    renderKMZMap(features);
+    updateKMZTelemetryUI();
+}
+
+function calculatePathLength(path) {
+    let total = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+        total += haversineDistance(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]);
+    }
+    return total;
+}
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+function renderKMZMap(features) {
+    const mapContainer = document.getElementById('kmz-map-container');
+    mapContainer.style.display = 'block';
+
+    if (kmzMap) kmzMap.remove();
+    kmzMap = L.map('kmz-map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(kmzMap);
+
+    const bounds = L.latLngBounds();
+    features.forEach(f => {
+        if (f.type === 'POINT') {
+            let color = '#3b82f6';
+            if (f.subType === 'OLT') color = '#ef4444';
+            if (f.subType === 'CLIENT') color = '#10b981';
+
+            L.circleMarker([f.lat, f.lng], {
+                radius: 7, fillColor: color, color: "#fff", weight: 2, fillOpacity: 0.9
+            }).addTo(kmzMap).bindPopup(`<strong>${f.subType}</strong>: ${f.name}`);
+            bounds.extend([f.lat, f.lng]);
+        } else {
+            let color = '#6366f1';
+            if (f.subType === 'TRUNK') color = '#f59e0b';
+            if (f.subType === 'DROP') color = '#94a3b8';
+
+            L.polyline(f.path, { color, weight: 4, opacity: 0.7 }).addTo(kmzMap)
+                .bindPopup(`<strong>Fibra ${f.subType}</strong>: ${f.length.toFixed(2)} km`);
+            f.path.forEach(p => bounds.extend(p));
+        }
+    });
+
+    if (bounds.isValid()) kmzMap.fitBounds(bounds, { padding: [30, 30] });
+    document.getElementById('btn-analyze-kmz').style.display = 'block';
+}
+
+window.updateKMZValue = function(key, val) {
+    if (key === 'olts' || key === 'naps' || key === 'clients') {
+        kmzTelemetry[key] = parseInt(val) || 0;
+    } else if (key === 'trunkDist' || key === 'distDist') {
+        kmzTelemetry[key] = parseFloat(val) || 0;
+    } else {
+        kmzTelemetry[key] = val;
+    }
+    console.log(`[KMZ Telemetry Update] ${key} set to:`, kmzTelemetry[key]);
+};
+
+function updateKMZTelemetryUI() {
+    const panel = document.getElementById('kmz-telemetry-panel');
+    const items = [
+        { label: 'OLTs', val: kmzTelemetry.olts, icon: '🏢', key: 'olts', type: 'number' },
+        { label: 'NAPs', val: kmzTelemetry.naps, icon: '📦', key: 'naps', type: 'number' },
+        { label: 'Clientes (Est.)', val: kmzTelemetry.clients, icon: '👥', key: 'clients', type: 'number' },
+        { label: 'Troncal (km)', val: kmzTelemetry.trunkDist.toFixed(2), icon: '🟠', key: 'trunkDist', type: 'number', step: '0.01' },
+        { label: 'Distribución (km)', val: kmzTelemetry.distDist.toFixed(2), icon: '🔵', key: 'distDist', type: 'number', step: '0.01' },
+        { label: 'Tecnología', val: kmzTelemetry.tech, icon: '⚡', key: 'tech', type: 'text' }
+    ];
+    panel.innerHTML = items.map(i => `
+        <div style="background: white; border: 1px solid #dcfce7; padding: 12px; border-radius: 10px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;">
+            <div style="font-size: 20px; margin-bottom: 4px;">${i.icon}</div>
+            <div style="font-size: 9px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">${i.label}</div>
+            <input type="${i.type}" 
+                   ${i.step ? `step="${i.step}"` : ''} 
+                   value="${i.val}" 
+                   onchange="updateKMZValue('${i.key}', this.value)"
+                   style="width: 100%; border: 1px dashed transparent; background: transparent; text-align: center; font-size: 15px; font-weight: 800; color: #166534; outline: none; padding: 2px; border-radius: 4px; cursor: edit;"
+                   onfocus="this.style.borderColor='#86efac'; this.style.background='#f0fdf4';"
+                   onblur="this.style.borderColor='transparent'; this.style.background='transparent';">
+        </div>
+    `).join('');
+}
+
+async function analyzeKMZTopology() {
+    if (!googleApiKey) { alert("Configura la API Key de Gemini."); return; }
+
+    const loader = document.getElementById('kmz-analysis-loading');
+    const btn = document.getElementById('btn-analyze-kmz');
+    const container = document.getElementById('kmz-ai-suggestions');
+
+    loader.style.display = 'block';
+    btn.disabled = true;
+    container.innerHTML = '';
+
+    let catalogContext = "";
+    if (typeof PRODUCT_MAPPING !== 'undefined' && Object.keys(PRODUCT_MAPPING).length > 0) {
+        const productNames = Object.keys(PRODUCT_MAPPING).join("\n");
+        catalogContext = `CATÁLOGO DE PRODUCTOS NETSO (Usa EXACTAMENTE estos nombres):\n\n${productNames}`;
+    }
+
+    try {
+        const prompt = `Analiza esta topología de red FTTH extraída de un archivo KMZ y sugiere materiales NETSO.
+        DATOS EXTRAÍDOS DEL KMZ:
+        - OLTs detectadas: ${kmzTelemetry.olts}
+        - Cajas NAP/CTO detectadas: ${kmzTelemetry.naps}
+        - Clientes estimados: ${kmzTelemetry.clients}
+        - Distancia Fibra Troncal: ${kmzTelemetry.trunkDist.toFixed(3)} km
+        - Distancia Fibra Distribución: ${kmzTelemetry.distDist.toFixed(3)} km
+        - Distancia Fibra DROP: ${kmzTelemetry.dropDist.toFixed(3)} km
+        
+        REGLAS PARA TU RECOMENDACIÓN:
+        1. OLT: Si clientes > 500 usa NAVGPT-16P. Si < 500 usa NAVGPT-08P. Si < 100 usa NAVGPT-04P. (Busca el nombre equivalente en el catálogo).
+        2. CABLES: Sugiere Cable ADSS para Troncal y AS-Mini para Distribución. Cantidad = km + 10% desperdicio.
+        3. ACCESORIOS: Sugiere 1 splitter 1:16 por cada NAP si no se especifica.
+        
+        ${catalogContext}
+        
+        FORMATO DE RESPUESTA:
+        Explica brevemente tu razonamiento técnico y finalmente entrega un JSON así:
+        \u0060\u0060\u0060json
+        [
+          {"product": "Nombre exacto del producto del catálogo", "qty": 1, "reason": "Por qué se requiere", "type": "OLT/CABLE/NAP"}
+        ]
+        \u0060\u0060\u0060`;
+
+        const response = await callGeminiTextOnly(prompt);
+        if (!response) throw new Error("La IA devolvió una respuesta vacía.");
+
+        const { markdownText, jsonSuggestions } = extractAndParseJSON(response);
+        latestKMZSuggestions = jsonSuggestions || [];
+
+        renderKMZAIResults(markdownText, latestKMZSuggestions);
+    } catch (err) {
+        console.error("Error en analyzeKMZTopology:", err);
+        alert("Error en el análisis de IA: " + err.message);
+    } finally {
+        loader.style.display = 'none';
+        btn.disabled = false;
+    }
+}
+
+async function callGeminiTextOnly(prompt) {
+    // Usamos el mismo modelo que callGeminiAPI para asegurar compatibilidad
+    const model = "gemini-2.5-flash-lite";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleApiKey}`;
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.4, maxOutputTokens: 2048 }
+            })
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({}));
+            throw new Error(errorBody.error?.message || `HTTP Error ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+            return data.candidates[0].content.parts[0].text;
+        } else {
+            throw new Error("Respuesta de API inválida o bloqueada por seguridad.");
+        }
+    } catch (e) {
+        console.error("[callGeminiTextOnly] Error:", e);
+        throw e;
+    }
+}
+
+function renderKMZAIResults(text, suggestions) {
+    const container = document.getElementById('kmz-ai-suggestions');
+
+    const infoBox = document.createElement('div');
+    infoBox.style.cssText = 'grid-column: span 2; background: #fff; padding: 15px; border-radius: 12px; border-left: 5px solid #10b981; margin-bottom: 10px; font-size: 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);';
+    infoBox.innerHTML = `<div style="font-weight:800; color:#065f46; margin-bottom:5px;">📋 Análisis del Asistente:</div>` + formatMarkdown(text);
+    container.appendChild(infoBox);
+
+    suggestions.forEach((item, idx) => {
+        const cardId = `kmz-card-${idx}`;
+        const card = document.createElement('div');
+        card.id = cardId;
+        card.style.cssText = 'background: white; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; gap: 8px; transition: all 0.2s;';
+
+        const icon = item.product.includes("OLT") ? "🏢" : item.product.includes("Cable") ? "🧵" : "📦";
+
+        card.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:start;">
+                <div style="font-weight:800; color:#1e293b; font-size:14px;">${item.product}</div>
+                <div style="font-size:24px;">${icon}</div>
+            </div>
+            <div style="font-size:12px; color:#64748b; line-height:1.4; flex-grow:1;">${item.reason}</div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:5px; padding-top:10px; border-top:1px solid #f1f5f9;">
+                <span style="font-size:12px; font-weight:700;">Cant:</span>
+                <input type="number" id="${cardId}-qty" value="${item.qty}" min="1" style="width:60px; padding:4px 8px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                <button onclick="addKMZItemToQuote(${idx})" style="background:#10b981; color:white; border:none; padding:6px 12px; border-radius:8px; font-weight:700; cursor:pointer; font-size:12px; flex-grow:1;">
+                    ✓ Agregar
+                </button>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function addKMZItemToQuote(idx) {
+    const item = latestKMZSuggestions[idx];
+    const qty = document.getElementById(`kmz-card-${idx}-qty`).value;
+    if (typeof acceptSuggestion === 'function') {
+        acceptSuggestion(`kmz-card-${idx}`, item.product, qty);
+    } else {
+        alert("Error: No se encontró la función de integración con la tabla.");
+    }
+}
+
+// ============================================
+// HELPER: EXTRACCIÓN Y PARSEO DE JSON
+// ============================================
+
+function extractAndParseJSON(text) {
+    let jsonStr = null;
+    let markdownText = text;
+
+    // Buscar bloques de código markdown ```json ... ```
+    let jsonMatch = text.match(/```(?:\s*json\s*)?([\s\S]*?)\s*```/i);
+
+    if (jsonMatch) {
+        jsonStr = jsonMatch[1].trim();
+        // Limpiamos el texto markdown quitando el bloque JSON para la visualización
+        markdownText = text.replace(jsonMatch[0], "").trim();
+    } else {
+        // Búsqueda más flexible de un array JSON [ { ... } ]
+        const arrayMatch = text.match(/(\[\s*\{[\s\S]*\}\s*\])/);
+        if (arrayMatch) {
+            jsonStr = arrayMatch[1].trim();
+            markdownText = text.replace(jsonStr, "").trim();
+        }
+    }
+
+    let jsonSuggestions = [];
+    if (jsonStr) {
+        try {
+            jsonSuggestions = JSON.parse(jsonStr);
+        } catch (e) {
+            console.error("Error al parsear JSON de la IA:", e, jsonStr);
+        }
+    }
+
+    return { markdownText, jsonSuggestions };
+}
+
+// ============================================
+// HELPER: FORMATEO BÁSICO DE MARKDOWN
+// ============================================
+
+function formatMarkdown(text) {
+    if (!text) return "";
+
+    // Negritas
+    let html = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Listas
+    html = html.replace(/^\s*-\s+(.*)/gm, '• $1<br>');
+    // Saltos de línea
+    html = html.replace(/\n/g, '<br>');
+
+    return html;
+}
+
+
 
 
 
