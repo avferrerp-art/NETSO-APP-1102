@@ -2391,7 +2391,25 @@ window.nextPage = function (n) {
 
         if (n === 2 && fibraCount === 0) addFibraCard();
 
+        // Si vamos a la página 3 (Análisis de Campo), actualizar el banner de contexto con datos de página 2
+        if (n === 3) {
+            const metaClientes = parseInt(document.getElementById('censo')?.value) || 0;
+            const radioCobertura = parseInt(document.getElementById('coverageRadius')?.value) || 500;
 
+            const metaDisplay = document.getElementById('campo-meta-display');
+            const radioDisplay = document.getElementById('campo-radio-display');
+
+            if (metaDisplay) {
+                metaDisplay.textContent = metaClientes > 0 ? metaClientes + ' clientes' : 'No definido';
+                metaDisplay.style.color = metaClientes > 0 ? '#065f46' : '#94a3b8';
+            }
+            if (radioDisplay) {
+                radioDisplay.textContent = radioCobertura >= 1000
+                    ? (radioCobertura / 1000).toFixed(1) + ' km'
+                    : radioCobertura + ' m';
+                radioDisplay.style.color = '#065f46';
+            }
+        }
 
         // Si vamos a la página 4 (Resultados), asegurar que se renderizan las sugerencias IA
 
@@ -2934,6 +2952,11 @@ async function testAPIKey() {
 
 async function analyzeImage() {
 
+    // Leer contexto del proyecto desde página 2
+    const metaClientes = parseInt(document.getElementById('censo')?.value) || 0;
+    const radioCobertura = parseInt(document.getElementById('coverageRadius')?.value) || 500;
+    const contextoProyecto = { metaClientes, radioCobertura };
+
     // Validar que haya imágenes pendientes
 
     if (pendingImages.length === 0) {
@@ -3008,7 +3031,7 @@ async function analyzeImage() {
 
             try {
 
-                const analysis = await callGeminiAPI(base64Img);
+                const analysis = await callGeminiAPI(base64Img, contextoProyecto);
 
 
 
@@ -4017,7 +4040,14 @@ function addNewQuoteItem_DEPRECATED(name, qty) {
 
 // Función auxiliar para llamar a Gemini con optimización de contexto
 
-async function callGeminiAPI(base64Str) {
+async function callGeminiAPI(base64Str, context) {
+
+    const ctx = context || {};
+    const metaClientes = ctx.metaClientes || 0;
+    const radioCobertura = ctx.radioCobertura || 500;
+    const radioTexto = radioCobertura >= 1000
+        ? (radioCobertura / 1000).toFixed(1) + ' km'
+        : radioCobertura + ' metros';
 
     let catalogContext = "";
 
@@ -4037,11 +4067,32 @@ ${JSON.stringify(catalogoNetso, null, 2)}`;
 
     }
 
+    // Sección de contexto del proyecto (solo si hay datos del cliente)
+    const contextoDelProyecto = metaClientes > 0 ? `
+CONTEXTO DEL PROYECTO (DATOS REALES DEL CLIENTE):
+- Meta de clientes a conectar: ${metaClientes} clientes
+- Radio de cobertura de la zona: ${radioTexto}
 
+REGLA CRÍTICA DE CANTIDADES: Calcula la cantidad (qty) de cada material de forma PRECISA y JUSTIFICADA:
+- ONTs: 1 por cliente → qty = ${metaClientes}
+- Splitters 1:8: qty = ${Math.ceil(metaClientes / 8)} (un splitter cada 8 clientes)
+- Splitters 1:16: qty = ${Math.ceil(metaClientes / 16)}
+- Cajas NAP: qty = aprox. ${Math.ceil(metaClientes / 8)} (según splitters)
+- Cable fibra: considera la topología y el radio de ${radioTexto}
+- Justifica cada cantidad en el campo "reason" con números.
+` : '';
+
+    const dimText = metaClientes > 0
+        ? `- Dimensionamiento: Indica que la propuesta atiende a ${metaClientes} clientes en un radio de ${radioTexto}.`
+        : '';
+
+    const qtyRule = metaClientes > 0
+        ? `CRÍTICO: qty DEBE ser el número calculado, no 1. Usa la meta de ${metaClientes} clientes para calcular. Ejemplo: para ONTs pon qty: ${metaClientes}. Justifica en "reason".`
+        : '';
 
     const prompt = `
 Rol: Actúa como un Asesor Técnico Comercial de NETSO. Tu función es convertir imágenes de infraestructura o necesidades del cliente en una propuesta de solución FTTH clara, profesional y fácil de entender. Eres la cara experta de NETSO que ayuda al cliente a visualizar su red.
-
+${contextoDelProyecto}
 Tono y Estilo:
 - Empático y Asesor: No uses lenguaje excesivamente árido; explica el "porqué" de las cosas.
 - Identidad: Eres Asesoría NETSO, no un consultor externo.
@@ -4051,6 +4102,7 @@ Estructura de Respuesta para el Cliente:
 - Saludo de Bienvenida: Inicia con: "Estimado cliente, es un gusto saludarle. Desde el equipo de Asesoría NETSO, he analizado la información proporcionada para presentarle la mejor solución de conectividad para su zona..."
 - Análisis de su Entorno: Describe de forma sencilla la infraestructura que ves. Ejemplo: "Se observa una disposición de postes ideal para un despliegue aéreo, lo que nos permite una instalación limpia y eficiente..."
 - Nuestra Propuesta Tecnológica: Explica la solución recomendada.
+${dimText}
 
 Tu Kit de Solución (Catálogo NETSO): Lista los equipos necesarios como una "lista de deseos" o carrito sugerido:
 - Para la distribución: (Cables ADSS).
@@ -4064,12 +4116,13 @@ Reglas de Oro:
 
 REGLAS DE FORMATO (CRÍTICO PARA LA APP):
 1. NO hables de JSON en el texto que leerá el cliente.
-2. Al FINAL de todo tu texto, añade un bloque de código JSON con este formato EXACTO: 
-[\`\`\`json 
+2. Al FINAL de todo tu texto, añade un bloque de código JSON con este formato EXACTO:
+\`\`\`json
 [
-  { "product": "NOMBRE_PRODUCTO", "qty": 1, "reason": "MOTIVO_BREVE" }
+  { "product": "NOMBRE_PRODUCTO", "qty": CANTIDAD_CALCULADA, "reason": "JUSTIFICACION_NUMERICA" }
 ]
-\`\`\`]
+\`\`\`
+${qtyRule}
 
 ${catalogContext}
 `;
@@ -5070,7 +5123,9 @@ function getUserStock() {
 
         herramientas: [],
 
-        activos: {}
+        activos: {
+            onts: []
+        }
 
     };
 
@@ -5127,6 +5182,8 @@ function getUserStock() {
     readCards('herrajes-container', 'herraje-val', stock.herrajes);
 
     readCards('herramientas-container', 'herra-val', stock.herramientas);
+
+    readCards('ont-container', 'ont-val', stock.activos.onts);
 
 
 
@@ -5242,80 +5299,65 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
 
 
+    // Helper para normalizar nombres
+    const normalizeName = (n) => {
+        if (!n) return "";
+        return n.toLowerCase()
+            .replace(/hilo(s)?|puerto(s)?|unidades|metros|tipo/gi, '')
+            .replace(/onu/gi, 'ont') // Sinónimo ONT/ONU
+            .replace(/[^a-z0-9\s]/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+
     // Helper para procesar un requerimiento
-
     const processReq = (cat, name, qty, unit, priority, stockArray) => {
-
         let needed = qty;
 
-
-
-        // Buscar en stock (Búsqueda laxa)
-
-        if (stockArray) {
+        // Buscar en stock (Búsqueda laxa con scoring)
+        if (stockArray && stockArray.length > 0) {
+            const target = normalizeName(name);
+            const targetTokens = target.split(' ').filter(t => t.length >= 2);
 
             stockArray.forEach(sItem => {
+                if (needed <= 0 || sItem.cantidad <= 0) return;
 
-                if (needed > 0 && sItem.cantidad > 0) {
+                const sNameOrig = sItem.item.toLowerCase();
+                const sNameNorm = normalizeName(sItem.item);
 
-                    const sName = sItem.item.toLowerCase();
-
-                    const rName = name.toLowerCase();
-
-
-
-                    // Lógica de coincidencia "Smart"
-
-                    const isDrop = sName.includes('drop') && rName.includes('drop');
-
-                    const isAdss = sName.includes('adss') && rName.includes('adss');
-
-                    // Match simple de números (e.g. 12 hilos)
-
-                    const sNum = (sName.match(/\d+/) || ['0'])[0];
-
-                    const rNum = (rName.match(/\d+/) || ['1'])[0];
-
-                    const matchHilos = sNum === rNum;
-
-
-
-                    // Match generico (si strings coinciden mucho)
-
-                    const exactish = sName.includes(rName) || rName.includes(sName);
-
-
-
-                    if (exactish || (isDrop) || (isAdss && matchHilos)) {
-
-                        const take = Math.min(needed, sItem.cantidad);
-
-                        sItem.cantidad -= take;
-
-                        needed -= take;
-
-
-
-                        // Registrar uso de stock
-
-                        listaDisponibles.push({
-
-                            categoria: cat,
-
-                            item: `${sItem.item} (Del Inventario)`,
-
-                            cantidad: take,
-
-                            unidad: unit
-
-                        });
-
-                    }
-
+                // 1. Coincidencia Exacta
+                if (name.toLowerCase().trim() === sNameOrig.trim()) {
+                    const take = Math.min(needed, sItem.cantidad);
+                    sItem.cantidad -= take;
+                    needed -= take;
+                    name = sItem.item; // Unificar nombre
+                    listaDisponibles.push({ categoria: cat, item: `${sItem.item} (Del Inventario)`, cantidad: take, unidad: unit });
+                    return;
                 }
 
-            });
+                // 2. Scoring de Palabras Clave
+                const sTokens = sNameNorm.split(' ').filter(t => t.length >= 2);
+                const matches = targetTokens.filter(t => sTokens.includes(t));
+                const score = (matches.length / Math.max(targetTokens.length, sTokens.length)) * 100;
 
+                // Casos especiales: Drop, ADSS, ONT
+                const isBothDrop = target.includes('drop') && sNameNorm.includes('drop');
+                const isBothAdss = target.includes('adss') && sNameNorm.includes('adss');
+                const isBothOnt = target.includes('ont') && sNameNorm.includes('ont');
+
+                const sameNum = (target.match(/\d+/) || [null])[0] === (sNameNorm.match(/\d+/) || [null])[0];
+
+                let finalScore = score;
+                if ((isBothDrop || isBothAdss || isBothOnt) && sameNum) finalScore += 40;
+
+                if (finalScore >= 60) {
+                    const take = Math.min(needed, sItem.cantidad);
+                    sItem.cantidad -= take;
+                    needed -= take;
+                    name = sItem.item; // Unificar nombre
+                    listaDisponibles.push({ categoria: cat, item: `${sItem.item} (Del Inventario)`, cantidad: take, unidad: unit });
+                }
+            });
         }
 
 
@@ -5620,7 +5662,7 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
     // ==========================================
 
-    processReq("⚡ Equipos Activos", "ONT T21 Navigator Doble Banda", clientes, "unidades", "alta", stock.activos.ont === 'none' ? [] : null);
+    processReq("⚡ Equipos Activos", "ONT T21 Navigator Doble Banda", clientes, "unidades", "alta", stock.activos.onts);
 
 
 
@@ -7276,24 +7318,74 @@ async function downloadComparisonReport() {
 
 
         // 1. Construir mapa de stock del cliente: nombre_base -> cantidad
+        const stockItems = window.finalReportState.filter(i => i.type === 'stock');
 
-        const stockMap = {};
+        // Función de normalización para comparaciones inteligentes
+        function normalizeName(name) {
+            if (!name) return "";
+            return name.toLowerCase()
+                .replace(/[\u1F600-\u1F64F]|[\u2700-\u27BF]|[\u1F300-\u1F5FF]|[\u1F680-\u1F6FF]|[\u2600-\u26FF]/g, '') // Emojis
+                .replace(/\(del inventario\)/gi, '')
+                .replace(/\(bobina 1km\)/gi, '')
+                .replace(/\(nivel 1\)/gi, '')
+                .replace(/\(aproximado\)/gi, '')
+                .replace(/hilo(s)?|puerto(s)?|unidades|metros|tipo/gi, '')
+                .replace(/onu/gi, 'ont') // Sinónimo ONT/ONU
+                .replace(/[^a-z0-9\s]/gi, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
 
-        window.finalReportState.forEach(i => {
+        // Helper: busca el stock ISP de un item usando scoring de palabras clave
+        function getStockForItem(itemName) {
+            const target = normalizeName(itemName);
+            const targetTokens = target.split(' ').filter(t => t.length >= 2);
 
-            if (i.type === 'stock') {
+            let bestStock = 0;
+            let bestScore = 0;
 
-                // Extraer el nombre base quitando el sufijo " (Del Inventario)"
+            stockItems.forEach(s => {
+                const sNameOrig = s.item.replace(/\s*\(Del Inventario\)\s*$/i, '').trim();
+                const sNameNorm = normalizeName(sNameOrig);
 
-                const baseName = i.item.replace(/\s*\(Del Inventario\)\s*$/i, '').trim();
+                // 1. Exact Match
+                if (itemName.trim() === sNameOrig) {
+                    bestScore = 100;
+                    bestStock = s.cantidad;
+                    return;
+                }
 
-                stockMap[baseName] = (stockMap[baseName] || 0) + i.cantidad;
+                // 2. Case Insensitive
+                if (itemName.toLowerCase().trim() === sNameOrig.toLowerCase().trim()) {
+                    if (bestScore < 95) {
+                        bestScore = 95;
+                        bestStock = s.cantidad;
+                    }
+                    return;
+                }
 
-            }
+                // 3. Keyword Scoring
+                const sTokens = sNameNorm.split(' ').filter(t => t.length >= 2);
+                const matches = targetTokens.filter(t => sTokens.includes(t));
+                const score = (matches.length / Math.max(targetTokens.length, sTokens.length)) * 100;
 
-        });
+                // Casos especiales: Drop, ADSS, ONT
+                const isBothDrop = target.includes('drop') && sNameNorm.includes('drop');
+                const isBothAdss = target.includes('adss') && sNameNorm.includes('adss');
+                const isBothOnt = target.includes('ont') && sNameNorm.includes('ont');
+                const sameNum = (target.match(/\d+/) || [null])[0] === (sNameNorm.match(/\d+/) || [null])[0];
 
+                let finalScore = score;
+                if ((isBothDrop || isBothAdss || isBothOnt) && sameNum) finalScore += 40;
 
+                if (finalScore > bestScore && finalScore >= 60) {
+                    bestScore = finalScore;
+                    bestStock = s.cantidad;
+                }
+            });
+
+            return bestScore >= 60 ? bestStock : 0;
+        }
 
         // 2. Construir la lista final: solo items 'missing', con stock del cliente inyectado.
 
@@ -7311,9 +7403,10 @@ async function downloadComparisonReport() {
 
                 const baseName = i.item.trim();
 
-                const stockUser = stockMap[baseName] || 0;
+                const stockUser = getStockForItem(baseName);
 
-                const toBuy = Math.max(i.cantidad - stockUser, 0);
+                const totalSugerido = i.cantidad + stockUser;
+                const aComprar = i.cantidad;
 
                 fullList.push({
 
@@ -7321,13 +7414,13 @@ async function downloadComparisonReport() {
 
                     source: 'missing',
 
+                    cantidad: totalSugerido,
                     stockUser: stockUser,
-
-                    buy: toBuy
+                    buy: aComprar
 
                 });
 
-                processedNames.add(baseName);
+                processedNames.add(normalizeName(baseName));
 
             }
 
@@ -7343,7 +7436,7 @@ async function downloadComparisonReport() {
 
                 const baseName = i.item.replace(/\s*\(Del Inventario\)\s*$/i, '').trim();
 
-                if (!processedNames.has(baseName)) {
+                if (!processedNames.has(normalizeName(baseName))) {
 
                     fullList.push({
 
@@ -7446,17 +7539,7 @@ async function downloadComparisonReport() {
 
             <body>
 
-                <table>
-                    <colgroup>
-                        <col width="300">
-                        <col width="500">
-                        <col width="120">
-                        <col width="120">
-                        <col width="130">
-                        <col width="130">
-                        <col width="140">
-                        <col width="140">
-                    </colgroup>
+                <table border="1" data-cols-width="40,100,15,15,15,15,20,20" style="border-collapse: collapse;">
                     <tr><td colspan="8" data-fill-color="1E293B" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-a-v="middle" style="background-color: #1e293b; color: #ffffff; font-weight: bold; text-align: center; font-size: 18px; padding: 10px; border: 1px solid #cbd5e1;"> PLAN DE COMPRA</td></tr>
                     <tr><td colspan="8" data-fill-color="F1F5F9" data-a-h="center" data-f-bold="true" style="text-align:center; background:#f1f5f9; border: 1px solid #cbd5e1; padding: 5px;">Proyecto: <strong>${projectName}</strong> - Cliente: <strong>${ispName}</strong></td></tr>
                     <tr><td colspan="8" data-fill-color="FFFFFF" data-f-color="64748B" data-a-h="center" data-f-sz="9" style="text-align:center; font-size:11px; border: 1px solid #cbd5e1; padding: 3px; color: #64748b;">Generado: ${new Date().toLocaleString()}</td></tr>
@@ -7626,7 +7709,8 @@ async function downloadComparisonReport() {
         saveProjectRegistry({ excelData: excelContent, excelName: filename });
 
         const tempDiv = document.createElement("div");
-        tempDiv.style.display = "none";
+        tempDiv.style.position = "absolute";
+        tempDiv.style.left = "-9999px";
         tempDiv.innerHTML = excelContent;
         document.body.appendChild(tempDiv);
         const table = tempDiv.querySelector("table");
@@ -11247,14 +11331,8 @@ window.generateDirectExcel = async function () {
 
         <body>
 
-            <table border="1" style="border-collapse: collapse; width: 100%;">
-                <colgroup>
-                    <col width="550">
-                    <col width="120">
-                    <col width="170">
-                    <col width="170">
-                </colgroup>
-
+            <table border="1" data-cols-width="120,15,20,20" style="border-collapse: collapse;">
+                <!-- Internal headers with redundancy -->
                 <tr>
                     <td colspan="4" data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-f-sz="14" data-a-h="center" data-a-v="middle" style="background-color: #0f172a; color: #ffffff; font-size: 18px; font-weight: bold; text-align: center; height: 50px; border: 1px solid #e2e8f0;">
                         COTIZACIÓN
@@ -11276,10 +11354,10 @@ window.generateDirectExcel = async function () {
                 <tr><td colspan="4" style="border:none; height:10px;"></td></tr>
 
                 <tr>
-                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="left" data-b-a-s="thin" width="550" data-w-px="550" style="background-color: #0f172a; color: #ffffff; font-weight: bold; padding: 10px; border: 1px solid #e2e8f0;">PRODUCTO / DESCRIPCIÓN</td>
-                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #e2e8f0; padding: 10px;">CANTIDAD</td>
-                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="170" data-w-px="170" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">UNITARIO ($)</td>
-                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="170" data-w-px="170" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">TOTAL ($)</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="left" data-b-a-s="thin" width="1000" data-w-px="1000" data-w-ch="120" style="background-color: #0f172a; color: #ffffff; font-weight: bold; padding: 10px; border: 1px solid #e2e8f0; width: 1000px;">PRODUCTO / DESCRIPCIÓN</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" data-w-ch="15" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #e2e8f0; padding: 10px; width: 120px;">CANTIDAD</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="190" data-w-px="190" data-w-ch="20" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px; width: 190px;">UNITARIO ($)</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="190" data-w-px="190" data-w-ch="20" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px; width: 190px;">TOTAL ($)</td>
                 </tr>
 
     `;
@@ -11296,7 +11374,7 @@ window.generateDirectExcel = async function () {
 
         excelContent += `
             <tr style="background-color: ${bg};">
-                <td data-fill-color="${bg.replace('#', '')}" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0;">${item.name}</td>
+                <td data-fill-color="${bg.replace('#', '')}" data-a-wrap="true" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0;">${item.name}</td>
                 <td data-fill-color="${bg.replace('#', '')}" data-a-h="center" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;">${item.qty}</td>
                 <td data-fill-color="${bg.replace('#', '')}" data-a-h="right" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
                 <td data-fill-color="${bg.replace('#', '')}" data-a-h="right" data-f-bold="true" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600;">${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
@@ -11332,7 +11410,10 @@ window.generateDirectExcel = async function () {
     const filename = `${projectName.replace(/\s+/g, '_')}_Cotizacion.xlsx`;
 
     const tempDiv = document.createElement("div");
-    tempDiv.style.display = "none";
+    tempDiv.style.position = "absolute";
+    tempDiv.style.left = "-9999px";
+    tempDiv.style.width = "5000px";
+    tempDiv.style.display = "block";
     tempDiv.innerHTML = excelContent;
     document.body.appendChild(tempDiv);
     const table = tempDiv.querySelector("table");
@@ -11465,13 +11546,7 @@ window.downloadDirectQuoteFromHistory = async function (id) {
             </style>
         </head>
         <body>
-            <table border="1" style="border-collapse: collapse; width: 100%;">
-                <colgroup>
-                    <col width="550">
-                    <col width="120">
-                    <col width="170">
-                    <col width="170">
-                </colgroup>
+            <table border="1" data-cols-width="120,15,20,20" style="border-collapse: collapse;">
                 <tr>
                     <td colspan="4" data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-f-sz="14" data-a-h="center" data-a-v="middle" style="background-color: #0f172a; color: #ffffff; font-size: 18px; font-weight: bold; text-align: center; height: 50px; border: 1px solid #e2e8f0;">
                         COTIZACIÓN
@@ -11490,10 +11565,10 @@ window.downloadDirectQuoteFromHistory = async function (id) {
                 <tr><td colspan="4" style="border:none; height:10px;"></td></tr>
 
                 <tr>
-                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="left" data-b-a-s="thin" width="550" data-w-px="550" style="background-color: #0f172a; color: #ffffff; font-weight: bold; padding: 10px; border: 1px solid #e2e8f0;">PRODUCTO / DESCRIPCIÓN</td>
-                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #e2e8f0; padding: 10px;">CANTIDAD</td>
-                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="170" data-w-px="170" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">UNITARIO ($)</td>
-                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="170" data-w-px="170" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px;">TOTAL ($)</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="left" data-b-a-s="thin" width="1000" data-w-px="1000" data-w-ch="120" style="background-color: #0f172a; color: #ffffff; font-weight: bold; padding: 10px; border: 1px solid #e2e8f0; width: 1000px;">PRODUCTO / DESCRIPCIÓN</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-b-a-s="thin" width="120" data-w-px="120" data-w-ch="15" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #e2e8f0; padding: 10px; width: 120px;">CANTIDAD</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="190" data-w-px="190" data-w-ch="20" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px; width: 190px;">UNITARIO ($)</td>
+                    <td data-fill-color="0F172A" data-f-color="FFFFFF" data-f-bold="true" data-a-h="right" data-b-a-s="thin" width="190" data-w-px="190" data-w-ch="20" style="background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: right; border: 1px solid #e2e8f0; padding: 10px; width: 190px;">TOTAL ($)</td>
                 </tr>
     `;
 
@@ -11505,7 +11580,7 @@ window.downloadDirectQuoteFromHistory = async function (id) {
 
         excelContent += `
             <tr style="background-color: ${bg};">
-                <td data-fill-color="${bg.replace('#', '')}" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0;">${item.name}</td>
+                <td data-fill-color="${bg.replace('#', '')}" data-a-wrap="true" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0;">${item.name}</td>
                 <td data-fill-color="${bg.replace('#', '')}" data-a-h="center" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;">${item.qty}</td>
                 <td data-fill-color="${bg.replace('#', '')}" data-a-h="right" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">${item.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
                 <td data-fill-color="${bg.replace('#', '')}" data-a-h="right" data-f-bold="true" data-b-a-s="thin" style="padding: 8px; border: 1px solid #e2e8f0; text-align: right; font-weight: 600;">${item.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
@@ -11532,7 +11607,10 @@ window.downloadDirectQuoteFromHistory = async function (id) {
 
     const filename = `${projectName.replace(/\s+/g, '_')}_Cotizacion.xlsx`;
     const tempDiv = document.createElement("div");
-    tempDiv.style.display = "none";
+    tempDiv.style.position = "absolute";
+    tempDiv.style.left = "-9999px";
+    tempDiv.style.width = "5000px";
+    tempDiv.style.display = "block";
     tempDiv.innerHTML = excelContent;
     document.body.appendChild(tempDiv);
     const table = tempDiv.querySelector("table");
@@ -11540,7 +11618,7 @@ window.downloadDirectQuoteFromHistory = async function (id) {
     TableToExcel.convert(table, {
         name: filename,
         sheet: {
-            name: "Cotizacion"
+            name: "Cotización"
         }
     });
 
@@ -11708,7 +11786,7 @@ window.downloadSavedReport = async function (id) {
 
         <body>
 
-            <table>
+            <table style="border-collapse: collapse; width: 1580px; table-layout: fixed;">
                 <colgroup>
                     <col width="300">
                     <col width="500">
@@ -11718,7 +11796,16 @@ window.downloadSavedReport = async function (id) {
                     <col width="130">
                     <col width="140">
                     <col width="140">
-                </colgroup>
+                <tr style="height: 0; border: none;">
+                    <td data-w-px="300" style="width: 300px; border: none; padding: 0;"></td>
+                    <td data-w-px="500" style="width: 500px; border: none; padding: 0;"></td>
+                    <td data-w-px="120" style="width: 120px; border: none; padding: 0;"></td>
+                    <td data-w-px="120" style="width: 120px; border: none; padding: 0;"></td>
+                    <td data-w-px="130" style="width: 130px; border: none; padding: 0;"></td>
+                    <td data-w-px="130" style="width: 130px; border: none; padding: 0;"></td>
+                    <td data-w-px="140" style="width: 140px; border: none; padding: 0;"></td>
+                    <td data-w-px="140" style="width: 140px; border: none; padding: 0;"></td>
+                </tr>
                 <tr><td colspan="8" data-fill-color="1E293B" data-f-color="FFFFFF" data-f-bold="true" data-a-h="center" data-a-v="middle" style="background-color: #1e293b; color: #ffffff; font-weight: bold; text-align: center; font-size: 18px; padding: 10px; border: 1px solid #cbd5e1;"> PLAN DE COMPRA</td></tr>
                 <tr><td colspan="8" data-fill-color="F1F5F9" data-a-h="center" data-f-bold="true" style="text-align:center; background:#f1f5f9; border: 1px solid #cbd5e1; padding: 5px;">Proyecto: <strong>${projectName}</strong> - Cliente: <strong>${ispName}</strong></td></tr>
                 <tr><td colspan="8" data-fill-color="FFFFFF" data-f-color="64748B" data-a-h="center" data-f-sz="9" style="text-align:center; font-size:11px; border: 1px solid #cbd5e1; padding: 3px; color: #64748b;">Generado: ${dateStr}</td></tr>
@@ -11886,7 +11973,8 @@ window.downloadSavedReport = async function (id) {
     const filename = `${safeProjectName}_Ingenieria.xlsx`;
 
     const tempDiv = document.createElement("div");
-    tempDiv.style.display = "none";
+    tempDiv.style.position = "absolute";
+    tempDiv.style.left = "-9999px";
     tempDiv.innerHTML = excelContent;
     document.body.appendChild(tempDiv);
     const table = tempDiv.querySelector("table");
@@ -15124,13 +15212,10 @@ async function drawNetworkLines(olt, naps) {
     })();
 
     window.currentNetworkMetrics = {
-
         trunk: Math.ceil(totalTrunkM),
-
         dist: Math.ceil(totalDistM),
-
-        naps: naps.length
-
+        naps: naps.length,
+        maxRouteDist: Math.max(0, ...routedDist) // Distancia máxima en metros OLT -> NAP
     };
 
 
