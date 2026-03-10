@@ -1889,9 +1889,21 @@ async function consultProjectStock(projectId) {
 
             if (exactMappedName) {
                 bestMatch = allOdooProducts.find(p =>
-                    (p.display_name && p.display_name === exactMappedName) ||
-                    (p.name === exactMappedName)
+                    (p.display_name && p.display_name.trim() === exactMappedName.trim()) ||
+                    (p.name && p.name.trim() === exactMappedName.trim())
                 );
+            }
+
+            // 2. Si no hay mapeo, pero tiene un código [NTS...]
+            if (!bestMatch) {
+                const codeMatch = item.name.match(/\[(.*?)\]/);
+                if (codeMatch && codeMatch[1]) {
+                    const extractedCode = codeMatch[1].trim().toLowerCase();
+                    bestMatch = allOdooProducts.find(p =>
+                        (p.default_code && p.default_code.toLowerCase().trim() === extractedCode) ||
+                        (p.display_name && p.display_name.toLowerCase().includes(`[${extractedCode}]`))
+                    );
+                }
             }
 
             if (!bestMatch) {
@@ -3855,37 +3867,26 @@ async function acceptSuggestion(elementId, productName, qty) {
 
 
     // A. Intentar buscar por MAPEO (PRODUCT_MAPPING)
-
-    if (typeof PRODUCT_MAPPING !== 'undefined' && PRODUCT_MAPPING[productName]) {
-
-        odooMappedName = PRODUCT_MAPPING[productName];
-
+    if (typeof PRODUCT_MAPPING !== 'undefined' && PRODUCT_MAPPING[productName.trim()]) {
+        odooMappedName = PRODUCT_MAPPING[productName.trim()];
         console.log(`[acceptSuggestion] Mapeo encontrado: '${productName}' -> '${odooMappedName}'`);
 
-
-
         // Búsqueda 1: Exacta en display_name o name
+        match = allOdooProductsCache.find(p =>
+            (p.display_name && p.display_name.trim() === odooMappedName.trim()) ||
+            (p.name && p.name.trim() === odooMappedName.trim())
+        );
 
-        match = allOdooProductsCache.find(p => p.display_name === odooMappedName || p.name === odooMappedName);
-
-
-
-        // Búsqueda 2: Flexible (Includes)
-
+        // Búsqueda 2: Por Código si el nombre tiene [NTS...]
         if (!match) {
-
-            const searchNorm = odooMappedName.toLowerCase().trim();
-
-            match = allOdooProductsCache.find(p => {
-
-                const pName = (p.name || "").toLowerCase();
-
-                const pDisplay = (p.display_name || "").toLowerCase();
-
-                return pDisplay.includes(searchNorm) || pName.includes(searchNorm);
-
-            });
-
+            const codeMatch = productName.match(/\[(.*?)\]/);
+            if (codeMatch && codeMatch[1]) {
+                const extractedCode = codeMatch[1].trim().toLowerCase();
+                match = allOdooProductsCache.find(p =>
+                    (p.default_code && p.default_code.toLowerCase().trim() === extractedCode) ||
+                    (p.display_name && p.display_name.toLowerCase().includes(`[${extractedCode}]`))
+                );
+            }
         }
 
     } else {
@@ -5659,10 +5660,19 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
     // ==========================================
 
     // 5. EQUIPOS ACTIVOS
-
     // ==========================================
 
-    processReq("⚡ Equipos Activos", "ONT T21 Navigator Doble Banda", clientes, "unidades", "alta", stock.activos.onts);
+    // Sync ONT with Optical Budget selection
+    let obOntModel = document.getElementById('ob-ont-model') ? document.getElementById('ob-ont-model').value : null;
+    let ontLabel = "ONT T21 Navigator Doble Banda"; // Default fallback
+
+    if (obOntModel) {
+        let specs = window.NAVIGATOR_SPECS;
+        let curOnt = (specs && specs.ONT && specs.ONT.models) ? specs.ONT.models[obOntModel] : null;
+        ontLabel = curOnt ? (curOnt.odooLabel || curOnt.label) : ontLabel;
+    }
+
+    processReq("⚡ Equipos Activos", ontLabel, clientes, "unidades", "alta", stock.activos.onts);
 
 
 
@@ -6159,23 +6169,27 @@ async function acceptProjectSuggestion(elementId, productName, qty) {
     // Intentar buscar en allOdooProducts (que ya debería estar cargado en esta pantalla)
 
     if (typeof allOdooProducts !== 'undefined' && allOdooProducts.length > 0) {
-
-        // Búsqueda exacta primero
-
-        const exact = allOdooProducts.find(p =>
-
-            (p.display_name && p.display_name === productName) ||
-
-            (p.name === productName)
-
+        // 1. First try exact mapping or exact match
+        let exact = allOdooProducts.find(p =>
+            (p.display_name && p.display_name.trim() === productName.trim()) ||
+            (p.name && p.name.trim() === productName.trim())
         );
 
+        // 2. If no match and product name contains [CODE], try to match by code
+        if (!exact) {
+            const codeMatch = productName.match(/\[(.*?)\]/);
+            if (codeMatch && codeMatch[1]) {
+                const extractedCode = codeMatch[1].trim().toLowerCase();
+                exact = allOdooProducts.find(p =>
+                    (p.default_code && p.default_code.toLowerCase().trim() === extractedCode) ||
+                    (p.display_name && p.display_name.toLowerCase().includes(`[${extractedCode}]`))
+                );
+            }
+        }
+
         if (exact) {
-
             finalName = exact.display_name || exact.name;
-
             isOdooMatch = true;
-
         } else {
 
             // Búsqueda fuzzy
@@ -6426,18 +6440,24 @@ function renderCotizacionTable() {
 
                 let bestMatch = null;
 
-
-
+                // 1. Try exact mapping first
                 if (exactMappedName) {
-
                     bestMatch = allOdooProducts.find(p =>
-
                         (p.display_name && p.display_name.trim() === exactMappedName.trim()) ||
-
                         (p.name && p.name.trim() === exactMappedName.trim())
-
                     );
+                }
 
+                // 2. If no match and item contains [CODE], try to match by code
+                if (!bestMatch) {
+                    const codeMatch = item.item.match(/\[(.*?)\]/);
+                    if (codeMatch && codeMatch[1]) {
+                        const extractedCode = codeMatch[1].trim().toLowerCase();
+                        bestMatch = allOdooProducts.find(p =>
+                            (p.default_code && p.default_code.toLowerCase().trim() === extractedCode) ||
+                            (p.display_name && p.display_name.toLowerCase().includes(`[${extractedCode}]`))
+                        );
+                    }
                 }
 
 
@@ -7581,9 +7601,9 @@ async function downloadComparisonReport() {
 
             let odooMatch = { name: '---', qty: 0, price: 0 };
 
-            const searchName = item.item.toLowerCase();
+            const searchName = item.item.toLowerCase().trim();
 
-            const exactMappedName = PRODUCT_MAPPING[item.item];
+            const exactMappedName = PRODUCT_MAPPING[item.item.trim()];
 
 
 
@@ -7594,17 +7614,23 @@ async function downloadComparisonReport() {
 
 
                 // 1. Mapeo Manual (Prioridad Máxima)
-
                 if (exactMappedName && exactMappedName.length > 0) {
-
                     bestMatch = allOdooProducts.find(p =>
-
-                        (p.display_name && p.display_name === exactMappedName) ||
-
-                        (p.name === exactMappedName)
-
+                        (p.display_name && p.display_name.trim() === exactMappedName.trim()) ||
+                        (p.name && p.name.trim() === exactMappedName.trim())
                     );
+                }
 
+                // 2. Si no hay mapeo, pero el item YA tiene un código Odoo [NTS...]
+                if (!bestMatch) {
+                    const codeMatch = item.item.match(/\[(.*?)\]/);
+                    if (codeMatch && codeMatch[1]) {
+                        const extractedCode = codeMatch[1].trim().toLowerCase();
+                        bestMatch = allOdooProducts.find(p =>
+                            (p.default_code && p.default_code.toLowerCase().trim() === extractedCode) ||
+                            (p.display_name && p.display_name.toLowerCase().includes(`[${extractedCode}]`))
+                        );
+                    }
                 }
 
 
@@ -11876,9 +11902,22 @@ window.downloadSavedReport = async function (id) {
 
 
             if (exactMappedName) {
+                bestMatch = allOdooProducts.find(p =>
+                    (p.display_name && p.display_name.trim() === exactMappedName.trim()) ||
+                    (p.name && p.name.trim() === exactMappedName.trim())
+                );
+            }
 
-                bestMatch = allOdooProducts.find(p => p.name === exactMappedName);
-
+            // 2. Si no hay mapeo, pero tiene un código [NTS...]
+            if (!bestMatch) {
+                const codeMatch = (item.item || item.name || "").match(/\[(.*?)\]/);
+                if (codeMatch && codeMatch[1]) {
+                    const extractedCode = codeMatch[1].trim().toLowerCase();
+                    bestMatch = allOdooProducts.find(p =>
+                        (p.default_code && p.default_code.toLowerCase().trim() === extractedCode) ||
+                        (p.display_name && p.display_name.toLowerCase().includes(`[${extractedCode}]`))
+                    );
+                }
             }
 
 
@@ -13045,23 +13084,18 @@ const MapProgress = (() => {
 
 
     function _setProgress(pct, text) {
-
         _ensure();
-
         if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; }
-
         _el.style.display = 'block';
 
+        // Fix: Explicitly reset color back to blue in case a previous non-critical error painted it red
+        if (_bar) _bar.style.background = 'linear-gradient(90deg,#3b82f6,#6366f1)';
+
         _pct = Math.min(100, Math.max(0, pct));
-
         _bar.style.width = _pct + '%';
-
         if (text) {
-
             _label.innerHTML = `<span style="color:#3b82f6">⬤</span>&nbsp;&nbsp;${text}`;
-
         }
-
     }
 
 
@@ -15180,6 +15214,7 @@ async function drawNetworkLines(olt, naps) {
 
     // ─── Recalcular distancia OLT ruteada real (por árbol de fibra) ───────────
     // Usamos BFS en el MST para obtener la distancia de fibra real a cada NAP
+    let routedDist = new Array(nodes.length).fill(0);
     (function recalcRoutedDistances() {
         const adjMST = Array.from({ length: nodes.length }, () => []);
         mstEdges.forEach((e, i) => {
@@ -15187,7 +15222,6 @@ async function drawNetworkLines(olt, naps) {
             adjMST[e.fromIdx].push({ to: e.toIdx, dist: d });
             adjMST[e.toIdx].push({ to: e.fromIdx, dist: d });
         });
-        const routedDist = new Array(nodes.length).fill(0);
         const visited = new Array(nodes.length).fill(false);
         const queue = [0];
         visited[0] = true;
@@ -15802,11 +15836,9 @@ function initMap(initialLoc, rawNaps, radiusMeters) {
                 }
 
             } catch (err) {
-
                 console.error("❌ Error en post-carga de mapa:", err);
-
-                MapProgress.error("Error al procesar arquitectura");
-
+                MapProgress.error("Error: " + err.message);
+                alert("Debug Error: " + err.stack);
             }
 
 

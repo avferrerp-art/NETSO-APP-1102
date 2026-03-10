@@ -877,9 +877,10 @@
                                         <label class="field-label">Modelo ONT</label>
                                         <select id="ob-ont-model" class="input-field" style="padding: 9px 12px;"
                                             onchange="onOntModelChange()">
-                                            <option value="SM164242-T21" selected>SM164242-GHDUHR-T21 — Gateway
-                                                Convergente</option>
-                                            <option value="SM16101-T10">SM16101-GHZ-T10 — ONT Simple / Datos (1x GigE)
+                                            <option value="NAV-T21-AC1200" selected>SUMEC NAVIGATOR T21 AC1200 - WiFi AC
+                                            </option>
+                                            <option value="NAV-T21-CATV">SUMEC NAVIGATOR T21 CON CATV - WiFi AC</option>
+                                            <option value="NAV-TX50-AX3000">SUMEC NAVIGATOR TX50 AX3000 - WiFi 6
                                             </option>
                                         </select>
                                     </div>
@@ -1050,9 +1051,9 @@
                             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <div style="font-size: 14px; font-weight: 700; color: #1e293b;">Desglose de Pérdidas</div>
                             <div style="display: flex; gap: 8px;">
-                                <button onclick="window.descargarPresupuestoPDF()"
+                                <button onclick="window.descargarPresupuestoTXT()"
                                     style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 8px; transition: all 0.2s;">
-                                    📥 Descargar PDF
+                                    📥 Descargar TXT
                                 </button>
                                 <button onclick="window.toggleFormulasModal()"
                                     style="background: none; border: none; color: #2563eb; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; transition: background 0.2s;">
@@ -1609,8 +1610,24 @@
         window.notifyArchitectureReady = function (data) {
             data = data || {};
 
-            var feederKm = data.feederKm || 0;
-            var distKm = data.distKm || 0;
+            var feederKm = 0;
+            var distKm = 0;
+
+            // Prioritize the real longest path plotted on the map if available to ensure correct Optical Budget worst-case scenario
+            if (window.currentNetworkMetrics && window.currentNetworkMetrics.maxRouteDist > 0) {
+                feederKm = parseFloat((window.currentNetworkMetrics.maxRouteDist / 1000).toFixed(2));
+                distKm = 0.00; // Distribution is already aggregated into the MST real trace algorithm Route
+                console.log("📍 Optical Budget: Sincronizando ruta crítica exacta: " + feederKm + " km");
+            } else if (data.feederKm !== undefined && data.distKm !== undefined) {
+                // Fallback to manual payload data
+                feederKm = data.feederKm;
+                distKm = data.distKm;
+            } else if (window.arquitecturaData && window.arquitecturaData.totalFibraKm) {
+                // Fallback a regla 30/70 general
+                feederKm = parseFloat((window.arquitecturaData.totalFibraKm * 0.30).toFixed(2));
+                distKm = parseFloat((window.arquitecturaData.totalFibraKm * 0.70).toFixed(2));
+            }
+
             var totalKm = feederKm + distKm;
 
             // Normalizar estructura de conectores y empalmes para una ruta punto a punto (OLT -> ONT)
@@ -1619,12 +1636,6 @@
             // 2 fijos (ODF + FDT) + 1 empalme por cada 2.5 km, máximo 7 empalmes
             var splicesCalc = 2 + Math.ceil(totalKm / 2.5);
             var spliceTotal = (data.splices && data.splices.total) ? data.splices.total : Math.min(7, splicesCalc);
-
-            // Fallback: si no hay desglose use totalFibraKm con regla 30/70
-            if (!feederKm && window.arquitecturaData && window.arquitecturaData.totalFibraKm) {
-                feederKm = parseFloat((window.arquitecturaData.totalFibraKm * 0.30).toFixed(2));
-                distKm = parseFloat((window.arquitecturaData.totalFibraKm * 0.70).toFixed(2));
-            }
 
             // ---- Detectar si la arquitectura cambió ----
             var dataHash = JSON.stringify({ feederKm: feederKm, distKm: distKm, connTotal: connTotal, spliceTotal: spliceTotal });
@@ -1945,6 +1956,7 @@
             var reqClients = parseInt(document.getElementById('ob-req-clients').value) || 0;
             var sfpKey = document.getElementById('ob-sfp-model').value || 'SFP GPON C++';
             var oltKey = document.getElementById('ob-olt-model').value || 'NAVGPT-08P';
+            var ontKey = document.getElementById('ob-ont-model').value;
 
             // Márgenes de seguridad (Reglas 5 y 7)
             var rules = specs.RULES;
@@ -2130,6 +2142,21 @@
             window.renderizarAlertas(alertas);
 
             document.getElementById('ob-results').style.display = 'block';
+
+            // --- Sincronización con el BOM (Planificación de Materiales) ---
+            if (typeof window.generarListaCotizacion === 'function') {
+                var hp = parseInt(document.getElementById('censo') ? document.getElementById('censo').value : 0) ||
+                    parseInt(document.getElementById('ob-req-clients') ? document.getElementById('ob-req-clients').value : 0) || 0;
+                var radioVal = document.getElementById('coverageRadius') ? document.getElementById('coverageRadius').value : 500;
+                var radioKm = parseFloat(radioVal) / 1000;
+
+                // Intentar recuperar el mix de NAPs sugeridos o recalcular básico
+                var napsMix = window.suggestedNapMix || { total: Math.ceil(hp / 14.4) };
+                var napsTotal = napsMix.total;
+
+                console.log("📍 Sincronizando BOM con nueva ONT (" + ontKey + ") para Odoo...");
+                window.generarListaCotizacion(hp, napsTotal, radioKm);
+            }
         };
 
         window.toggleFormulasModal = function () {
@@ -2139,7 +2166,7 @@
             }
         };
 
-        window.descargarPresupuestoPDF = function () {
+        window.descargarPresupuestoTXT = function () {
             // 1. Verificar si existen resultados
             var resultsNode = document.getElementById('ob-results');
             if (!resultsNode || resultsNode.style.display === 'none') {
@@ -2154,102 +2181,44 @@
             var sfpModel = document.getElementById('ob-sfp-model').options[document.getElementById('ob-sfp-model').selectedIndex].text;
             var ontModel = document.getElementById('ob-ont-model').options[document.getElementById('ob-ont-model').selectedIndex].text;
             var formulasText = document.getElementById('ob-formulas-content').textContent;
-            var statusBadge = document.getElementById('ob-status-badge').textContent;
-            var pbm1310 = document.getElementById('ob-pbm-1310').textContent;
-            var pbm1490 = document.getElementById('ob-pbm-1490').textContent;
+            var statusBadge = document.getElementById('ob-status-badge').textContent.trim();
+            var pbm1310 = document.getElementById('ob-pbm-1310').textContent.trim();
+            var pbm1490 = document.getElementById('ob-pbm-1490').textContent.trim();
 
-            // 3. Crear el contenedor del reporte PDF
-            var btn = document.querySelector('button[onclick="window.descargarPresupuestoPDF()"]');
-            var originalBtnText = btn ? btn.innerHTML : '';
-            if (btn) btn.innerHTML = '⏳ Generando PDF...';
+            // 3. Formatear como Texto Plano (.txt)
+            var content = "================================================\n";
+            content += "REPORTE DE PRESUPUESTO ÓPTICO - NETSO INC, C.A\n";
+            content += "================================================\n";
+            content += "Proyecto: " + projectName + "\n";
+            content += "Fecha: " + new Date().toLocaleDateString() + "\n\n";
 
-            var container = document.createElement('div');
-            container.style.padding = '40px';
-            container.style.fontFamily = "'Inter', sans-serif";
-            container.style.color = '#1e293b';
-            container.style.backgroundColor = 'white';
-            container.style.position = 'absolute';
-            container.style.left = '-9999px';
-            container.style.top = '-9999px';
-            container.style.width = '800px';
+            content += "--- EQUIPAMIENTO UTILIZADO ---\n";
+            content += "Modelo OLT: " + oltModel + "\n";
+            content += "Módulo SFP: " + sfpModel + "\n";
+            content += "Modelo ONT: " + ontModel + "\n\n";
 
-            var html = `
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #2563eb; padding-bottom: 20px; margin-bottom: 30px;">
-                    <div>
-                        <h1 style="margin:0; font-size:24px; color:#1e40af;">Reporte de Presupuesto Óptico</h1>
-                        <p style="margin:5px 0 0 0; color:#64748b; font-size:14px;">Generado por Netso Cloud Platform</p>
-                    </div>
-                    <div style="text-align:right;">
-                        <p style="margin:0; font-weight:700; font-size:14px;">Proyecto: ${projectName}</p>
-                        <p style="margin:3px 0 0 0; color:#94a3b8; font-size:12px;">Fecha: ${new Date().toLocaleDateString()}</p>
-                    </div>
-                </div>
+            content += "--- RESUMEN DE RESULTADOS ---\n";
+            content += "STATUS GENERAL: " + statusBadge + "\n";
+            content += "Margen PBM (Subida 1310nm): " + pbm1310 + " dB\n";
+            content += "Margen PBM (Bajada 1490nm): " + pbm1490 + " dB\n\n";
 
-                <div style="margin-bottom: 30px;">
-                    <h2 style="font-size:16px; text-transform:uppercase; border-left:4px solid #2563eb; padding-left:10px; margin-bottom:15px; background:#f8fafc; padding-top:5px; padding-bottom:5px;">Equipamiento Utilizado</h2>
-                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                        <tr><td style="padding:8px; border:1px solid #e2e8f0; font-weight:700; width:30%;">Modelo OLT</td><td style="padding:8px; border:1px solid #e2e8f0;">${oltModel}</td></tr>
-                        <tr><td style="padding:8px; border:1px solid #e2e8f0; font-weight:700;">Módulo SFP</td><td style="padding:8px; border:1px solid #e2e8f0;">${sfpModel}</td></tr>
-                        <tr><td style="padding:8px; border:1px solid #e2e8f0; font-weight:700;">Modelo ONT</td><td style="padding:8px; border:1px solid #e2e8f0;">${ontModel}</td></tr>
-                    </table>
-                </div>
+            content += "--- MEMORIA DE CÁLCULO (ISO/IEC 11801) ---\n\n";
+            content += formulasText + "\n\n";
 
-                <div style="margin-bottom: 30px;">
-                    <h2 style="font-size:16px; text-transform:uppercase; border-left:4px solid #2563eb; padding-left:10px; margin-bottom:15px; background:#f8fafc; padding-top:5px; padding-bottom:5px;">Resumen de Resultados</h2>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-                        <div style="border:1px solid #e2e8f0; border-radius:12px; padding:15px; text-align:center;">
-                            <p style="margin:0 0 5px 0; font-size:11px; color:#64748b; font-weight:800;">STATUS GENERAL</p>
-                            <p style="margin:0; font-size:18px; font-weight:900;">${statusBadge}</p>
-                        </div>
-                        <div style="display:flex; gap:10px;">
-                            <div style="flex:1; border:1px solid #e2e8f0; border-radius:12px; padding:10px; text-align:center;">
-                                <p style="margin:0; font-size:10px; color:#64748b;">PBM 1310nm</p>
-                                <p style="margin:0; font-size:16px; font-weight:800;">${pbm1310} dB</p>
-                            </div>
-                            <div style="flex:1; border:1px solid #e2e8f0; border-radius:12px; padding:10px; text-align:center;">
-                                <p style="margin:0; font-size:10px; color:#64748b;">PBM 1490nm</p>
-                                <p style="margin:0; font-size:16px; font-weight:800;">${pbm1490} dB</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            content += "================================================\n";
+            content += "Generado por Plataforma Netso \n";
+            content += "Este documento es una estimación técnica basada en parámetros de diseño.\n";
 
-                <div style="margin-bottom: 20px; page-break-before: auto;">
-                    <h2 style="font-size:16px; text-transform:uppercase; border-left:4px solid #2563eb; padding-left:10px; margin-bottom:15px; background:#f8fafc; padding-top:5px; padding-bottom:5px;">Memoria de Cálculo (ISO/IEC 11801)</h2>
-                    <div style="background:#0f172a; color:#f8fafc; font-family:monospace; padding:20px; border-radius:10px; font-size:12px; line-height:1.6; white-space:pre-wrap;">${formulasText}</div>
-                </div>
-
-                <div style="margin-top:40px; text-align:center; border-top:1px solid #e2e8f0; padding-top:20px; color:#94a3b8; font-size:11px;">
-                    Este documento es una estimación técnica basada en parámetros de diseño. Los valores reales pueden variar según la calidad de la instalación y las condiciones ambientales.
-                </div>
-            `;
-            container.innerHTML = html;
-
-            // 4. Configuración de html2pdf
-            var opt = {
-                margin: 10,
-                filename: `Presupuesto_Optico_${projectName.replace(/\s+/g, '_')}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, logging: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-
-            // 5. Generar PDF
-            document.body.appendChild(container); // IMPORTANTE: Agregar al DOM temporalmente para ser renderizado
-
-            // Forzar renderizado del navegador antes de capturar
-            setTimeout(() => {
-                html2pdf().from(container).set(opt).save().then(() => {
-                    // Limpieza post-generacion
-                    if (document.body.contains(container)) document.body.removeChild(container);
-                    if (btn) btn.innerHTML = originalBtnText;
-                }).catch(err => {
-                    console.error("Error al generar el documento PDF del presupuesto:", err);
-                    if (document.body.contains(container)) document.body.removeChild(container);
-                    if (btn) btn.innerHTML = originalBtnText;
-                    alert("Hubo un error al generar el PDF. Verifica tu conexión o intenta nuevamente.");
-                });
-            }, 500); // 500ms delay to ensure styles and fonts are applied
+            // 4. Crear Blob y Descargar
+            var blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = "Presupuesto_Optico_" + projectName.replace(/\\s+/g, '_') + ".txt";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         };
 
     </script>

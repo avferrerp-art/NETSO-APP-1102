@@ -95,55 +95,56 @@ window.NAVIGATOR_SPECS = {
         // Longitud de onda TX: 1310nm | RX: 1490nm
         // Sensibilidad GPON: -28 dBm | EPON: -27 dBm
         models: {
-            'SM164242-T21': {
-                label: 'SM164242-GHDUHR-T21 — Gateway Convergente Dual (Triple Play)',
-                type: 'ONT/ONU Residencial',
+            'NAV-T21-AC1200': {
+                label: 'ONT SUMEC NAVIGATOR T21 AC1200 - WiFi AC',
+                odooLabel: '[NTS050020] ONT SUMEC NAVIGATOR T21 AC1200',
+                type: 'ONT Residencial',
                 gpon: {
                     standard: 'FSAN G.984.2 Clase B+',
                     speedDown: 2488,   // Mbps
-                    speedUp: 1244,   // Mbps
-                    sRx: -28,    // dBm — sensibilidad de recepcion
-                    pTx_min: 0.5,    // dBm
-                    pTx_max: 5.0,    // dBm
-                    pSat: -8,     // dBm
+                    speedUp: 1244,     // Mbps
+                    sRx: -28,          // dBm — sensibilidad de recpeción
+                    pTx_min: 0.5,      // dBm
+                    pTx_max: 5.0,      // dBm
                     connector: 'SC/PC',
                     wavelengthTX: 1310,  // nm
                     wavelengthRX: 1490   // nm
                 },
-                epon: {
-                    standard: '1000BASE-PX20+ Simetrico',
-                    sRx: -27,       // dBm
-                    pTx_min: 0,
-                    pTx_max: 4.0,
-                    pSat: -3
-                },
-                features: ['4x GigE', 'WiFi 2.4G/5G', '2x POTS', 'USB 2.0', 'CATV opcional'],
-                powerW: { static: 2, max: 7 }
+                features: ['WiFi AC1200']
             },
-            'SM16101-T10': {
-                label: 'SM16101-GHZ-T10 — ONT Simple / Minimalista (Datos)',
-                type: 'ONT Compacto',
+            'NAV-T21-CATV': {
+                label: 'ONT SUMEC NAVIGATOR T21 CON CATV - WiFi AC',
+                odooLabel: '[NTS050036] ONT SUMEC NAVIGATOR T21 CON CATV',
+                type: 'ONT Residencial / Triple Play',
                 gpon: {
                     standard: 'FSAN G.984.2 Clase B+',
                     speedDown: 2488,
                     speedUp: 1244,
-                    sRx: -28,    // dBm
+                    sRx: -28,
                     pTx_min: 0.5,
                     pTx_max: 5.0,
-                    pSat: -8,
                     connector: 'SC/PC',
                     wavelengthTX: 1310,
                     wavelengthRX: 1490
                 },
-                epon: {
-                    standard: '1000BASE-PX20+ Simetrico',
-                    sRx: -27,
-                    pTx_min: 0,
-                    pTx_max: 4.0,
-                    pSat: -3
+                features: ['WiFi AC1200', 'Puerto CATV Coaxial']
+            },
+            'NAV-TX50-AX3000': {
+                label: 'ONT SUMEC NAVIGATOR TX50 AX3000 WIFI 6 - WiFi 6',
+                odooLabel: '[NTS050007] ONT SUMEC NAVIGATOR TX50 AX3000 WIFI 6',
+                type: 'ONT Avanzado (Hogares de alta demanda)',
+                gpon: {
+                    standard: 'FSAN G.984.2 Clase B+',
+                    speedDown: 2488,
+                    speedUp: 1244,
+                    sRx: -28,
+                    pTx_min: 0.5,
+                    pTx_max: 5.0,
+                    connector: 'SC/PC',
+                    wavelengthTX: 1310,
+                    wavelengthRX: 1490
                 },
-                features: ['1x GigE', 'IPv4/IPv6'],
-                powerW: { static: 2, max: 2.5 }
+                features: ['WiFi 6 AX3000']
             }
         }
     },
