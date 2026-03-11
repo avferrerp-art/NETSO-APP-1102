@@ -699,21 +699,42 @@ async function handleLogin(explicitRole = null) {
 
 
 
+    let user;
     try {
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
-        const user = userCredential.user;
+        user = userCredential.user;
         console.log("Login success:", user.uid);
+    } catch (error) {
+        console.error("Auth error:", error);
+        let msg = "Error al iniciar sesión. Inténtalo de nuevo.";
+        switch (error.code) {
+            case 'auth/wrong-password': msg = "Contraseña incorrecta. Verifica tus datos."; break;
+            case 'auth/user-not-found': msg = "El usuario no está registrado."; break;
+            case 'auth/invalid-email': msg = "El formato del correo electrónico no es válido."; break;
+            case 'auth/invalid-credential': msg = "Correo o contraseña incorrectos."; break;
+            case 'auth/user-disabled': msg = "Esta cuenta ha sido deshabilitada."; break;
+            case 'auth/too-many-requests': msg = "Demasiados intentos fallidos."; break;
+            case 'auth/network-request-failed': msg = "Error de red. Verifica tu conexión."; break;
+        }
+        alert("⚠️ " + msg);
+        if (btn) btn.innerText = originalText;
+        return;
+    }
 
-        // Lógica de reintento para Firestore (para evitar el error de la "primera vez" en Vercel)
+    // Proceso de perfil y redirección (Silencioso ante errores de BD para evitar falsos positivos)
+    try {
         let userData = null;
         let attempts = 0;
         while (attempts < 2) {
-            const userDoc = await db.collection('users').doc(user.uid).get();
-            if (userDoc.exists) {
-                userData = userDoc.data();
-                break;
+            try {
+                const userDoc = await db.collection('users').doc(user.uid).get();
+                if (userDoc.exists) {
+                    userData = userDoc.data();
+                    break;
+                }
+            } catch (dbErr) {
+                console.warn("Error de lectura en DB (intento " + (attempts + 1) + "):", dbErr);
             }
-            console.log(`Intento ${attempts + 1}: Perfil no encontrado, reintentando en 1s...`);
             attempts++;
             if (attempts < 2) await new Promise(r => setTimeout(r, 1000));
         }
@@ -723,89 +744,24 @@ async function handleLogin(explicitRole = null) {
             updateProfileUI(currentUser);
             localStorage.setItem('netsoUser', JSON.stringify(currentUser));
         } else {
-            console.warn("⚠️ Usuario sin perfil tras reintentos. Usando fallback...");
+            console.warn("⚠️ Usando fallback de perfil.");
             const fallbackName = user.email ? user.email.split('@')[0] : 'Usuario';
             const isNetsoEmail = user.email.endsWith('@netso.com') || (user.email.includes('netso') && user.email.includes('@gmail.com'));
             currentUser = { uid: user.uid, email: user.email, name: fallbackName, role: isNetsoEmail ? 'netso' : 'isp' };
         }
 
-        // Redirección inmediata (Idempotente con initAuthListener)
         if (currentUser.role === 'netso') {
             showNetsoDashboard();
         } else {
             showMainApp();
         }
-
-    } catch (error) {
-
-        console.error("Login error:", error);
-
-        let msg = "Error al iniciar sesión. Inténtalo de nuevo.";
-
-
-
-        switch (error.code) {
-
-            case 'auth/wrong-password':
-
-                msg = "Contraseña incorrecta. Verifica tus datos.";
-
-                break;
-
-            case 'auth/user-not-found':
-
-                msg = "El usuario no está registrado.";
-
-                break;
-
-            case 'auth/invalid-email':
-
-                msg = "El formato del correo electrónico no es válido.";
-
-                break;
-
-            case 'auth/invalid-credential':
-
-                msg = "Correo o contraseña incorrectos.";
-
-                break;
-
-            case 'auth/user-disabled':
-
-                msg = "Esta cuenta ha sido deshabilitada. Contacta al soporte.";
-
-                break;
-
-            case 'auth/too-many-requests':
-
-                msg = "Demasiados intentos fallidos. Por favor, intenta más tarde.";
-
-                break;
-
-            case 'auth/network-request-failed':
-
-                msg = "Error de red. Verifica tu conexión a internet.";
-
-                break;
-
-            case 'auth/internal-error':
-
-                msg = "Error interno del servidor. Reintenta en unos momentos.";
-
-                break;
-
-        }
-
-
-
-        alert("⚠️ " + msg);
-
+    } catch (finalErr) {
+        console.error("Error silencioso en post-login:", finalErr);
+        // En última instancia, si ya se autenticó, intentamos mostrar la app
+        showMainApp();
     } finally {
-
         if (btn) btn.innerText = originalText;
-
     }
-
 }
 
 
