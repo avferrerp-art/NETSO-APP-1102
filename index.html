@@ -1983,7 +1983,7 @@
             var maxDist = sfpSpecs.maxDistKm || 20;
 
             if (dTrunk < 0.1 && dTrunk !== 0) return showError('Distancia troncal inválida (mínimo 0.1 km).');
-            if (dDist < 0.1) return showError('Distancia distribución inválida. (mínimo 0.1 km).');
+            if (dDist < 0.1 && dDist !== 0) return showError('Distancia distribución inválida. (0 o mínimo 0.1 km).');
             if (nConn < 4 || nConn > 100) return showError('Conectores SC/APC: mínimo 4 y máximo 100.');
             if (nSplice < 1 || nSplice > 50) return showError('Empalmes fusionados: al menos 1 por seguridad, máximo 50.');
 
