@@ -16249,32 +16249,9 @@ function createCustomPin(type, label) {
     if (type === 'olt') el.classList.add('pin-olt');
 
     else if (type === 'nap-16') el.classList.add('pin-nap-16');
-
     else if (type === 'nap-48') el.classList.add('pin-nap-48');
 
 
-
-    wrapper.appendChild(el);
-
-
-
-    // The Label (Optional)
-
-    if (label) {
-
-        const lbl = document.createElement('div');
-
-        lbl.className = 'pin-label';
-
-        lbl.innerText = label;
-
-        // Transform the label to counteract any potential parent rotation? No, parent isn't rotated.
-
-        // But since pin is rotated -45deg, let's keep label separate in flow.
-
-        wrapper.appendChild(lbl);
-
-    }
 
 
 
@@ -16389,64 +16366,170 @@ function processKML(kmlText) {
     const parser = new DOMParser();
     const xml = parser.parseFromString(kmlText, "text/xml");
 
-    kmzTelemetry = { olts: 0, naps: 0, clients: 0, trunkDist: 0, distDist: 0, dropDist: 0, area: 0, tech: 'GPON' };
-    const placemarks = xml.getElementsByTagName("Placemark");
+    // ── Reset telemetry ──────────────────────────────────────────────────────
+    kmzTelemetry = {
+        olts: 0, naps: 0, clients: 0,
+        trunkDist: 0, distDist: 0, dropDist: 0,
+        area: 0, tech: 'GPON',
+        docName: '', docVisibility: '',
+        folders: [],
+        styles: {},
+        placemarks: []
+    };
+
+    // ── 1. Document Metadata ─────────────────────────────────────────────────
+    const docEl = xml.querySelector('Document');
+    if (docEl) {
+        const directChildren = docEl.childNodes;
+        for (const ch of directChildren) {
+            if (ch.nodeName === 'name')       kmzTelemetry.docName       = ch.textContent.trim();
+            if (ch.nodeName === 'visibility') kmzTelemetry.docVisibility = ch.textContent.trim();
+        }
+    }
+
+    // ── 2. Styles ────────────────────────────────────────────────────────────
+    const styleEls = xml.getElementsByTagName('Style');
+    for (const style of styleEls) {
+        const id = style.getAttribute('id');
+        if (!id) continue;
+        const iconStyle = style.querySelector('IconStyle');
+        const lineStyle = style.querySelector('LineStyle');
+        const polyStyle = style.querySelector('PolyStyle');
+        kmzTelemetry.styles[id] = {
+            icon:      iconStyle?.querySelector('href')?.textContent.trim()  || null,
+            iconColor: iconStyle?.querySelector('color')?.textContent.trim() || null,
+            iconScale: parseFloat(iconStyle?.querySelector('scale')?.textContent) || 1,
+            lineColor: lineStyle?.querySelector('color')?.textContent.trim()  || null,
+            lineWidth: parseFloat(lineStyle?.querySelector('width')?.textContent) || 1,
+            polyColor: polyStyle?.querySelector('color')?.textContent.trim()  || null,
+        };
+    }
+
+    // ── Helper: parse coordinate string → [{lng, lat, alt}] ─────────────────
+    function parseCoords(coordStr) {
+        if (!coordStr) return [];
+        return coordStr.trim().split(/\s+/).map(p => {
+            const c = p.split(',');
+            return { lng: parseFloat(c[0]), lat: parseFloat(c[1]), alt: parseFloat(c[2]) || 0 };
+        }).filter(c => !isNaN(c.lat) && !isNaN(c.lng));
+    }
+
+    // ── Helper: extract ExtendedData from a placemark ────────────────────────
+    function extractExtendedData(el) {
+        const result = {};
+        for (const d of el.getElementsByTagName('Data')) {
+            const name = d.getAttribute('name');
+            if (name) result[name] = d.querySelector('value')?.textContent.trim() ?? '';
+        }
+        for (const d of el.getElementsByTagName('SimpleData')) {
+            const name = d.getAttribute('name');
+            if (name) result[name] = d.textContent.trim();
+        }
+        return result;
+    }
+
+    // ── Helper: build folder path for a placemark ────────────────────────────
+    function getFolderPath(el) {
+        const path = [];
+        let cursor = el.parentElement;
+        while (cursor) {
+            if (cursor.tagName === 'Folder') {
+                let folderName = '';
+                for (const ch of cursor.childNodes) { if (ch.nodeName === 'name') { folderName = ch.textContent.trim(); break; } }
+                if (folderName) path.unshift(folderName);
+            }
+            cursor = cursor.parentElement;
+        }
+        return path.join(' > ');
+    }
+
+    // ── 3. Folder Index ──────────────────────────────────────────────────────
+    const folderSet = new Set();
+    for (const f of xml.getElementsByTagName('Folder')) {
+        for (const ch of f.childNodes) { if (ch.nodeName === 'name') { folderSet.add(ch.textContent.trim()); break; } }
+    }
+    kmzTelemetry.folders = [...folderSet];
+
+    // ── 4. Placemarks ────────────────────────────────────────────────────────
     const features = [];
+    for (const pm of xml.getElementsByTagName('Placemark')) {
+        let rawName = '', rawDesc = '', styleUrl = '';
+        for (const ch of pm.childNodes) {
+            if (ch.nodeName === 'name')        rawName  = ch.textContent.trim();
+            if (ch.nodeName === 'description') rawDesc  = ch.textContent.trim();
+            if (ch.nodeName === 'styleUrl')    styleUrl = ch.textContent.trim().replace('#','');
+        }
+        const nameUpper     = rawName.toUpperCase();
+        const folderPath    = getFolderPath(pm);
+        const extData       = extractExtendedData(pm);
+        const resolvedStyle = kmzTelemetry.styles[styleUrl] || null;
 
-    for (let placemark of placemarks) {
-        const name = (placemark.getElementsByTagName("name")[0]?.textContent || "").toUpperCase();
+        // ── Point ─────────────────────────────────────────────────────────
+        const pointEl = pm.querySelector('Point');
+        if (pointEl) {
+            const coords = parseCoords(pointEl.querySelector('coordinates')?.textContent);
+            if (coords.length > 0) {
+                const { lng, lat, alt } = coords[0];
+                let subType = 'OTHER';
+                if      (nameUpper.includes('OLT'))                                                                           { subType = 'OLT';    kmzTelemetry.olts++;    }
+                else if (nameUpper.includes('NAP') || nameUpper.includes('CTO') || nameUpper.includes('CAJA') || nameUpper.includes('ARMARIO')) { subType = 'NAP'; kmzTelemetry.naps++; }
+                else if (nameUpper.includes('CLIENTE') || nameUpper.includes('USUARIO') || nameUpper.includes('CASA') || nameUpper.includes('ABONADO')) { subType = 'CLIENT'; kmzTelemetry.clients++; }
 
-        // Puntos
-        const point = placemark.getElementsByTagName("Point")[0];
-        if (point) {
-            const coordsStr = point.getElementsByTagName("coordinates")[0]?.textContent.trim();
-            if (coordsStr) {
-                const coords = coordsStr.split(",");
-                const lng = parseFloat(coords[0]);
-                const lat = parseFloat(coords[1]);
-
-                let type = 'OTHER';
-                if (name.includes("OLT")) { type = 'OLT'; kmzTelemetry.olts++; }
-                else if (name.includes("NAP") || name.includes("CTO") || name.includes("CAJA")) { type = 'NAP'; kmzTelemetry.naps++; }
-                else if (name.includes("CLIENTE") || name.includes("USUARIO") || name.includes("CASA")) { type = 'CLIENT'; kmzTelemetry.clients++; }
-
-                features.push({ type: 'POINT', subType: type, name, lat, lng });
+                const pmObj = { type: 'POINT', subType, name: rawName, description: rawDesc, lat, lng, alt, styleUrl, style: resolvedStyle, folder: folderPath, extendedData: extData };
+                features.push(pmObj);
+                kmzTelemetry.placemarks.push(pmObj);
             }
         }
 
-        // Líneas
-        const line = placemark.getElementsByTagName("LineString")[0];
-        if (line) {
-            const coordStr = line.getElementsByTagName("coordinates")[0]?.textContent.trim();
-            if (coordStr) {
-                const coordPairs = coordStr.split(/\s+/);
-                const path = coordPairs.map(p => {
-                    const c = p.split(",");
-                    return [parseFloat(c[1]), parseFloat(c[0])];
-                }).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
+        // ── LineString ────────────────────────────────────────────────────
+        const lineEl = pm.querySelector('LineString');
+        if (lineEl) {
+            const coords = parseCoords(lineEl.querySelector('coordinates')?.textContent);
+            if (coords.length > 1) {
+                const path   = coords.map(c => [c.lat, c.lng]);
+                const length = calculatePathLength(path);
+                let subType  = 'DISTRIBUTION';
 
-                if (path.length > 1) {
-                    const length = calculatePathLength(path);
-                    let subType = 'DISTRIBUTION';
-                    if (name.includes("TRONCAL") || name.includes("FEEDER") || name.includes("PRINCIPAL")) {
-                        subType = 'TRUNK';
-                        kmzTelemetry.trunkDist += length;
-                    } else if (name.includes("DROP") || name.includes("ACOMETIDA") || length < 0.1) {
-                        subType = 'DROP';
-                        kmzTelemetry.dropDist += length;
-                    } else {
-                        kmzTelemetry.distDist += length;
-                    }
-                    features.push({ type: 'LINE', subType, name, path, length });
+                // Primary: name-based classification
+                if      (nameUpper.includes('TRONCAL') || nameUpper.includes('FEEDER') || nameUpper.includes('PRINCIPAL')) { subType = 'TRUNK'; }
+                else if (nameUpper.includes('DROP')    || nameUpper.includes('ACOMETIDA') || length < 0.08)                { subType = 'DROP'; }
+                // Fallback: style color (KML colors: AABBGGRR format)
+                else if (resolvedStyle?.lineColor) {
+                    const col = resolvedStyle.lineColor.toLowerCase();
+                    if (col.endsWith('0000ff') || col.endsWith('ff7800'))  subType = 'TRUNK';
+                    else if (col.endsWith('808080') || col.endsWith('aaaaaa')) subType = 'DROP';
                 }
+
+                if      (subType === 'TRUNK') kmzTelemetry.trunkDist += length;
+                else if (subType === 'DROP')  kmzTelemetry.dropDist  += length;
+                else                          kmzTelemetry.distDist  += length;
+
+                const pmObj = { type: 'LINE', subType, name: rawName, description: rawDesc, path, coords, length, styleUrl, style: resolvedStyle, folder: folderPath, extendedData: extData };
+                features.push(pmObj);
+                kmzTelemetry.placemarks.push(pmObj);
             }
         }
     }
 
-    if (kmzTelemetry.clients === 0 && kmzTelemetry.naps > 0) kmzTelemetry.clients = kmzTelemetry.naps * 8;
+    // ── Estimate clients if not directly detected ────────────────────────────
+    if (kmzTelemetry.clients === 0 && kmzTelemetry.naps > 0) {
+        kmzTelemetry.clients = kmzTelemetry.naps * 8;
+    }
+
+    console.log('[KMZ] Extracción completa:', {
+        doc: kmzTelemetry.docName, folders: kmzTelemetry.folders,
+        styles: Object.keys(kmzTelemetry.styles).length,
+        placemarks: kmzTelemetry.placemarks.length,
+        telemetry: { olts: kmzTelemetry.olts, naps: kmzTelemetry.naps, clients: kmzTelemetry.clients,
+            trunk: kmzTelemetry.trunkDist.toFixed(3), dist: kmzTelemetry.distDist.toFixed(3), drop: kmzTelemetry.dropDist.toFixed(3) }
+    });
+
     renderKMZMap(features);
     updateKMZTelemetryUI();
 }
+
+
+
 
 function calculatePathLength(path) {
     let total = 0;
@@ -16523,8 +16606,13 @@ function updateKMZTelemetryUI() {
         { label: 'Clientes (Est.)', val: kmzTelemetry.clients, icon: '👥', key: 'clients', type: 'number' },
         { label: 'Troncal (km)', val: kmzTelemetry.trunkDist.toFixed(2), icon: '🟠', key: 'trunkDist', type: 'number', step: '0.01' },
         { label: 'Distribución (km)', val: kmzTelemetry.distDist.toFixed(2), icon: '🔵', key: 'distDist', type: 'number', step: '0.01' },
+        { label: 'Drop/Acometida (km)', val: kmzTelemetry.dropDist.toFixed(2), icon: '🔴', key: 'dropDist', type: 'number', step: '0.01' },
         { label: 'Tecnología', val: kmzTelemetry.tech, icon: '⚡', key: 'tech', type: 'text' }
     ];
+    // Show document name only (no folders)
+    if (kmzTelemetry.docName) {
+        panel.insertAdjacentHTML('beforebegin', `<div style="font-size:11px; color:#475569; margin-bottom:8px; font-weight:600;">📄 Documento: <span style="color:#166534;">${kmzTelemetry.docName}</span></div>`);
+    }
     panel.innerHTML = items.map(i => `
         <div style="background: white; border: 1px solid #dcfce7; padding: 12px; border-radius: 10px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: all 0.2s;">
             <div style="font-size: 20px; margin-bottom: 4px;">${i.icon}</div>
@@ -16559,21 +16647,40 @@ async function analyzeKMZTopology() {
 
     try {
         const userNotes = document.getElementById('kmz-user-notes').value.trim();
-        let prompt = `Analiza esta topología de red FTTH extraída de un archivo KMZ y sugiere materiales NETSO.
-        DATOS EXTRAÍDOS DEL KMZ:
-        - OLTs detectadas: ${kmzTelemetry.olts}
-        - Cajas NAP/CTO detectadas: ${kmzTelemetry.naps}
-        - Clientes estimados: ${kmzTelemetry.clients}
-        - Distancia Fibra Troncal: ${kmzTelemetry.trunkDist.toFixed(3)} km
-        - Distancia Fibra Distribución: ${kmzTelemetry.distDist.toFixed(3)} km
-        - Distancia Fibra DROP: ${kmzTelemetry.dropDist.toFixed(3)} km
-        
-        REGLAS PARA TU RECOMENDACIÓN:
-        1. OLT: Si clientes > 500 usa NAVGPT-16P. Si < 500 usa NAVGPT-08P. Si < 100 usa NAVGPT-04P. (Busca el nombre equivalente en el catálogo).
-        2. CABLES: Sugiere Cable ADSS para Troncal y AS-Mini para Distribución. Cantidad = km + 10% desperdicio.
-        3. ACCESORIOS: Sugiere 1 splitter 1:16 por cada NAP si no se especifica.
-        
-        ${catalogContext}
+
+        // Build enriched context from extraction fields
+        const styleCount = Object.keys(kmzTelemetry.styles).length;
+        const styleCtx = styleCount > 0 ? `- Estilos detectados en KML: ${styleCount} (colores/íconos personalizados)` : '';
+        const extDataSample = kmzTelemetry.placemarks
+            .filter(p => Object.keys(p.extendedData || {}).length > 0)
+            .slice(0, 3)
+            .map(p => `  [${p.name}]: ${JSON.stringify(p.extendedData)}`)
+            .join('\n');
+        const extDataCtx = extDataSample ? `- Datos Extendidos (muestra de placemarks):\n${extDataSample}` : '';
+        const docCtx = kmzTelemetry.docName ? `- Nombre del Documento KML: "${kmzTelemetry.docName}"` : '';
+
+        let prompt = `Eres un ingeniero experto en redes FTTH. Analiza esta topología extraída de un archivo KMZ y sugiere materiales NETSO precisos.
+
+DATOS EXTRAÍDOS DEL KMZ:
+- OLTs detectadas: ${kmzTelemetry.olts}
+- Cajas NAP/CTO detectadas: ${kmzTelemetry.naps}
+- Clientes estimados: ${kmzTelemetry.clients}
+- Distancia Fibra Troncal (Feeder): ${kmzTelemetry.trunkDist.toFixed(3)} km
+- Distancia Fibra Distribución: ${kmzTelemetry.distDist.toFixed(3)} km
+- Distancia Fibra Drop/Acometida: ${kmzTelemetry.dropDist.toFixed(3)} km
+${docCtx}
+${styleCtx}
+${extDataCtx}
+
+REGLAS PARA TU RECOMENDACIÓN:
+1. OLT: Si clientes > 500 usa NAVGPT-16P. Si < 500 usa NAVGPT-08P. Si < 100 usa NAVGPT-04P.
+2. CABLES TRONCAL: Cable ADSS para Troncal. Cantidad en metros = distancia troncal × 1000 × 1.10 (10% desperdicio). Luego convierte a BOBINAS de 4km (4000m): qty = ceil(metros / 4000). Redondea siempre hacia arriba.
+3. CABLES DISTRIBUCIÓN: Cable AS-Mini GPON. Igual que ADSS: convierte metros × 1.10 a BOBINAS de 4km: qty = ceil(metros / 4000).
+4. CABLES DROP: Cable Drop SC/APC. Cantidad = distancia drop × 1.15 (15% desperdicio). Expresa en BOBINAS de 1km: qty = ceil(metros / 1000).
+5. SPLITTERS: 1 splitter 1:8 ó 1:16 por NAP según la densidad de clientes.
+6. Si los ExtendedData indican tipo de zona ajusta las recomendaciones.
+
+${catalogContext}
         `;
 
         if (userNotes) {
@@ -16651,7 +16758,17 @@ function renderKMZAIResults(text, suggestions) {
         card.id = cardId;
         card.style.cssText = 'background: white; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; gap: 8px; transition: all 0.2s;';
 
-        const icon = item.product.includes("OLT") ? "🏢" : item.product.includes("Cable") ? "🧵" : "📦";
+        // Detect cable type for unit label
+        const isDropCable = /drop|acometida/i.test(item.product);
+        const isAdssCable = /adss|as-mini|distribuc/i.test(item.product) && !isDropCable;
+        const isCable = isDropCable || isAdssCable || /cable|fibra/i.test(item.product);
+        const unitLabel = isAdssCable ? 'bobinas (4km)' : isDropCable ? 'bobinas (1km)' : isCable ? 'bobinas' : 'und';
+        const stepVal   = isAdssCable ? '1' : isCable ? '1' : '1';
+        const icon = item.product.includes("OLT") || item.product.includes("NAVGPT") ? "🏢"
+                   : isCable ? "🧵"
+                   : item.product.toLowerCase().includes("splitter") ? "🔀"
+                   : item.product.toLowerCase().includes("sfp") ? "📡"
+                   : "📦";
 
         card.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:start;">
@@ -16661,7 +16778,8 @@ function renderKMZAIResults(text, suggestions) {
             <div style="font-size:12px; color:#64748b; line-height:1.4; flex-grow:1;">${item.reason}</div>
             <div style="display:flex; align-items:center; gap:10px; margin-top:5px; padding-top:10px; border-top:1px solid #f1f5f9;">
                 <span style="font-size:12px; font-weight:700;">Cant:</span>
-                <input type="number" id="${cardId}-qty" value="${item.qty}" min="1" style="width:60px; padding:4px 8px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                <input type="number" id="${cardId}-qty" value="${item.qty}" min="1" step="${stepVal}" style="width:60px; padding:4px 8px; border:1.5px solid #cbd5e1; border-radius:6px; font-size:13px;">
+                <span style="font-size:11px; color:#64748b; font-weight:700;">${unitLabel}</span>
                 <button onclick="addKMZItemToQuote(${idx})" style="background:#10b981; color:white; border:none; padding:6px 12px; border-radius:8px; font-weight:700; cursor:pointer; font-size:12px; flex-grow:1;">
                     ✓ Agregar
                 </button>
