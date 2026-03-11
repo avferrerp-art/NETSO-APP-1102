@@ -715,73 +715,11 @@ async function handleLogin(explicitRole = null) {
 
 
     try {
-
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
-
-        const user = userCredential.user;
-
-
-
-        console.log("Login success:", user.uid);
-
-
-
-        // Cargar datos extra del usuario (Nombre, Company)
-
-        const userDoc = await db.collection('users').doc(user.uid).get();
-
-        if (userDoc.exists) {
-
-            const userData = userDoc.data();
-
-            // EXPLICIT ASSIGNMENT: Firebase user objects don't spread well (getters/non-enumerable)
-
-            currentUser = {
-
-                uid: user.uid,
-
-                email: user.email,
-
-                ...userData
-
-            };
-
-            updateProfileUI(userData);
-
-        } else {
-            console.warn("⚠️ Usuario sin perfil en Firestore. Verificando fallback por email...");
-            const fallbackName = user.email ? user.email.split('@')[0] : 'Usuario';
-            const isNetsoEmail = user.email.endsWith('@netso.com') ||
-                (user.email.includes('netso') && user.email.includes('@gmail.com'));
-
-            currentUser = {
-                uid: user.uid,
-                email: user.email,
-                name: fallbackName,
-                role: isNetsoEmail ? 'netso' : 'isp'
-            };
-
-            localStorage.setItem('netsoUser', JSON.stringify(currentUser));
-            updateProfileUI(currentUser);
-        }
-
-
-
-        document.getElementById('login-page').style.display = 'none';
-
-
-
-        // REDIRECTION LOGIC
-        // Always prioritize the official role from Firestore to ensure security and correct view
-        if (currentUser && currentUser.role === 'netso') {
-            console.log("Admin detected. Redirecting to Netso Dashboard...");
-            showNetsoDashboard();
-        } else {
-            console.log("ISP user detected. Redirecting to Main App...");
-            showMainApp();
-        }
-
-
+        console.log("Login sign-in triggered for:", userCredential.user.uid);
+        // We no longer manually fetch Firestore data or redirect here.
+        // initAuthListener (onAuthStateChanged) will handle the data fetch and redirection
+        // when the auth state formally changes.
 
     } catch (error) {
 
