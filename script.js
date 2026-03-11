@@ -268,67 +268,52 @@ function initAuthListener() {
 
 
 
-            // Consultar rol en Firestore
-
-            db.collection('users').doc(user.uid).get()
-
-                .then((doc) => {
-
-                    if (doc.exists) {
-
-                        const userData = doc.data();
-
-                        console.log("📄 Perfil encontrado en Firestore:", userData);
-
-                        currentUser = { ...userData, email: user.email, uid: user.uid };
-
-
-
-                        // Guardar local para backup
-
-                        localStorage.setItem('netsoUser', JSON.stringify(currentUser));
-
-                        updateProfileUI(currentUser);
-
-
-
-                        if (userData.role === 'netso') {
-
-                            console.log("Redirigiendo a Dashboard Netso...");
-
-                            showNetsoDashboard();
-
-                        } else {
-
-                            console.log("Redirigiendo a App Principal (ISP)...");
-
-                            showMainApp();
-
-                        }
-
-                    } else {
-
-                        const fallbackName = user.email ? user.email.split('@')[0] : 'Usuario';
-                        const isNetsoEmail = user.email.endsWith('@netso.com') ||
-                            (user.email.includes('netso') && user.email.includes('@gmail.com'));
-
-                        if (isNetsoEmail) {
-                            console.log("Fallback: Usuario identificado como Personal Netso (Legacy/Dev).");
-                            currentUser = { name: fallbackName, role: 'netso', email: user.email, uid: user.uid };
-                            localStorage.setItem('netsoUser', JSON.stringify(currentUser));
-                            updateProfileUI(currentUser);
-                            showNetsoDashboard();
-                        } else {
-                            console.warn("⚠️ Usuario ISP sin perfil en Firestore. Redirigiendo a registro/login.");
-                            currentUser = { name: fallbackName, role: 'isp', email: user.email, uid: user.uid };
-                            localStorage.setItem('netsoUser', JSON.stringify(currentUser));
-                            updateProfileUI(currentUser);
-                            showMainApp();
-                        }
-
+            const fetchUserProfile = async (uid, maxAttempts = 2) => {
+                let attempts = 0;
+                while (attempts < maxAttempts) {
+                    try {
+                        const doc = await db.collection('users').doc(uid).get();
+                        if (doc.exists) return doc.data();
+                    } catch (e) {
+                        console.warn(`Error en intento ${attempts + 1} de initAuthListener:`, e);
                     }
+                    attempts++;
+                    if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 1000));
+                }
+                return null;
+            };
 
-                })
+            fetchUserProfile(user.uid).then((userData) => {
+                if (userData) {
+                    console.log("📄 Perfil encontrado en Firestore:", userData);
+                    currentUser = { ...userData, email: user.email, uid: user.uid };
+                    localStorage.setItem('netsoUser', JSON.stringify(currentUser));
+                    updateProfileUI(currentUser);
+                    if (userData.role === 'netso') {
+                        console.log("Redirigiendo a Dashboard Netso...");
+                        showNetsoDashboard();
+                    } else {
+                        console.log("Redirigiendo a App Principal (ISP)...");
+                        showMainApp();
+                    }
+                } else {
+                    const fallbackName = user.email ? user.email.split('@')[0] : 'Usuario';
+                    const isNetsoEmail = user.email.endsWith('@netso.com') || (user.email.includes('netso') && user.email.includes('@gmail.com'));
+                    if (isNetsoEmail) {
+                        console.log("Fallback: Usuario identificado como Personal Netso.");
+                        currentUser = { name: fallbackName, role: 'netso', email: user.email, uid: user.uid };
+                        localStorage.setItem('netsoUser', JSON.stringify(currentUser));
+                        updateProfileUI(currentUser);
+                        showNetsoDashboard();
+                    } else {
+                        console.warn("⚠️ Usuario ISP sin perfil tras reintentos.");
+                        currentUser = { name: fallbackName, role: 'isp', email: user.email, uid: user.uid };
+                        localStorage.setItem('netsoUser', JSON.stringify(currentUser));
+                        updateProfileUI(currentUser);
+                        showMainApp();
+                    }
+                }
+            })
 
                 .catch((error) => {
 
@@ -716,10 +701,40 @@ async function handleLogin(explicitRole = null) {
 
     try {
         const userCredential = await auth.signInWithEmailAndPassword(email, pass);
-        console.log("Login sign-in triggered for:", userCredential.user.uid);
-        // We no longer manually fetch Firestore data or redirect here.
-        // initAuthListener (onAuthStateChanged) will handle the data fetch and redirection
-        // when the auth state formally changes.
+        const user = userCredential.user;
+        console.log("Login success:", user.uid);
+
+        // Lógica de reintento para Firestore (para evitar el error de la "primera vez" en Vercel)
+        let userData = null;
+        let attempts = 0;
+        while (attempts < 2) {
+            const userDoc = await db.collection('users').doc(user.uid).get();
+            if (userDoc.exists) {
+                userData = userDoc.data();
+                break;
+            }
+            console.log(`Intento ${attempts + 1}: Perfil no encontrado, reintentando en 1s...`);
+            attempts++;
+            if (attempts < 2) await new Promise(r => setTimeout(r, 1000));
+        }
+
+        if (userData) {
+            currentUser = { uid: user.uid, email: user.email, ...userData };
+            updateProfileUI(currentUser);
+            localStorage.setItem('netsoUser', JSON.stringify(currentUser));
+        } else {
+            console.warn("⚠️ Usuario sin perfil tras reintentos. Usando fallback...");
+            const fallbackName = user.email ? user.email.split('@')[0] : 'Usuario';
+            const isNetsoEmail = user.email.endsWith('@netso.com') || (user.email.includes('netso') && user.email.includes('@gmail.com'));
+            currentUser = { uid: user.uid, email: user.email, name: fallbackName, role: isNetsoEmail ? 'netso' : 'isp' };
+        }
+
+        // Redirección inmediata (Idempotente con initAuthListener)
+        if (currentUser.role === 'netso') {
+            showNetsoDashboard();
+        } else {
+            showMainApp();
+        }
 
     } catch (error) {
 
