@@ -298,19 +298,30 @@ function initAuthListener() {
                     }
                 } else {
                     const fallbackName = user.email ? user.email.split('@')[0] : 'Usuario';
+                    // 1. Intentar ver si es dominio directo
                     const isNetsoEmail = user.email.endsWith('@netso.com') || (user.email.includes('netso') && user.email.includes('@gmail.com'));
-                    if (isNetsoEmail) {
-                        console.log("Fallback: Usuario identificado como Personal Netso.");
+                    
+                    // 2. Intentar ver si loginWithGoogle ya guardó su rol localmente (whitelist)
+                    let forcedRole = null;
+                    try {
+                        let localUser = JSON.parse(localStorage.getItem('netsoUser'));
+                        if (localUser && localUser.uid === user.uid && localUser.role === 'netso') {
+                            forcedRole = 'netso';
+                        }
+                    } catch (e) {}
+
+                    if (isNetsoEmail || forcedRole === 'netso') {
+                        console.log("Fallback: Usuario identificado como Personal Netso (Dominio o Whitelist).");
                         currentUser = { name: fallbackName, role: 'netso', email: user.email, uid: user.uid };
                         localStorage.setItem('netsoUser', JSON.stringify(currentUser));
                         updateProfileUI(currentUser);
-                        showNetsoDashboard();
+                        setTimeout(() => showNetsoDashboard(), 100);
                     } else {
                         console.warn("⚠️ Usuario ISP sin perfil tras reintentos.");
                         currentUser = { name: fallbackName, role: 'isp', email: user.email, uid: user.uid };
                         localStorage.setItem('netsoUser', JSON.stringify(currentUser));
                         updateProfileUI(currentUser);
-                        showMainApp();
+                        setTimeout(() => showMainApp(), 100);
                     }
                 }
             })
