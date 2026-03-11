@@ -149,7 +149,15 @@
                         <label class="field-label">Contraseña</label>
                         <input type="password" id="login-netso-pass" placeholder="••••••••" class="input-field">
                     </div>
-                    <button class="btn-primary" onclick="handleLogin()">Ingresar →</button>
+                    <button class="btn-primary" onclick="handleLogin('netso')">Ingresar con Contraseña →</button>
+                    
+                    <div style="margin: 15px 0; text-align: center; color: #94a3b8; font-size: 14px; font-weight: 500;">ó</div>
+                    
+                    <button class="btn-secondary" onclick="loginWithGoogle()" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" alt="Google">
+                        Acceso Corporativo Netso
+                    </button>
+
                 </div>
             </div>
         </div>

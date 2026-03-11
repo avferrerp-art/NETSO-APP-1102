@@ -764,6 +764,60 @@ async function handleLogin(explicitRole = null) {
     }
 }
 
+// ----------------------------------------------------
+// GOOGLE SIGN-IN & WHITELIST LOGIC
+// ----------------------------------------------------
+async function loginWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    // Opcional: Para sugerir cuentas de Netso (no bloquea otras, solo sugiere)
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    const btn = document.querySelector('#form-netso .btn-secondary');
+    const originalText = btn ? btn.innerHTML : '';
+    if (btn) btn.innerHTML = '⏳ Verificando...';
+
+    try {
+        const result = await auth.signInWithPopup(provider);
+        const user = result.user;
+        const lowerEmail = user.email.toLowerCase();
+        
+        console.log("Intento de login con Google:", lowerEmail);
+
+        // 1. Verificar dominio directo
+        if (lowerEmail.endsWith('@netso.com')) {
+            console.log("✅ Acceso corporativo Netso autorizado por dominio.");
+            // El initAuthListener atrapará este estado y hará la redirección
+            return;
+        }
+
+        // 2. Si no es de dominio Netso, verificar en la Whitelist
+        const whitelistDoc = await db.collection('whitelist').doc(lowerEmail).get();
+        
+        if (whitelistDoc.exists && whitelistDoc.data().active === true) {
+            console.log("✅ Acceso autorizado por Lista Blanca.");
+            // Al estar activo en la whitelist, lo forzaremos a ser 'netso'
+            // Guardamos localmente para que initAuthListener no tenga que adivinar
+            let currentUserData = { name: user.displayName || user.email.split('@')[0], role: 'netso', email: lowerEmail, uid: user.uid };
+            localStorage.setItem('netsoUser', JSON.stringify(currentUserData));
+            updateProfileUI(currentUserData);
+            
+            // initAuthListener confirmará la sesión y redirigirá al dashboard
+            return;
+        } else {
+            console.warn("🚫 Acceso denegado: Correo no está en la whitelist o está inactivo.");
+            await auth.signOut();
+            alert("Acceso denegado. Este correo no está autorizado como personal administrativo. Si crees que es un error, contacta a soporte.");
+            if (btn) btn.innerHTML = originalText;
+        }
+
+    } catch (error) {
+        if (error.code !== 'auth/popup-closed-by-user') {
+            console.error("Error en Google Login:", error);
+            alert("No se pudo iniciar sesión con Google: " + error.message);
+        }
+        if (btn) btn.innerHTML = originalText;
+    }
+}
 
 
 function showMainApp() {
@@ -4943,7 +4997,7 @@ function finalizar() {
     generarListaCotizacion(hp, napsRequeridos, radioKm);
 
     // Definir función global para refrescar BOM desde otros paneles (ej. Presupuesto Óptico)
-    window.refreshBOM = function() {
+    window.refreshBOM = function () {
         if (window.lastBOMParams) {
             console.log("Refrescando BOM desde parámetros guardados...");
             // Recalcular NAPs Mix si es necesario o usar el estado actual
@@ -5266,11 +5320,11 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
                 // 2. Scoring de Palabras Clave
                 const sTokens = sNameNorm.split(' ').filter(t => t.length >= 2);
                 let matches = targetTokens.filter(t => sTokens.includes(t));
-                
+
                 // Si el item del stock (sTokens) tiene TODAS las palabras del item buscado (targetTokens), forzar un match alto
                 let score = 0;
                 if (targetTokens.length > 0 && matches.length === targetTokens.length) {
-                    score = 85; 
+                    score = 85;
                 } else {
                     score = (matches.length / Math.max(targetTokens.length, sTokens.length)) * 100;
                 }
@@ -6434,7 +6488,7 @@ function renderCotizacionTable() {
 
                 } else {
 
-                    odooName = `<span style="background: #fee2e2; color: #b91c1c; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; border: 1px solid #fecaca;">⚠️ SIN REF. ODOO</span>`;
+                    odooName = `<span style="background: #fee2e2; color: #b91c1c; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; border: 1px solid #fecaca;">⚠️ SIN REF. CATALOGO INTERNO</span>`;
 
                 }
 
@@ -7322,11 +7376,11 @@ async function downloadComparisonReport() {
                 // 3. Keyword Scoring
                 const sTokens = sNameNorm.split(' ').filter(t => t.length >= 2);
                 let matches = targetTokens.filter(t => sTokens.includes(t));
-                
+
                 // Si el item del stock (sTokens) tiene TODAS las palabras del item buscado (targetTokens), forzar un match alto
                 let score = 0;
                 if (targetTokens.length > 0 && matches.length === targetTokens.length) {
-                    score = 85; 
+                    score = 85;
                 } else {
                     score = (matches.length / Math.max(targetTokens.length, sTokens.length)) * 100;
                 }
@@ -7659,7 +7713,7 @@ async function downloadComparisonReport() {
             <tr><td colspan="8" style="border:none; height:10px;"></td></tr>
 
             <tr style="background:#f1f5f9; font-weight:bold;">
-                <td colspan="7" data-fill-color="F1F5F9" data-f-bold="true" data-a-h="right" data-b-a-s="thin" style="text-align:right; padding:10px;">TOTAL ESTIMADO DE COMPRA (ODOO):</td>
+                <td colspan="7" data-fill-color="F1F5F9" data-f-bold="true" data-a-h="right" data-b-a-s="thin" style="text-align:right; padding:10px;">TOTAL ESTIMADO DE COMPRA:</td>
                 <td data-fill-color="F1F5F9" data-f-bold="true" data-a-h="center" data-b-a-s="thin" style="text-align:center; font-size:14px; color:#0f172a;">$ ${totalEstimadoGlobal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
             </tr>
 
