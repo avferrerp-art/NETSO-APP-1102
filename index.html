@@ -150,11 +150,14 @@
                         <input type="password" id="login-netso-pass" placeholder="••••••••" class="input-field">
                     </div>
                     <button class="btn-primary" onclick="handleLogin('netso')">Ingresar con Contraseña →</button>
-                    
-                    <div style="margin: 15px 0; text-align: center; color: #94a3b8; font-size: 14px; font-weight: 500;">ó</div>
-                    
-                    <button class="btn-secondary" onclick="loginWithGoogle()" style="background: white; color: #1e293b; border: 1px solid #cbd5e1; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
-                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" alt="Google">
+
+                    <div style="margin: 15px 0; text-align: center; color: #94a3b8; font-size: 14px; font-weight: 500;">
+                        ó</div>
+
+                    <button class="btn-secondary" onclick="loginWithGoogle()"
+                        style="background: white; color: #1e293b; border: 1px solid #cbd5e1; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20"
+                            alt="Google">
                         Acceso Corporativo Netso
                     </button>
 
@@ -348,13 +351,13 @@
                     <div
                         style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 0 10px;">
                         <div style="display: flex; align-items: center; gap: 12px;">
-                            <span style="font-size: 28px;">🌐</span>
+                            <span style="font-size: 28px;"></span>
                             <h2 class="section-title" style="margin: 0; color: #166534;">Análisis Inteligente con KMZ
                             </h2>
                         </div>
                         <button class="btn-primary" onclick="document.getElementById('kmzFileInput').click()"
                             style="width: auto; background: #166534; border-color: #14532d; padding: 10px 20px; display: flex; align-items: center; gap: 8px;">
-                            📁 Cargar Archivo KMZ
+                            Cargar Archivo KMZ
                         </button>
                         <input type="file" id="kmzFileInput" accept=".kmz" style="display: none;"
                             onchange="handleKMZUpload(event)">
@@ -362,7 +365,7 @@
 
                     <p style="color: #374151; font-size: 14px; margin-bottom: 20px; padding: 0 10px;">
                         Carga la topología de tu red en formato KMZ. El sistema analizará automáticamente las
-                        distancias, cantidad de NAPs y sugerirá el equipamiento óptico ideal.
+                        distancias, cables, NAPs y sugerirá el equipamiento óptico ideal.
                     </p>
 
                     <!-- Mapa Interactiva KMZ -->
@@ -381,7 +384,7 @@
                     <!-- Contenedor de Notas Adicionales -->
                     <div id="kmz-notes-container" style="display:none; margin-top: 20px; margin-bottom: 15px;">
                         <label class="field-label" style="display: block; margin-bottom: 8px;">
-                            <span style="font-size: 16px; margin-right: 5px;">📝</span> Notas o Requisitos Específicos
+                            <span style="font-size: 16px; margin-right: 5px;"></span> Notas o Requisitos Específicos
                             (Opcional)
                         </label>
                         <textarea id="kmz-user-notes"
@@ -392,7 +395,7 @@
                     <!-- Botón para Iniciar Análisis IA del KMZ -->
                     <button class="btn-primary" id="btn-analyze-kmz" onclick="analyzeKMZTopology()"
                         style="display:none; width: 100%; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                        ✨ Analizar Topología y Sugerir Equipos
+                        Analizar Topología y Sugerir Equipos
                     </button>
                     <!-- Resultados del Análisis KMZ (Tarjetas Seleccionables) -->
                     <div id="kmz-analysis-loading" style="display: none; text-align: center; padding: 30px;">
@@ -410,7 +413,7 @@
                 <!-- SECCIÓN SUGERENCIAS IA (COTIZADOR DIRECTO) -->
                 <div class="section" style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 30px;">
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
-                        <span style="font-size: 24px;">🤖</span>
+                        <span style="font-size: 24px;"></span>
                         <h2 class="section-title" style="margin: 0;">Sugerencias IA</h2>
                     </div>
 
@@ -445,7 +448,7 @@
                     <div id="directAnalysisResult" style="display: none; margin-top: 20px;" class="analysis-card">
                         <div
                             style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
-                            <span style="font-size: 20px;">💡</span>
+                            <span style="font-size: 20px;"></span>
                             <div style="font-weight: 700; color: var(--netso-dark);">Sugerencias del Asistente</div>
                         </div>
                         <div id="directAnalysisText" style="font-size: 13px; line-height: 1.6; color: #334155;"></div>
@@ -485,7 +488,7 @@
             </div>
 
             <div class="section">
-                <h2 class="section-title">🧵 Inventario de Fibra Óptica</h2>
+                <h2 class="section-title"> Inventario de Fibra Óptica</h2>
                 <div id="fibra-container"></div>
                 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                     <button class="btn-add" onclick="addFibraCard()" style="flex: 2;">+ Agregar Cable</button>
@@ -495,7 +498,7 @@
             </div>
 
             <div class="section">
-                <h2 class="section-title">⚡ Equipos Activos</h2>
+                <h2 class="section-title"> Equipos Activos</h2>
                 <div class="input-group">
                     <label class="field-label">OLT / Chasis Principal</label>
                     <select class="input-field" id="olt-status">
@@ -525,37 +528,37 @@
             </div>
 
             <div class="section">
-                <h2 class="section-title">📦 Equipos de Distribución</h2>
+                <h2 class="section-title"> Equipos de Distribución</h2>
                 <div id="dist-container"></div>
                 <button class="btn-add" onclick="addDistCard()">+ Agregar Equipo de Distribución</button>
             </div>
 
             <div class="section">
-                <h2 class="section-title">✂️ Equipos de Empalme</h2>
+                <h2 class="section-title"> Equipos de Empalme</h2>
                 <div id="empalme-container"></div>
                 <button class="btn-add" onclick="addEmpalmeCard()">+ Agregar Equipo de Empalme</button>
             </div>
 
             <div class="section">
-                <h2 class="section-title">🔗 Conectorización</h2>
+                <h2 class="section-title">Conectorización</h2>
                 <div id="conect-container"></div>
                 <button class="btn-add" onclick="addConectCard()">+ Agregar Conector/Splitter</button>
             </div>
 
             <div class="section">
-                <h2 class="section-title">🏠 Equipos de Abonado (CPE)</h2>
+                <h2 class="section-title"> Equipos de Abonado (CPE)</h2>
                 <div id="ont-container"></div>
                 <button class="btn-add" onclick="addOntCard()">+ Agregar Equipo ONT</button>
             </div>
 
             <div class="section">
-                <h2 class="section-title">🔩 Herrajes y Sujeción</h2>
+                <h2 class="section-title"> Herrajes y Sujeción</h2>
                 <div id="herrajes-container"></div>
                 <button class="btn-add" onclick="addHerrajeCard()">+ Agregar Herraje</button>
             </div>
 
             <div class="section">
-                <h2 class="section-title">🛠️ Herramientas de Instalación</h2>
+                <h2 class="section-title">Herramientas de Instalación</h2>
                 <div id="herramientas-container"></div>
                 <button class="btn-add" onclick="addHerramientaCard()">+ Agregar Herramienta</button>
             </div>
@@ -594,7 +597,7 @@
             <div id="campo-context-banner"
                 style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #86efac; border-radius: 16px; padding: 16px 20px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 120px;">
-                    <span style="font-size: 20px;">🎯</span>
+                    <span style="font-size: 20px;"></span>
                     <div>
                         <div
                             style="font-size: 11px; font-weight: 700; color: #15803d; text-transform: uppercase; letter-spacing: 0.05em;">
@@ -605,7 +608,7 @@
                 <div style="width: 1px; background: #86efac; align-self: stretch; display: none;"
                     class="context-divider"></div>
                 <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 120px;">
-                    <span style="font-size: 20px;">📍</span>
+                    <span style="font-size: 20px;"></span>
                     <div>
                         <div
                             style="font-size: 11px; font-weight: 700; color: #15803d; text-transform: uppercase; letter-spacing: 0.05em;">
@@ -668,7 +671,7 @@
                     <span style="font-size: 28px;">👷</span>
                     <div>
                         <div style="font-size: 14px; font-weight: 800; color: var(--netso-dark);">
-                            Análisis del Ingeniero
+                            Análisis IA
                         </div>
                         <div style="font-size: 11px; color: #64748b; font-weight: 600;">
                             Recomendaciones técnicas para tu proyecto
@@ -794,7 +797,7 @@
                 <div onclick="toggleOpticalPanel()"
                     style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 16px 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-size: 22px;">🔦</span>
+                        <span style="font-size: 22px;"></span>
                         <span style="font-size: 15px; font-weight: 700; color: white;">Presupuesto Óptico GPON</span>
                         <span style="font-size: 11px; color: #94a3b8; font-weight: 500;">ITU-T G.671 / G.984.2</span>
                     </div>
@@ -1065,7 +1068,7 @@
                                 </button>
                                 <button onclick="window.toggleFormulasModal()"
                                     style="background: none; border: none; color: #2563eb; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; transition: background 0.2s;">
-                                    ℹ️ Fórmulas Aplicadas
+                                    ℹ️
                                 </button>
                             </div>
                         </div>
@@ -1156,21 +1159,21 @@
             <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 32px;">
                 <button class="btn-primary" onclick="downloadComparisonReport()"
                     style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);">
-                    📄 Descargar Reporte de Compras
+                    Descargar Reporte de Compras
                 </button>
 
                 <button class="btn-primary" onclick="downloadKML()"
                     style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);">
-                    🗺️ Descargar KML (Google Earth)
+                    Descargar KML (Google Earth)
                 </button>
 
                 <button class="btn-primary" id="save-project-btn" onclick="guardarProyecto()"
                     style="background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);">
-                    💾 Guardar Proyecto
+                    Guardar Proyecto
                 </button>
 
                 <button class="btn-secondary" onclick="location.reload()">
-                    🔄 Nuevo Proyecto
+                    Nuevo Proyecto
                 </button>
 
             </div>
@@ -1214,7 +1217,7 @@
                     <span>📡</span> Proyectos
                 </button>
                 <button onclick="switchDashTab('products')" id="tab-products" class="dash-tab">
-                    <span>🛒</span> Consultar Catálogo Odoo
+                    <span></span> Consultar Catálogo Odoo
                 </button>
             </div>
 
@@ -1224,18 +1227,18 @@
                     <div
                         style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
                         <h3 class="supervision-subtitle">
-                            🛒 Catálogo de Productos
+                            Catálogo de Productos
                             <span id="odoo-product-count"
                                 style="font-size: 0.9rem; color: #64748b; font-weight: 500; margin-left: 8px;"></span>
                         </h3>
                         <div style="display: flex; gap: 10px;">
-                            <input type="text" id="odoo-search-input" placeholder="🔍 Buscar producto..."
+                            <input type="text" id="odoo-search-input" placeholder=" Buscar producto..."
                                 onkeyup="filterOdooProducts()"
                                 style="padding: 10px 16px; border: 1px solid #cbd5e1; border-radius: 10px; width: 280px; font-weight: 500;">
 
                             <button onclick="fetchOdooProducts()"
                                 style="background: var(--netso-green); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: 700; transition: all 0.3s;">
-                                🔄 Actualizar
+                                Actualizar
                             </button>
                         </div>
                     </div>
@@ -1291,7 +1294,7 @@
                     <div
                         style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
                         <div class="supervision-subtitle">
-                            📦 Disponibilidad Odoo
+                            Disponibilidad Odoo
                             <div id="inquiry-project-name" style="font-size: 0.9rem; color: #64748b; font-weight: 500;">
                             </div>
                         </div>
