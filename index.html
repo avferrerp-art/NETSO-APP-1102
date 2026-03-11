@@ -2144,18 +2144,9 @@
             document.getElementById('ob-results').style.display = 'block';
 
             // --- Sincronización con el BOM (Planificación de Materiales) ---
-            if (typeof window.generarListaCotizacion === 'function') {
-                var hp = parseInt(document.getElementById('censo') ? document.getElementById('censo').value : 0) ||
-                    parseInt(document.getElementById('ob-req-clients') ? document.getElementById('ob-req-clients').value : 0) || 0;
-                var radioVal = document.getElementById('coverageRadius') ? document.getElementById('coverageRadius').value : 500;
-                var radioKm = parseFloat(radioVal) / 1000;
-
-                // Intentar recuperar el mix de NAPs sugeridos o recalcular básico
-                var napsMix = window.suggestedNapMix || { total: Math.ceil(hp / 14.4) };
-                var napsTotal = napsMix.total;
-
-                console.log("📍 Sincronizando BOM con nueva ONT (" + ontKey + ") para Odoo...");
-                window.generarListaCotizacion(hp, napsTotal, radioKm);
+            if (typeof window.refreshBOM === 'function') {
+                console.log("📍 Sincronizando BOM con los ajustes del Presupuesto Óptico...");
+                window.refreshBOM();
             }
         };
 

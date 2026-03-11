@@ -4813,6 +4813,8 @@ function finalizar() {
     const radioVal = getVal('coverageRadius') || 500;
 
     const radioKm = parseFloat(radioVal) / 1000;
+    // Guardar parámetros para refresco posterior
+    window.lastBOMParams = { hp, radioKm };
 
 
 
@@ -4939,6 +4941,16 @@ function finalizar() {
     console.log("Generando lista cotización...");
 
     generarListaCotizacion(hp, napsRequeridos, radioKm);
+
+    // Definir función global para refrescar BOM desde otros paneles (ej. Presupuesto Óptico)
+    window.refreshBOM = function() {
+        if (window.lastBOMParams) {
+            console.log("Refrescando BOM desde parámetros guardados...");
+            // Recalcular NAPs Mix si es necesario o usar el estado actual
+            let currentNaps = (window.naps && window.naps.length > 0) ? window.naps.length : calcularMixNAPs(window.lastBOMParams.hp).total;
+            generarListaCotizacion(window.lastBOMParams.hp, currentNaps, window.lastBOMParams.radioKm);
+        }
+    };
 
 
 
@@ -5607,7 +5619,7 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
     let obSfpModel = document.getElementById('ob-sfp-model') ? document.getElementById('ob-sfp-model').value : null;
 
     // We will favor the Optical Budget OLT selection if present, to sync the BOM with the optical planning.
-    if (obOltModel && obOltModel !== "NAVGPT-08P") {
+    if (obOltModel && obOltModel !== "none") {
         let specs = window.NAVIGATOR_SPECS;
         let curOlt = (specs && specs.OLT && specs.OLT.models) ? specs.OLT.models[obOltModel] : null;
         let modeloLabel = curOlt ? curOlt.label : obOltModel;
@@ -7533,7 +7545,9 @@ async function downloadComparisonReport() {
 
             const searchName = item.item.toLowerCase().trim();
 
-            const exactMappedName = PRODUCT_MAPPING[item.item.trim()];
+            // Normalización para búsqueda exacta (manejo de × vs x)
+            const normalizedItemName = item.item.trim().replace(/×/g, 'x');
+            const exactMappedName = PRODUCT_MAPPING[normalizedItemName] || PRODUCT_MAPPING[item.item.trim()];
 
 
 
