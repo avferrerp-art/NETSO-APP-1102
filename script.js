@@ -4001,28 +4001,33 @@ REGLA CRÍTICA DE CANTIDADES: Calcula la cantidad (qty) de cada material de form
         : '';
 
     const prompt = `
-Rol: Actúa como un Asesor Técnico Comercial de NETSO. Tu función es convertir imágenes de infraestructura o necesidades del cliente en una propuesta de solución FTTH clara, profesional y fácil de entender. Eres la cara experta de NETSO que ayuda al cliente a visualizar su red.
+Rol: Actúa como un Ingeniero Especialista en Infraestructura de Fibra Óptica (FTTH) de NETSO. Tu función es analizar imágenes de campo para identificar desafíos técnicos reales y proponer una solución robusta y profesional basada en el catálogo de NETSO.
+
 ${contextoDelProyecto}
+
 Tono y Estilo:
-- Empático y Asesor: No uses lenguaje excesivamente árido; explica el "porqué" de las cosas.
-- Identidad: Eres Asesoría NETSO, no un consultor externo.
-- Claridad: El cliente debe entender que su inversión está respaldada por cálculos de ingeniería precisos.
+- Técnico y Experto: Describe desafíos físicos que veas en la imagen (postes saturados, vegetación, obstáculos, distancias largas).
+- Identidad: Eres el equipo de ingeniería de NETSO.
+- Precisión: No especules; si la imagen muestra una zona con postes, propón herrajes de sujeción para esos postes.
+
+Instrucciones de Análisis:
+1. Observa la infraestructura de postes y cables. Si ves un poste saturado (como en la imagen proporcionada), DEBES sugerir materiales de organización y tensión.
+2. Basado en el radio de ${radioTexto} y los ${metaClientes} clientes, propón una arquitectura completa.
 
 Estructura de Respuesta para el Cliente:
-- Saludo de Bienvenida: Inicia con: "Estimado cliente, es un gusto saludarle. Desde el equipo de Asesoría NETSO, he analizado la información proporcionada para presentarle la mejor solución de conectividad para su zona..."
-- Análisis de su Entorno: Describe de forma sencilla la infraestructura que ves. Ejemplo: "Se observa una disposición de postes ideal para un despliegue aéreo, lo que nos permite una instalación limpia y eficiente..."
-- Nuestra Propuesta Tecnológica: Explica la solución recomendada.
-${dimText}
+- Saludo: Profesional desde el equipo de Ingeniería NETSO.
+- Diagnóstico de Infraestructura: Describe lo que ves en las fotos (ej: "Se observa una red de distribución saturada que requiere herrajes de soporte adicionales para garantizar la estabilidad del tendido").
+- Propuesta Técnica Integrada: Explica por qué elegiste ciertos materiales para esos desafíos.
 
-Tu Kit de Solución (Catálogo NETSO): Lista los equipos necesarios como una "lista de deseos" o carrito sugerido:
-- Para la distribución: (Cables ADSS).
-- Para la conexión en su zona: (Cajas NAP y Splitters).
-- Para su hogar/empresa: (Equipos ONT de la línea Navigator).
+Tu Kit de Solución (Catálogo NETSO): DEBES incluir materiales de estas categorías:
+- Elementos de Red: (ONTs Navigator, OLTs, SFP).
+- Distribución Óptica: (ADSS, NAPs, Splitters).
+- HERRAJES Y MECÁNICA (CRÍTICO): Identifica si hacen falta Tensores ADSS, Tensores Drop, Flejes de Acero, Hebillas o Herrajes de Suspensión Tipo J para manejar la carga en los postes. 
 
 Reglas de Oro:
-- Sencillez: Si hablas de los -28 dBm o de 1310 nm, explícalo como "el estándar de calidad para que su internet no falle".
-- Marca: Prioriza siempre los productos de la marca Navigator (ONTs) y el ecosistema de NETSO.
-- Acción: Incentiva al cliente a validar los datos con un levantamiento en campo para generar el presupuesto final.
+- Si hay tendido aéreo, sugiera Tensores y Flejes.
+- Si el radio es largo, recalca la importancia del cable ADSS.
+- Marca: Prioriza Navigator y NETSO.
 
 REGLAS DE FORMATO (CRÍTICO PARA LA APP):
 1. NO hables de JSON en el texto que leerá el cliente.
@@ -5213,6 +5218,7 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
     const normalizeName = (n) => {
         if (!n) return "";
         return n.toLowerCase()
+            .replace(/\[.*?\]/g, '') // Eliminar etiquetas Odoo [NTS...]
             .replace(/hilo(s)?|puerto(s)?|unidades|metros|tipo/gi, '')
             .replace(/onu/gi, 'ont') // Sinónimo ONT/ONU
             .replace(/[^a-z0-9\s]/gi, ' ')
@@ -5247,8 +5253,15 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
                 // 2. Scoring de Palabras Clave
                 const sTokens = sNameNorm.split(' ').filter(t => t.length >= 2);
-                const matches = targetTokens.filter(t => sTokens.includes(t));
-                const score = (matches.length / Math.max(targetTokens.length, sTokens.length)) * 100;
+                let matches = targetTokens.filter(t => sTokens.includes(t));
+                
+                // Si el item del stock (sTokens) tiene TODAS las palabras del item buscado (targetTokens), forzar un match alto
+                let score = 0;
+                if (targetTokens.length > 0 && matches.length === targetTokens.length) {
+                    score = 85; 
+                } else {
+                    score = (matches.length / Math.max(targetTokens.length, sTokens.length)) * 100;
+                }
 
                 // Casos especiales: Drop, ADSS, ONT
                 const isBothDrop = target.includes('drop') && sNameNorm.includes('drop');
@@ -7253,6 +7266,7 @@ async function downloadComparisonReport() {
         function normalizeName(name) {
             if (!name) return "";
             return name.toLowerCase()
+                .replace(/\[.*?\]/g, '') // Eliminar etiquetas Odoo [NTS...]
                 .replace(/[\u1F600-\u1F64F]|[\u2700-\u27BF]|[\u1F300-\u1F5FF]|[\u1F680-\u1F6FF]|[\u2600-\u26FF]/g, '') // Emojis
                 .replace(/\(del inventario\)/gi, '')
                 .replace(/\(bobina 1km\)/gi, '')
@@ -7295,8 +7309,15 @@ async function downloadComparisonReport() {
 
                 // 3. Keyword Scoring
                 const sTokens = sNameNorm.split(' ').filter(t => t.length >= 2);
-                const matches = targetTokens.filter(t => sTokens.includes(t));
-                const score = (matches.length / Math.max(targetTokens.length, sTokens.length)) * 100;
+                let matches = targetTokens.filter(t => sTokens.includes(t));
+                
+                // Si el item del stock (sTokens) tiene TODAS las palabras del item buscado (targetTokens), forzar un match alto
+                let score = 0;
+                if (targetTokens.length > 0 && matches.length === targetTokens.length) {
+                    score = 85; 
+                } else {
+                    score = (matches.length / Math.max(targetTokens.length, sTokens.length)) * 100;
+                }
 
                 // Casos especiales: Drop, ADSS, ONT
                 const isBothDrop = target.includes('drop') && sNameNorm.includes('drop');
