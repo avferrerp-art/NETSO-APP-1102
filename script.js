@@ -4054,6 +4054,15 @@ REGLA CRÍTICA DE CANTIDADES: Calcula la cantidad (qty) de cada material de form
 - Splitters 1:16: qty = ${Math.ceil(metaClientes / 16)}
 - Cajas NAP: qty = aprox. ${Math.ceil(metaClientes / 8)} (según splitters)
 - Cable fibra: considera la topología y el radio de ${radioTexto}
+- OLT (REGLA CRÍTICA): 
+  * Si clientes ≤ 32 → OLT Navigator 4 Puertos NAVGPT-04P (4 puertos GPON)
+  * Si clientes ≤ 128 → OLT Navigator 8 Puertos NAVGPT-08P (8 puertos GPON)  
+  * Si clientes > 128 → OLT Navigator 16 Puertos NAVGPT-16P (16 puertos GPON)
+  * Asume 16 clientes por puerto GPON. Los puertos GPON necesarios = ceil(${metaClientes} / 16) = ${Math.ceil(metaClientes / 16)}
+  * Cantidad de OLTs = ceil(puertos_necesarios / capacidad_modelo)
+- SFP (REGLA CRÍTICA): SIEMPRE 1 SFP por puerto GPON activo (NO 2). 
+  * qty_SFP = número de puertos GPON necesarios = ${Math.ceil(metaClientes / 16)}
+  * NUNCA sugerir "2 por OLT para redundancia". La cantidad es 1 por puerto, punto.
 - Justifica cada cantidad en el campo "reason" con números.
 ` : '';
 
@@ -4087,7 +4096,7 @@ Estructura de Respuesta para el Cliente:
 Tu Kit de Solución (Catálogo NETSO): DEBES incluir materiales de estas categorías:
 - Elementos de Red: (ONTs Navigator, OLTs, SFP).
 - Distribución Óptica: (ADSS, NAPs, Splitters).
-- HERRAJES Y MECÁNICA (CRÍTICO): Identifica si hacen falta Tensores ADSS, Tensores Drop, Flejes de Acero, Hebillas o Herrajes de Suspensión Tipo J para manejar la carga en los postes. 
+- HERRAJES Y MECÁNICA (CRÍTICO): Identifica si hacen falta Tensores ADSS, [NTS060018] TENSOR DROP TIPO ABRAZADERA PLASTICO, Flejes de Acero, Hebillas o Herrajes de Suspensión Tipo J para manejar la carga en los postes. 
 
 Reglas de Oro:
 - Si hay tendido aéreo, sugiera Tensores y Flejes.
@@ -5430,7 +5439,7 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
     if (metrosTroncal > 0) {
 
-        let hiloTroncal = "ADSS 48 hilos"; // Default 200-999
+        let hiloTroncal = "[NTS010013] FIBRA OPTICA ADSS 48 HILOS G652.D NETSO SPAN 100 4KM 10.8MM"; // Default 200-999
 
         if (clientes >= 1000) hiloTroncal = "ADSS 96 hilos";
 
@@ -5608,13 +5617,13 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
         processReq("🔩 Herrajes", "Herraje de Sujeción Tipo D (Trompoplatina)", retenciones, "unidades", "media", stock.herrajes);
 
-        processReq("🔩 Herrajes", "Tensor ADSS", retenciones, "unidades", "media", stock.herrajes);
+        processReq("🔩 Herrajes", "[NTS060043] TENSOR ADSS PAL-1500 TIPO ANCLA PLASTICO DR1500 8MM A 11MM", retenciones, "unidades", "media", stock.herrajes);
 
 
 
         processReq("🔩 Herrajes", "Herraje de Suspensión Tipo J 5MM - 8MM", suspensiones, "unidades", "media", stock.herrajes);
 
-        processReq("🔩 Herrajes", "Preformado NETSO", suspensiones, "unidades", "media", stock.herrajes);
+        processReq("🔩 Herrajes", "[NTS060010] PREFORMADO NETSO 10.1MM", suspensiones, "unidades", "media", stock.herrajes);
 
 
 
@@ -5626,7 +5635,7 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
         const hebillas = totalPostes * 2;
 
-        processReq("🔩 Herrajes", "Hebillas de Acero 1/2 pulgada", hebillas, "unidades", "media", stock.herrajes);
+        processReq("🔩 Herrajes", "[NTS060004] HEBILLA 1/2", hebillas, "unidades", "media", stock.herrajes);
 
     }
 
@@ -5640,7 +5649,7 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
     const mangasTotal = Math.ceil((metrosTroncal / 1000) / 2.0) + Math.ceil(splittersL1 / 2);
 
-    let tipoManga = "Manga de Empalme Domo 144C 6 bandejas 24 puertos";
+    let tipoManga = "[NTS040027H] MANGA DOMO 144C 6 BANDEJAS 24 PUERTOS ST-F108H";
 
     let areaKm2 = Math.PI * (radioKm * radioKm);
 
@@ -5739,11 +5748,11 @@ function generarListaCotizacion(clientes, napsRequeridos, radioKm) {
 
     // ==========================================
 
-    processReq("🔗 Conectorización", "Tensores Drop", clientes * 2, "unidades", "media", stock.herrajes);
+    processReq("🔗 Conectorización", "[NTS060018] TENSOR DROP TIPO ABRAZADERA PLASTICO", clientes * 2, "unidades", "media", stock.herrajes);
 
-    processReq("🔗 Conectorización", "Conectores Rápidos SC/APC", clientes * 2, "unidades", "media", stock.conectorizacion);
+    processReq("🔗 Conectorización", "[NTS030001] CONECTOR MECANICO SC/APC SUMEC", clientes * 2, "unidades", "media", stock.conectorizacion);
 
-    processReq("🔗 Conectorización", "Rosetas Ópticas", clientes, "unidades", "baja", stock.conectorizacion);
+    processReq("🔗 Conectorización", "[NTS040025] ROSETA FTTH, ACOPLE FP-008", clientes, "unidades", "baja", stock.conectorizacion);
 
 
 
@@ -16251,9 +16260,24 @@ function createCustomPin(type, label) {
     else if (type === 'nap-16') el.classList.add('pin-nap-16');
     else if (type === 'nap-48') el.classList.add('pin-nap-48');
 
+    wrapper.appendChild(el);
 
-
-
+    if (label) {
+        const lbl = document.createElement('div');
+        lbl.className = 'pin-label';
+        lbl.innerText = label;
+        lbl.style.background = 'rgba(255, 255, 255, 0.95)';
+        lbl.style.padding = '2px 6px';
+        lbl.style.borderRadius = '6px';
+        lbl.style.fontSize = '11px';
+        lbl.style.fontWeight = 'bold';
+        lbl.style.marginTop = '4px';
+        lbl.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+        lbl.style.color = '#1e293b';
+        lbl.style.pointerEvents = 'none';
+        lbl.style.whiteSpace = 'nowrap';
+        wrapper.appendChild(lbl);
+    }
 
     return wrapper;
 

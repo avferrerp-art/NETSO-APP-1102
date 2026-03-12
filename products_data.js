@@ -5,31 +5,56 @@
 const PRODUCT_MAPPING = {
     // FIBRA
     "Drop Flat/Tenzado 1 hilo (Bobina 1km)": "[NTS010001] FIBRA DROP GJYXCH 1 HILOS NETSO MENSAJERO METALICO 1KM G657.A1",
+    "Drop 1 hilo": "[NTS010001] FIBRA DROP GJYXCH 1 HILOS NETSO MENSAJERO METALICO 1KM G657.A1",
+    "Drop 2 hilos": "[NTS010024] FIBRA OPTICA GJYXCH DROP 2 HILOS G657.A2 SUMEC MENSAJERO METALICO 1KM",
+    "Drop 4 hilos": "[NTS010005] FIBRA OPTICA GJYXCH DROP 4 HILOS G657.A1 NETSO MENSAJERO METALICO 1KM",
+    "Drop 8 hilos": "[NTS010006] FIBRA OPTICA GJYXCH DROP 8 HILOS G657.A1 NETSO MENSAJERO METALICO 1KM",
+    "ASU 6 hilos": "[NTS010029] FIBRA OPTICA ASU 6 HILOS G652.D SUMEC SPAN 100 3KM",
+    "ASU 12 hilos": "[NTS010017] FIBRA OPTICA ASU 12 HILOS G652.D SUMEC SPAN 100 3KM",
+    "ASU 24 hilos": "[NTS010038] FIBRA OPTICA ASU 24 HILOS G652.D SUMEC SPAN 100 4KM",
     "ADSS 24 hilos (Distribución)": "[NTS010028] FIBRA OPTICA ADSS 24 HILOS G652D SPAN100 4KM SUMEC",
     "ADSS 12 hilos": "FIBRA OPTICA ADSS 12 HILOS G652.D NETSO SPAN 100 4KM 10.1MM",
     "ADSS 48 hilos": "[NTS010013] FIBRA OPTICA ADSS 48 HILOS G652.D NETSO SPAN 100 4KM 10.8MM",
     "ADSS 96 hilos": "FIBRA OPTICA ADSS 96 HILOS G652.D NETSO SPAN 100 4KM 12.5MM",
-
-    "Caja Nap OTB 16 puertos con Splitter 1x8 APC": "[NTS040009] CAJA NAP 16 PUERTOS IP65 NETSO CARGADA CON SP 1X8 OTB-P035B",
-    "Caja Nap OTB 16 puertos con Splitter 1×8 APC": "[NTS040009] CAJA NAP 16 PUERTOS IP65 NETSO CARGADA CON SP 1X8 OTB-P035B",
+    "ADSS 144 hilos": "[NTS010008] FIBRA OPTICA ADSS 144 HILOS G652.D NETSO SPAN 100 4KM 14MM",
 
     // EQUIPOS ACTIVOS
+    "OLT 1 a 2 Puertos": "[NTS050038] OLT GPON NAVGPT- 02 PUERTO SUMEC",
+    "OLT 4 a 8 Puertos": "[NTS120001] OLT NAVGPT-08P SUMEC 8 PUERTOS GPON",
+    "OLT 16 a 32 Puertos": "[NTS120003] OLT NAVGPT-16P SUMEC 16 PUERTOS GPON",
+    "OLT 1 puerto": "[NTS050037] OLT GPON NAVGPT - 01P PUERTO SUMEC",
+    "OLT 2 puertos": "[NTS050038] OLT GPON NAVGPT- 02 PUERTO SUMEC",
+    "OLT 4 puertos": "[NTS120002] OLT NAVGPT-04P SUMEC 4 PUERTOS GPON",
+    "OLT 8 puertos": "[NTS120001] OLT NAVGPT-08P SUMEC 8 PUERTOS GPON",
+    "OLT 16 puertos": "[NTS120003] OLT NAVGPT-16P SUMEC 16 PUERTOS GPON",
+    "Navigator NAVGPT-01P (1 puerto GPON)": "[NTS050037] OLT GPON NAVGPT - 01P PUERTO SUMEC",
+    "Navigator NAVGPT-02P (2 puertos GPON)": "[NTS050038] OLT GPON NAVGPT- 02 PUERTO SUMEC",
+    "Navigator NAVGPT-04P (4 puertos GPON)": "[NTS120002] OLT NAVGPT-04P SUMEC 4 PUERTOS GPON",
+    "Navigator NAVGPT-08P (8 puertos GPON)": "[NTS120001] OLT NAVGPT-08P SUMEC 8 PUERTOS GPON",
+    "Navigator NAVGPT-16P (16 puertos GPON)": "[NTS120003] OLT NAVGPT-16P SUMEC 16 PUERTOS GPON",
+
+
     "OLT Navigator 4 Puertos": "[NTS120002] OLT NAVGPT-04P SUMEC 4 PUERTOS GPON",
     "Navigator NAVGPT-04P (4 puertos GPON)": "[NTS120002] OLT NAVGPT-04P SUMEC 4 PUERTOS GPON",
     "NAVGPT-04P": "[NTS120002] OLT NAVGPT-04P SUMEC 4 PUERTOS GPON",
     "OLT Navigator 8 Puertos": "[NTS120001] OLT NAVGPT-08P SUMEC 8 PUERTOS GPON",
     "Navigator NAVGPT-08P (8 puertos GPON)": "[NTS120001] OLT NAVGPT-08P SUMEC 8 PUERTOS GPON",
     "NAVGPT-08P": "[NTS120001] OLT NAVGPT-08P SUMEC 8 PUERTOS GPON",
-    "OLT Navigator 16 Puertos": "OLT NAVGPT-16P SUMEC 16 PUERTOS GPON",
-    "Navigator NAVGPT-16P (16 puertos GPON)": "OLT NAVGPT-16P SUMEC 16 PUERTOS GPON",
-    "NAVGPT-16P": "OLT NAVGPT-16P SUMEC 16 PUERTOS GPON",
+    "OLT Navigator 16 Puertos": "[NTS120003] OLT NAVGPT-16P SUMEC 16 PUERTOS GPON",
+    "Navigator NAVGPT-16P (16 puertos GPON)": "[NTS120003] OLT NAVGPT-16P SUMEC 16 PUERTOS GPON",
+    "NAVGPT-16P": "[NTS120003] OLT NAVGPT-16P SUMEC 16 PUERTOS GPON",
     "Módulos SFP C++": "MODULO SFP HUAWEI GPON C++",
+
+
+    "Clase C+ (+3 a +7dBm)": "[NTS050027] MODULO SFP HUAWEI GPON 10G 1310NM 10KM SM C+",
+    "Clase C++ (+6 a +10 dBm)": "[NTS050023] MODULO SFP HUAWEI GPON C++",
+
     "SFP Clase C+": "MODULO SFP HUAWEI GPON 10G 1310NM 10KM SM C+",
     "SFP Clase C++": "MODULO SFP HUAWEI GPON C++",
-    "SFP Clase B+": "MODULO SFP GPON C+++ SUMEC",
     "SFP GPON C+": "MODULO SFP HUAWEI GPON 10G 1310NM 10KM SM C+",
     "SFP GPON C++": "MODULO SFP HUAWEI GPON C++",
     "SFP GPON C+++": "MODULO SFP GPON C+++ SUMEC",
+
 
     // DIVISION Y CONECTORIZACION
     "Splitter PLC 1x4 (Nivel 1)": "SPLITTER PLC SC/APC 1X4 DE COLORES",
@@ -86,7 +111,12 @@ const PRODUCT_MAPPING = {
     "Herraje de Suspensión Tipo J 5MM - 8MM": "[NTS060025] HERRAJE DE SUSPENSION TIPO J 5MM - 8MM",
     "Tensor ADSS": "TENSOR ADSS PAL-1500 TIPO ANCLA PLASTICO Y METALICO DR1500 10,1MM A 14MM",
     "Fleje de Acero 1/2 pulgada (45 mts)": "[NTS070027] FLEJE 1/2 ACERO 201 19*0, 7MM 45MTS",
-    "Acople UPC": "ACOPLADOR SIMPLEX SC/UPC"
+    "Acople UPC": "ACOPLADOR SIMPLEX SC/UPC",
+    "Herraje de sujeción YK01 tipo D": "[NTS060008] HERRAJE DE SUJECION TIPO D YK01",
+    "Preformado tipo dead 10.1mm (6 hebras)": "[NTS060010] PREFORMADO NETSO 10.1MM",
+    "Herraje de Suspensión Tipo J 5MM - 8MM": "[NTS060025] HERRAJE DE SUSPENSION TIPO J 5MM - 8MM",
+    "[NTS060043] TENSOR ADSS PAL-1500 TIPO ANCLA PLASTICO DR1500 8MM A 11MM": "[NTS060043] TENSOR ADSS PAL-1500 TIPO ANCLA PLASTICO DR1500 8MM A 11MM",
+    "[NTS060025] HERRAJE DE SUSPENSION TIPO J 5MM - 8MM": "[NTS060025] HERRAJE DE SUSPENSION TIPO J 5MM - 8MM"
 };
 
 const MATERIAL_RULES = {
@@ -95,13 +125,24 @@ const MATERIAL_RULES = {
     "ADSS 24 hilos (Distribución)": { "unit": "Bobina", "qty_per_unit": 4000.0, "rounding": "ESTRICTO", "logic": "Fibra" },
     "ADSS 24 hilos": { "unit": "Bobina", "qty_per_unit": 4000.0, "rounding": "ESTRICTO", "logic": "Fibra" },
     "ADSS 12 hilos": { "unit": "Bobina", "qty_per_unit": 4000.0, "rounding": "ESTRICTO", "logic": "Fibra" },
-    "ADSS 48 hilos": { "unit": "Bobina", "qty_per_unit": 4000.0, "rounding": "ESTRICTO", "logic": "Fibra" },
+    "[NTS010013] FIBRA OPTICA ADSS 48 HILOS G652.D NETSO SPAN 100 4KM 10.8MM": { "unit": "Bobina", "qty_per_unit": 4000.0, "rounding": "ESTRICTO", "logic": "Fibra" },
     "ADSS 96 hilos": { "unit": "Bobina", "qty_per_unit": 4000.0, "rounding": "ESTRICTO", "logic": "Fibra" },
 
     // Equipos Activos
+    "OLT 1 a 2 Puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "OLT 4 a 8 Puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "OLT 16 a 32 Puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "OLT 1 puerto": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "OLT 2 puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "OLT 4 puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "OLT 8 puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "OLT 16 puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "Navigator NAVGPT-01P (1 puerto GPON)": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "Navigator NAVGPT-02P (2 puertos GPON)": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "Navigator NAVGPT-04P (4 puertos GPON)": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "Navigator NAVGPT-08P (8 puertos GPON)": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "Navigator NAVGPT-16P (16 puertos GPON)": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
     "OLT Navigator 4 Puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
-    "OLT Navigator 8 Puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
-    "OLT Navigator 16 Puertos": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
     "Módulos SFP C++": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
     "SFP Clase C+": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
     "SFP Clase C++": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
@@ -168,5 +209,10 @@ const MATERIAL_RULES = {
     "Rosetas Ópticas": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Cliente" },
     "Roseta con acoples APC": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Cliente" },
     "Acople APC": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
-    "Acople UPC": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" }
+    "Acople UPC": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "Herraje de sujeción YK01 tipo D": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "Preformado tipo dead 10.1mm (6 hebras)": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "Herraje de Suspensión Tipo J 5MM - 8MM": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "[NTS060043] TENSOR ADSS PAL-1500 TIPO ANCLA PLASTICO DR1500 8MM A 11MM": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" },
+    "[NTS060025] HERRAJE DE SUSPENSION TIPO J 5MM - 8MM": { "unit": "Unidad", "qty_per_unit": 1.0, "rounding": "LIBRE", "logic": "Manual" }
 };

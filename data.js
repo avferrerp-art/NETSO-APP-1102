@@ -6,7 +6,7 @@ const catalogoNetsoData = {
             "Fibra_ADSS": [
                 "ADSS 12 hilos",
                 "ADSS 24 hilos",
-                "ADSS 48 hilos",
+                "[NTS010013] FIBRA OPTICA ADSS 48 HILOS G652.D NETSO SPAN 100 4KM 10.8MM",
                 "ADSS 72 hilos",
                 "ADSS 96 hilos",
                 "ADSS 144 hilos"
@@ -35,9 +35,11 @@ const catalogoNetsoData = {
         },
         "equipos_activos": {
             "OLT": [
-                "OLT 2 Puertos",
-                "OLT 8 Puertos",
-                "OLT 16 a 32 Puertos"
+                "OLT 1 puerto",
+                "OLT 2 puertos",
+                "OLT 4 puertos",
+                "OLT 8 puertos",
+                "OLT 16 puertos"
             ],
             "Tarjetas_Boards": [
                 "Tarjeta Board 16 puertos (Chasis H901)"
